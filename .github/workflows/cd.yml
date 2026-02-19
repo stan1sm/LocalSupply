@@ -1,0 +1,101 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+      - development
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-package:
+    name: Build Artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: backend/dist
+          if-no-files-found: error
+
+  deploy-development:
+    name: Deploy Development
+    if: github.ref == 'refs/heads/development'
+    needs: build-and-package
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Trigger frontend development deploy hook
+        run: |
+          if [ -n "${{ secrets.FRONTEND_DEPLOY_HOOK_URL_DEV }}" ]; then
+            curl -fsSL -X POST "${{ secrets.FRONTEND_DEPLOY_HOOK_URL_DEV }}"
+          else
+            echo "FRONTEND_DEPLOY_HOOK_URL_DEV is not set. Skipping."
+          fi
+
+      - name: Trigger backend development deploy hook
+        run: |
+          if [ -n "${{ secrets.BACKEND_DEPLOY_HOOK_URL_DEV }}" ]; then
+            curl -fsSL -X POST "${{ secrets.BACKEND_DEPLOY_HOOK_URL_DEV }}"
+          else
+            echo "BACKEND_DEPLOY_HOOK_URL_DEV is not set. Skipping."
+          fi
+
+  deploy-production:
+    name: Deploy Production
+    if: github.ref == 'refs/heads/main'
+    needs: build-and-package
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Trigger frontend production deploy hook
+        run: |
+          if [ -n "${{ secrets.FRONTEND_DEPLOY_HOOK_URL_PROD }}" ]; then
+            curl -fsSL -X POST "${{ secrets.FRONTEND_DEPLOY_HOOK_URL_PROD }}"
+          else
+            echo "FRONTEND_DEPLOY_HOOK_URL_PROD is not set. Skipping."
+          fi
+
+      - name: Trigger backend production deploy hook
+        run: |
+          if [ -n "${{ secrets.BACKEND_DEPLOY_HOOK_URL_PROD }}" ]; then
+            curl -fsSL -X POST "${{ secrets.BACKEND_DEPLOY_HOOK_URL_PROD }}"
+          else
+            echo "BACKEND_DEPLOY_HOOK_URL_PROD is not set. Skipping."
+          fi
