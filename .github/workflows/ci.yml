@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test
+        run: npm run test
+
       - name: Lint
         run: npm run lint
 
@@ -42,7 +45,7 @@ jobs:
         run: npm run build
 
   backend:
-    name: Backend Build
+    name: Backend Checks
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -60,6 +63,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Test
+        run: npm run test
 
       - name: Build
         run: npm run build

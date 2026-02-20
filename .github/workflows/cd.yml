@@ -40,6 +40,14 @@ jobs:
         working-directory: backend
         run: npm run build
 
+      - name: Test frontend
+        working-directory: frontend
+        run: npm run test
+
+      - name: Test backend
+        working-directory: backend
+        run: npm run test
+
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v4
         with:
@@ -77,6 +85,22 @@ jobs:
             echo "BACKEND_DEPLOY_HOOK_URL_DEV is not set. Skipping."
           fi
 
+      - name: Verify frontend development deployment
+        run: |
+          if [ -n "${{ secrets.FRONTEND_HEALTHCHECK_URL_DEV }}" ]; then
+            curl -fsSL "${{ secrets.FRONTEND_HEALTHCHECK_URL_DEV }}"
+          else
+            echo "FRONTEND_HEALTHCHECK_URL_DEV is not set. Skipping verification."
+          fi
+
+      - name: Verify backend development deployment
+        run: |
+          if [ -n "${{ secrets.BACKEND_HEALTHCHECK_URL_DEV }}" ]; then
+            curl -fsSL "${{ secrets.BACKEND_HEALTHCHECK_URL_DEV }}"
+          else
+            echo "BACKEND_HEALTHCHECK_URL_DEV is not set. Skipping verification."
+          fi
+
   deploy-production:
     name: Deploy Production
     if: github.ref == 'refs/heads/main'
@@ -89,7 +113,8 @@ jobs:
           if [ -n "${{ secrets.FRONTEND_DEPLOY_HOOK_URL_PROD }}" ]; then
             curl -fsSL -X POST "${{ secrets.FRONTEND_DEPLOY_HOOK_URL_PROD }}"
           else
-            echo "FRONTEND_DEPLOY_HOOK_URL_PROD is not set. Skipping."
+            echo "FRONTEND_DEPLOY_HOOK_URL_PROD is not set."
+            exit 1
           fi
 
       - name: Trigger backend production deploy hook
@@ -97,5 +122,24 @@ jobs:
           if [ -n "${{ secrets.BACKEND_DEPLOY_HOOK_URL_PROD }}" ]; then
             curl -fsSL -X POST "${{ secrets.BACKEND_DEPLOY_HOOK_URL_PROD }}"
           else
-            echo "BACKEND_DEPLOY_HOOK_URL_PROD is not set. Skipping."
+            echo "BACKEND_DEPLOY_HOOK_URL_PROD is not set."
+            exit 1
+          fi
+
+      - name: Verify frontend production deployment
+        run: |
+          if [ -n "${{ secrets.FRONTEND_HEALTHCHECK_URL_PROD }}" ]; then
+            curl -fsSL "${{ secrets.FRONTEND_HEALTHCHECK_URL_PROD }}"
+          else
+            echo "FRONTEND_HEALTHCHECK_URL_PROD is not set."
+            exit 1
+          fi
+
+      - name: Verify backend production deployment
+        run: |
+          if [ -n "${{ secrets.BACKEND_HEALTHCHECK_URL_PROD }}" ]; then
+            curl -fsSL "${{ secrets.BACKEND_HEALTHCHECK_URL_PROD }}"
+          else
+            echo "BACKEND_HEALTHCHECK_URL_PROD is not set."
+            exit 1
           fi
