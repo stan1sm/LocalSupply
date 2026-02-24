@@ -1,0 +1,92 @@
+const PASSWORD_LOWERCASE_REGEX = /[a-z]/
+const PASSWORD_UPPERCASE_REGEX = /[A-Z]/
+const PASSWORD_NUMBER_REGEX = /[0-9]/
+const PASSWORD_SPECIAL_REGEX = /[!@#$%^&*()[\]{}\-_=+\\|;:'",<.>/?`~]/
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+const HUMAN_NAME_REGEX = /^[A-Za-z][A-Za-z '-]{1,49}$/
+
+export type UserRegistrationInput = {
+  firstName: string
+  lastName: string
+  email: string
+  password: string
+  confirmPassword: string
+  termsAccepted: boolean
+}
+
+export type UserRegistrationErrors = Partial<Record<keyof UserRegistrationInput, string>>
+
+type ValidationResult =
+  | { ok: true; data: UserRegistrationInput }
+  | { ok: false; errors: UserRegistrationErrors }
+
+function asTrimmedString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function getPasswordRequirementStatus(password: string) {
+  return {
+    hasUppercase: PASSWORD_UPPERCASE_REGEX.test(password),
+    hasLowercase: PASSWORD_LOWERCASE_REGEX.test(password),
+    hasNumber: PASSWORD_NUMBER_REGEX.test(password),
+    hasSpecial: PASSWORD_SPECIAL_REGEX.test(password),
+  }
+}
+
+function passwordPolicyError(password: string) {
+  if (password.length > 128) return 'Password must be 128 characters or fewer.'
+  const requirements = getPasswordRequirementStatus(password)
+
+  if (!requirements.hasUppercase) return 'Password must include an uppercase letter.'
+  if (!requirements.hasLowercase) return 'Password must include a lowercase letter.'
+  if (!requirements.hasNumber) return 'Password must include a number.'
+  if (!requirements.hasSpecial) return 'Password must include a special character.'
+  return null
+}
+
+export function validateUserRegistrationPayload(payload: unknown): ValidationResult {
+  const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+
+  const data: UserRegistrationInput = {
+    firstName: asTrimmedString(body.firstName),
+    lastName: asTrimmedString(body.lastName),
+    email: asTrimmedString(body.email).toLowerCase(),
+    password: typeof body.password === 'string' ? body.password.slice(0, 128) : '',
+    confirmPassword: typeof body.confirmPassword === 'string' ? body.confirmPassword.slice(0, 128) : '',
+    termsAccepted: body.termsAccepted === true,
+  }
+
+  const errors: UserRegistrationErrors = {}
+
+  if (!HUMAN_NAME_REGEX.test(data.firstName)) {
+    errors.firstName = 'Use 2-50 letters, spaces, apostrophes, or hyphens.'
+  }
+
+  if (!HUMAN_NAME_REGEX.test(data.lastName)) {
+    errors.lastName = 'Use 2-50 letters, spaces, apostrophes, or hyphens.'
+  }
+
+  if (!EMAIL_REGEX.test(data.email)) {
+    errors.email = 'Enter a valid email address.'
+  }
+
+  const passwordError = passwordPolicyError(data.password)
+  if (passwordError) {
+    errors.password = passwordError
+  }
+
+  if (data.confirmPassword !== data.password) {
+    errors.confirmPassword = "Passwords don't match."
+  }
+
+  if (!data.termsAccepted) {
+    errors.termsAccepted = 'You must accept the terms to continue.'
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { ok: false, errors }
+  }
+
+  return { ok: true, data }
+}
