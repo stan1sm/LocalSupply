@@ -21,12 +21,12 @@ LocalSupply provides a one-stop platform for procurement and logistics, includin
 - Scalable platform: APIs plus web and mobile applications.
 
 ## Tech Stack
-- Frontend: React + TypeScript + Vite
+- Frontend: Next.js (App Router) + React + TypeScript
 - Backend: Node.js + TypeScript + Express
 - Database: PostgreSQL (via Prisma)
 
 ## Repo Structure
-- `frontend/` Vite React app
+- `frontend/` Next.js web app
 - `backend/` Node/Express API + Prisma schema
 
 ## Getting Started
@@ -73,9 +73,36 @@ Backend:
 - `npm run prisma -- <command>` run Prisma CLI
 
 Frontend:
-- `npm run dev` start Vite dev server
-- `npm run build` build production assets
-- `npm run preview` preview production build
+- `npm run dev` start Next.js dev server
+- `npm run build` build the Next.js app
+- `npm run start` run the production Next.js server
+
+## Deploying To Vercel
+Use two Vercel projects (recommended for this repo structure):
+
+1. Frontend project
+- Import this repo into Vercel.
+- Set the **Root Directory** to `frontend`.
+- Framework preset: **Next.js** (Vercel should auto-detect it now).
+- Build command: `npm run build` (Vercel usually auto-detects this).
+- No SPA rewrite config is needed because routing is handled by Next.js.
+
+2. Backend project
+- Import the same repo again as a second Vercel project.
+- Set the **Root Directory** to `backend`.
+- The backend is exposed as a Vercel Serverless Function via `backend/api/index.ts`.
+- `backend/vercel.json` rewrites all requests to that function.
+
+Backend environment variables (Vercel Project Settings -> Environment Variables):
+- `DATABASE_URL` (required once Prisma/database routes are used)
+- Any other secrets from `backend/.env`
+
+Optional frontend environment variable (when frontend starts calling the API):
+- `VITE_API_BASE_URL=https://<your-backend-project>.vercel.app`
+
+Quick checks after deploy:
+- Frontend: open the frontend Vercel URL
+- Backend: open the backend Vercel URL and confirm it returns `{ "status": "ok" }`
 
 ## Status
 Early-stage MVP. Core models and endpoints are in progress.

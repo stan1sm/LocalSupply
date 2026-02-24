@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 
 const howItWorks = [
   {
@@ -80,7 +80,7 @@ export default function HomePage() {
     <main className="bg-[#f2f4ef] text-[#1f2937]">
       <section className="mx-auto w-full max-w-6xl px-4 pb-12 pt-4 sm:px-6 lg:px-8">
         <header className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
-          <Link className="inline-flex items-center gap-2 text-sm font-bold text-[#2f9f4f]" to="/">
+          <Link className="inline-flex items-center gap-2 text-sm font-bold text-[#2f9f4f]" href="/">
             <span className="grid h-5 w-5 place-items-center rounded bg-[#2f9f4f] text-[10px] text-white">LS</span>
             LocalSupply
           </Link>
@@ -97,7 +97,7 @@ export default function HomePage() {
             />
           </label>
 
-          <Link className="text-sm font-semibold text-[#1f2937] hover:text-[#2f9f4f]" to="/register">
+          <Link className="text-sm font-semibold text-[#1f2937] hover:text-[#2f9f4f]" href="/register">
             Sign in
           </Link>
         </header>
@@ -113,13 +113,13 @@ export default function HomePage() {
             <div className="mt-6 flex gap-3">
               <Link
                 className="rounded-lg bg-[#2f9f4f] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25813f]"
-                to="/register"
+                href="/register"
               >
                 Start Shopping
               </Link>
               <Link
                 className="rounded-lg border border-[#d0d8cc] px-5 py-2.5 text-sm font-semibold text-[#314237] transition hover:border-[#2f9f4f] hover:text-[#2f9f4f]"
-                to="/supplier/register"
+                href="/supplier/register"
               >
                 For Suppliers
               </Link>

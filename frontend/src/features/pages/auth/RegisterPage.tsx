@@ -1,5 +1,7 @@
+'use client'
+
 import { type FormEvent, useState } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import {
   EMAIL_REGEX,
   HUMAN_NAME_REGEX,
@@ -7,7 +9,7 @@ import {
   passwordPolicyError,
   sanitizeEmailInput,
   sanitizeTextInput,
-} from '../../utils/inputSecurity'
+} from '../../../utils/inputSecurity'
 
 type RegisterFormData = {
   firstName: string
@@ -136,7 +138,7 @@ export default function RegisterPage() {
           <h2 className="text-2xl font-bold text-[#1b2a1f]">Create your account</h2>
           <p className="mt-2 text-sm text-[#5b665f]">
             Already registered?{' '}
-            <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" to="/login">
+            <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/login">
               Sign in
             </Link>
           </p>
@@ -265,7 +267,7 @@ export default function RegisterPage() {
 
           <p className="mt-6 text-center text-sm text-[#5b665f]">
             Are you a business?{' '}
-            <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" to="/supplier/register">
+            <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/supplier/register">
               Go to supplier registration
             </Link>
           </p>

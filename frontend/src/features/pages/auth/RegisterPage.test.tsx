@@ -1,15 +1,19 @@
-import { describe, expect, it } from 'vitest'
+import type { ReactNode } from 'react'
+import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { BrowserRouter } from 'react-router-dom'
 import RegisterPage from './RegisterPage'
+
+vi.mock('next/link', () => ({
+  default: ({ children, href, ...props }: { children: ReactNode; href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}))
 
 describe('RegisterPage', () => {
   it('shows password mismatch until passwords match', () => {
-    render(
-      <BrowserRouter>
-        <RegisterPage />
-      </BrowserRouter>,
-    )
+    render(<RegisterPage />)
 
     const passwordInput = screen.getByPlaceholderText('Create a secure password')
     const confirmPasswordInput = screen.getByPlaceholderText('Repeat your password')

@@ -1,5 +1,7 @@
+'use client'
+
 import { type FormEvent, useState } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import {
   ADDRESS_REGEX,
   BUSINESS_NAME_REGEX,
@@ -11,7 +13,7 @@ import {
   sanitizeEmailInput,
   sanitizePhoneInput,
   sanitizeTextInput,
-} from '../../utils/inputSecurity'
+} from '../../../utils/inputSecurity'
 
 type SupplierFormData = {
   businessName: string
@@ -147,7 +149,7 @@ export default function SupplierRegistrationPage() {
           </div>
           <div className="mt-8 rounded-2xl border border-[#d4ddcf] bg-white p-4 text-sm text-[#4f5d53]">
             Need a personal account instead?{' '}
-            <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" to="/register">
+            <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/register">
               Go to user registration
             </Link>
           </div>
@@ -157,7 +159,7 @@ export default function SupplierRegistrationPage() {
           <h2 className="text-2xl font-bold">Supplier registration</h2>
           <p className="mt-2 text-sm text-white/85">
             Already have an account?{' '}
-            <Link className="font-semibold text-white underline-offset-4 hover:underline" to="/login">
+            <Link className="font-semibold text-white underline-offset-4 hover:underline" href="/login">
               Sign in
             </Link>
           </p>
