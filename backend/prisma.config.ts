@@ -9,6 +9,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // `prisma generate` in CI only needs a syntactically valid URL to generate the client.
+    // Runtime DB access is still enforced by backend/src/lib/prisma.ts.
+    url: process.env["DATABASE_URL"] ?? "postgresql://postgres:postgres@localhost:5432/localsupply",
   },
 });
