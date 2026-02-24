@@ -4,6 +4,7 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
+    "postinstall": "npm run prisma -- generate",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "test": "vitest run",
@@ -15,15 +16,18 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^7.2.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "pg": "^8.18.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.7",
+    "@types/pg": "^8.16.0",
     "@types/supertest": "^6.0.3",
     "nodemon": "^3.1.11",
     "prisma": "^7.2.0",
