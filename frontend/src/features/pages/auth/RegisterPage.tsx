@@ -2,6 +2,7 @@
 
 import { type FormEvent, useState } from 'react'
 import Link from 'next/link'
+import { buildApiUrl } from '../../../lib/api'
 import {
   EMAIL_REGEX,
   HUMAN_NAME_REGEX,
@@ -21,6 +22,10 @@ type RegisterFormData = {
 }
 
 type RegisterFormErrors = Partial<Record<keyof RegisterFormData, string>>
+type RegisterApiErrorResponse = {
+  message?: string
+  errors?: RegisterFormErrors
+}
 
 const initialFormData: RegisterFormData = {
   firstName: '',
@@ -35,6 +40,8 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState<RegisterFormData>(initialFormData)
   const [errors, setErrors] = useState<RegisterFormErrors>({})
   const [submitMessage, setSubmitMessage] = useState('')
+  const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error'>('idle')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const passwordRequirements = getPasswordRequirementStatus(formData.password)
   const hasLivePasswordMismatch =
     (formData.password.length > 0 || formData.confirmPassword.length > 0) && formData.confirmPassword !== formData.password
@@ -43,18 +50,21 @@ export default function RegisterPage() {
     setFormData((prev) => ({ ...prev, [field]: sanitizeTextInput(value, 50) }))
     setErrors((prev) => ({ ...prev, [field]: undefined }))
     setSubmitMessage('')
+    setSubmitState('idle')
   }
 
   function handleEmailChange(value: string) {
     setFormData((prev) => ({ ...prev, email: sanitizeEmailInput(value) }))
     setErrors((prev) => ({ ...prev, email: undefined }))
     setSubmitMessage('')
+    setSubmitState('idle')
   }
 
   function handlePasswordChange(field: 'password' | 'confirmPassword', value: string) {
     setFormData((prev) => ({ ...prev, [field]: value.slice(0, 128) }))
     setErrors((prev) => ({ ...prev, [field]: undefined }))
     setSubmitMessage('')
+    setSubmitState('idle')
   }
 
   function validate(data: RegisterFormData): RegisterFormErrors {
@@ -91,8 +101,10 @@ export default function RegisterPage() {
     return nextErrors
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isSubmitting) return
+
     const normalizedData = {
       ...formData,
       firstName: formData.firstName.trim(),
@@ -105,11 +117,44 @@ export default function RegisterPage() {
     setFormData(normalizedData)
 
     if (Object.keys(nextErrors).length > 0) {
+      setSubmitState('error')
       setSubmitMessage('Please fix the highlighted fields.')
       return
     }
 
-    setSubmitMessage('Validation passed. This form is ready to connect to your API.')
+    setIsSubmitting(true)
+
+    try {
+      const response = await fetch(buildApiUrl('/api/auth/register'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(normalizedData),
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as RegisterApiErrorResponse
+
+      if (!response.ok) {
+        if (payload.errors) {
+          setErrors((prev) => ({ ...prev, ...payload.errors }))
+        }
+
+        setSubmitState('error')
+        setSubmitMessage(payload.message ?? 'Unable to create account right now.')
+        return
+      }
+
+      setErrors({})
+      setSubmitState('success')
+      setSubmitMessage('Account created successfully. You can now sign in.')
+      setFormData(initialFormData)
+    } catch {
+      setSubmitState('error')
+      setSubmitMessage('Unable to reach the registration service. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -248,6 +293,7 @@ export default function RegisterPage() {
                   setFormData((prev) => ({ ...prev, termsAccepted: event.target.checked }))
                   setErrors((prev) => ({ ...prev, termsAccepted: undefined }))
                   setSubmitMessage('')
+                  setSubmitState('idle')
                 }}
                 required
                 type="checkbox"
@@ -257,12 +303,22 @@ export default function RegisterPage() {
             {errors.termsAccepted ? <p className="text-xs text-[#c53030]">{errors.termsAccepted}</p> : null}
 
             <button
-              className="w-full rounded-xl bg-[#2f9f4f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f9f4f]/35"
+              className="w-full rounded-xl bg-[#2f9f4f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f9f4f]/35 disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={isSubmitting}
               type="submit"
             >
-              Create Account
+              {isSubmitting ? 'Creating Account...' : 'Create Account'}
             </button>
-            {submitMessage ? <p className="text-center text-xs text-[#5b665f]">{submitMessage}</p> : null}
+            {submitMessage ? (
+              <p
+                aria-live="polite"
+                className={`text-center text-xs ${submitState === 'error' ? 'text-[#c53030]' : 'text-[#5b665f]'} ${
+                  submitState === 'success' ? 'text-[#2f9f4f]' : ''
+                }`}
+              >
+                {submitMessage}
+              </p>
+            ) : null}
           </form>
 
           <p className="mt-6 text-center text-sm text-[#5b665f]">
