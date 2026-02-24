@@ -1,0 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Manrope', 'Segoe UI', sans-serif;
+}
+
+@layer base {
+  body {
+    @apply m-0 min-h-screen bg-[#f4f6f2] text-[#1f2937] antialiased;
+  }
+}
