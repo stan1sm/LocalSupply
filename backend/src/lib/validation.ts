@@ -5,6 +5,7 @@ const PASSWORD_SPECIAL_REGEX = /[!@#$%^&*()[\]{}\-_=+\\|;:'",<.>/?`~]/
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const HUMAN_NAME_REGEX = /^[A-Za-z][A-Za-z '-]{1,49}$/
+const PASSWORD_MIN_LENGTH = 8
 
 export type UserRegistrationInput = {
   firstName: string
@@ -17,9 +18,20 @@ export type UserRegistrationInput = {
 
 export type UserRegistrationErrors = Partial<Record<keyof UserRegistrationInput, string>>
 
+export type UserLoginInput = {
+  email: string
+  password: string
+}
+
+export type UserLoginErrors = Partial<Record<keyof UserLoginInput, string>>
+
 type ValidationResult =
   | { ok: true; data: UserRegistrationInput }
   | { ok: false; errors: UserRegistrationErrors }
+
+type LoginValidationResult =
+  | { ok: true; data: UserLoginInput }
+  | { ok: false; errors: UserLoginErrors }
 
 function asTrimmedString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
@@ -35,6 +47,7 @@ function getPasswordRequirementStatus(password: string) {
 }
 
 function passwordPolicyError(password: string) {
+  if (password.length < PASSWORD_MIN_LENGTH) return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`
   if (password.length > 128) return 'Password must be 128 characters or fewer.'
   const requirements = getPasswordRequirementStatus(password)
 
@@ -82,6 +95,32 @@ export function validateUserRegistrationPayload(payload: unknown): ValidationRes
 
   if (!data.termsAccepted) {
     errors.termsAccepted = 'You must accept the terms to continue.'
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { ok: false, errors }
+  }
+
+  return { ok: true, data }
+}
+
+export function validateUserLoginPayload(payload: unknown): LoginValidationResult {
+  const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+
+  const data: UserLoginInput = {
+    email: asTrimmedString(body.email).toLowerCase(),
+    password: typeof body.password === 'string' ? body.password.slice(0, 128) : '',
+  }
+
+  const errors: UserLoginErrors = {}
+
+  if (!EMAIL_REGEX.test(data.email)) {
+    errors.email = 'Enter a valid email address.'
+  }
+
+  const passwordError = passwordPolicyError(data.password)
+  if (passwordError) {
+    errors.password = passwordError
   }
 
   if (Object.keys(errors).length > 0) {
