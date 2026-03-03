@@ -3,6 +3,7 @@ const PASSWORD_LOWERCASE_REGEX = /[a-z]/
 const PASSWORD_UPPERCASE_REGEX = /[A-Z]/
 const PASSWORD_NUMBER_REGEX = /[0-9]/
 const PASSWORD_SPECIAL_REGEX = /[!@#$%^&*()[\]{}\-_=+\\|;:'",<.>/?`~]/
+export const PASSWORD_MIN_LENGTH = 8
 
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 export const HUMAN_NAME_REGEX = /^[A-Za-z][A-Za-z '-]{1,49}$/
@@ -35,6 +36,7 @@ export function sanitizePhoneInput(value: string) {
 }
 
 export type PasswordRequirementStatus = {
+  hasMinLength: boolean
   hasUppercase: boolean
   hasLowercase: boolean
   hasNumber: boolean
@@ -43,6 +45,7 @@ export type PasswordRequirementStatus = {
 
 export function getPasswordRequirementStatus(password: string): PasswordRequirementStatus {
   return {
+    hasMinLength: password.length >= PASSWORD_MIN_LENGTH,
     hasUppercase: PASSWORD_UPPERCASE_REGEX.test(password),
     hasLowercase: PASSWORD_LOWERCASE_REGEX.test(password),
     hasNumber: PASSWORD_NUMBER_REGEX.test(password),
@@ -51,6 +54,7 @@ export function getPasswordRequirementStatus(password: string): PasswordRequirem
 }
 
 export function passwordPolicyError(password: string) {
+  if (password.length < PASSWORD_MIN_LENGTH) return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`
   if (password.length > 128) return 'Password must be 128 characters or fewer.'
   const requirements = getPasswordRequirementStatus(password)
 

@@ -44,7 +44,7 @@ npm install
 Create a `.env` file:
 ```bash
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE"
-PORT=3000
+PORT=3001
 ```
 
 Prisma setup:
@@ -62,8 +62,19 @@ npm run dev
 From `frontend/`:
 ```bash
 npm install
+```
+
+Create a `frontend/.env.local` file:
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+```
+
+Then run:
+```bash
 npm run dev
 ```
+
+If `NEXT_PUBLIC_API_BASE_URL` is omitted during local development, the frontend falls back to `http://localhost:3001`.
 
 ## Scripts
 Backend:
@@ -97,8 +108,8 @@ Backend environment variables (Vercel Project Settings -> Environment Variables)
 - `DATABASE_URL` (required once Prisma/database routes are used)
 - Any other secrets from `backend/.env`
 
-Optional frontend environment variable (when frontend starts calling the API):
-- `VITE_API_BASE_URL=https://<your-backend-project>.vercel.app`
+Optional frontend environment variable:
+- `NEXT_PUBLIC_API_BASE_URL=https://<your-backend-project>.vercel.app`
 
 Quick checks after deploy:
 - Frontend: open the frontend Vercel URL

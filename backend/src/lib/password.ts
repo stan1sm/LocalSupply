@@ -1,6 +1,7 @@
-import { randomBytes, scrypt as scryptCallback } from 'node:crypto'
+import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 
 const SCRYPT_KEY_LENGTH = 64
+const HASH_HEX_REGEX = /^[a-f0-9]+$/i
 
 function scrypt(password: string, salt: string) {
   return new Promise<Buffer>((resolve, reject) => {
@@ -22,4 +23,22 @@ export async function hashPassword(password: string) {
 
   // Format: scrypt$<salt>$<hex-hash>
   return `scrypt$${salt}$${derivedKey.toString('hex')}`
+}
+
+export async function verifyPassword(password: string, passwordHash: string) {
+  const [algorithm, salt, storedHash] = passwordHash.split('$')
+
+  if (algorithm !== 'scrypt' || !salt || !storedHash || !HASH_HEX_REGEX.test(storedHash)) {
+    return false
+  }
+
+  const pepper = process.env.PASSWORD_PEPPER ?? ''
+  const derivedKey = await scrypt(`${password}${pepper}`, salt)
+  const storedKey = Buffer.from(storedHash, 'hex')
+
+  if (storedKey.length !== derivedKey.length) {
+    return false
+  }
+
+  return timingSafeEqual(storedKey, derivedKey)
 }
