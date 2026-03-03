@@ -97,7 +97,7 @@ export default function HomePage() {
             />
           </label>
 
-          <Link className="text-sm font-semibold text-[#1f2937] hover:text-[#2f9f4f]" href="/register">
+          <Link className="text-sm font-semibold text-[#1f2937] hover:text-[#2f9f4f]" href="/login">
             Sign in
           </Link>
         </header>
