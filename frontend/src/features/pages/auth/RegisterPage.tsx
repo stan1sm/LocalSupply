@@ -2,6 +2,7 @@
 
 import { type FormEvent, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { buildApiUrl } from '../../../lib/api'
 import {
   EMAIL_REGEX,
@@ -37,6 +38,7 @@ const initialFormData: RegisterFormData = {
 }
 
 export default function RegisterPage() {
+  const router = useRouter()
   const [formData, setFormData] = useState<RegisterFormData>(initialFormData)
   const [errors, setErrors] = useState<RegisterFormErrors>({})
   const [submitMessage, setSubmitMessage] = useState('')
@@ -146,9 +148,8 @@ export default function RegisterPage() {
       }
 
       setErrors({})
-      setSubmitState('success')
-      setSubmitMessage('Account created. Check your email for a verification link before signing in.')
       setFormData(initialFormData)
+      router.push('/check-email')
     } catch {
       setSubmitState('error')
       setSubmitMessage('Unable to reach the registration service. Please try again.')

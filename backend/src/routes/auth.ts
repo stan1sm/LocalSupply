@@ -9,6 +9,18 @@ const authRouter = Router()
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
 const EMAIL_NOT_VERIFIED_MESSAGE = 'Please verify your email before signing in.'
 
+function getRequestBaseUrl(req: { protocol: string; get(name: string): string | undefined }) {
+  const forwardedProto = req.get('x-forwarded-proto')?.split(',')[0]?.trim()
+  const host = req.get('x-forwarded-host') ?? req.get('host')
+  const protocol = forwardedProto || req.protocol
+
+  if (!host) {
+    return undefined
+  }
+
+  return `${protocol}://${host}`
+}
+
 authRouter.post('/register', async (req, res) => {
   const validation = validateUserRegistrationPayload(req.body)
 
@@ -39,10 +51,12 @@ authRouter.post('/register', async (req, res) => {
     })
 
     try {
+      const verificationBaseUrl = getRequestBaseUrl(req)
       await sendUserVerificationEmail({
         email: user.email,
         firstName: user.firstName,
         verificationToken: emailVerification.token,
+        ...(verificationBaseUrl ? { verificationBaseUrl } : {}),
       })
     } catch (error) {
       try {

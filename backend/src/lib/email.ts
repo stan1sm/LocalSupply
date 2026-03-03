@@ -4,6 +4,7 @@ type VerificationEmailInput = {
   email: string
   firstName: string
   verificationToken: string
+  verificationBaseUrl?: string
 }
 
 function isTruthy(value: string | undefined) {
@@ -20,6 +21,13 @@ export function getFrontendBaseUrl() {
 
 function buildVerificationUrl(token: string) {
   const url = new URL('/api/auth/verify-email', getBackendBaseUrl())
+  url.searchParams.set('token', token)
+  return url.toString()
+}
+
+function buildVerificationUrlFromBaseUrl(token: string, baseUrl: string) {
+  const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, '')
+  const url = new URL('/api/auth/verify-email', normalizedBaseUrl)
   url.searchParams.set('token', token)
   return url.toString()
 }
@@ -68,9 +76,11 @@ function getMailFromAddress() {
   throw new Error('SMTP_FROM or SMTP_USER must be configured to send verification emails.')
 }
 
-export async function sendUserVerificationEmail({ email, firstName, verificationToken }: VerificationEmailInput) {
+export async function sendUserVerificationEmail({ email, firstName, verificationToken, verificationBaseUrl }: VerificationEmailInput) {
   const transport = getMailTransport()
-  const verificationUrl = buildVerificationUrl(verificationToken)
+  const verificationUrl = verificationBaseUrl
+    ? buildVerificationUrlFromBaseUrl(verificationToken, verificationBaseUrl)
+    : buildVerificationUrl(verificationToken)
 
   if (!transport) {
     throw new Error('SMTP_HOST, SMTP_USER, and SMTP_PASS must be configured to send verification emails.')
