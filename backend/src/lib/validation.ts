@@ -25,6 +25,12 @@ export type UserLoginInput = {
 
 export type UserLoginErrors = Partial<Record<keyof UserLoginInput, string>>
 
+export type UserEmailInput = {
+  email: string
+}
+
+export type UserEmailErrors = Partial<Record<keyof UserEmailInput, string>>
+
 type ValidationResult =
   | { ok: true; data: UserRegistrationInput }
   | { ok: false; errors: UserRegistrationErrors }
@@ -32,6 +38,10 @@ type ValidationResult =
 type LoginValidationResult =
   | { ok: true; data: UserLoginInput }
   | { ok: false; errors: UserLoginErrors }
+
+type EmailValidationResult =
+  | { ok: true; data: UserEmailInput }
+  | { ok: false; errors: UserEmailErrors }
 
 function asTrimmedString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
@@ -121,6 +131,26 @@ export function validateUserLoginPayload(payload: unknown): LoginValidationResul
   const passwordError = passwordPolicyError(data.password)
   if (passwordError) {
     errors.password = passwordError
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { ok: false, errors }
+  }
+
+  return { ok: true, data }
+}
+
+export function validateUserEmailPayload(payload: unknown): EmailValidationResult {
+  const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+
+  const data: UserEmailInput = {
+    email: asTrimmedString(body.email).toLowerCase(),
+  }
+
+  const errors: UserEmailErrors = {}
+
+  if (!EMAIL_REGEX.test(data.email)) {
+    errors.email = 'Enter a valid email address.'
   }
 
   if (Object.keys(errors).length > 0) {
