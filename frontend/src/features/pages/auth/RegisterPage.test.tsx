@@ -3,12 +3,20 @@ import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import RegisterPage from './RegisterPage'
 
+const pushMock = vi.fn()
+
 vi.mock('next/link', () => ({
   default: ({ children, href, ...props }: { children: ReactNode; href: string }) => (
     <a href={href} {...props}>
       {children}
     </a>
   ),
+}))
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: pushMock,
+  }),
 }))
 
 describe('RegisterPage', () => {
