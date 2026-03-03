@@ -92,5 +92,6 @@ describe('POST /api/auth/login', () => {
 
     expect(response.status).toBe(403)
     expect(response.body.message).toBe('Please verify your email before signing in.')
+    expect(response.body.email).toBe('ava@example.com')
   })
 })

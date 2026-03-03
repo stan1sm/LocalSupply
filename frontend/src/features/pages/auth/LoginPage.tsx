@@ -18,6 +18,7 @@ type LoginFormData = {
 
 type LoginFormErrors = Partial<Record<keyof LoginFormData, string>>
 type LoginApiResponse = {
+  email?: string
   message?: string
   errors?: LoginFormErrors
 }
@@ -103,6 +104,13 @@ export default function LoginPage() {
       if (!response.ok) {
         if (payload.errors) {
           setErrors((prev) => ({ ...prev, ...payload.errors }))
+        }
+
+        if (response.status === 403 && payload.email) {
+          const nextUrl = new URL('/email-not-verified', window.location.origin)
+          nextUrl.searchParams.set('email', payload.email)
+          router.push(`${nextUrl.pathname}${nextUrl.search}`)
+          return
         }
 
         setSubmitState('error')

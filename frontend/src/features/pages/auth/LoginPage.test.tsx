@@ -67,4 +67,26 @@ describe('LoginPage', () => {
       expect(pushMock).toHaveBeenCalledWith('/marketplace/dashboard')
     })
   })
+
+  it('redirects unverified users to the dedicated verification page', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        message: 'Please verify your email before signing in.',
+        email: 'ava@example.com',
+      }),
+    } as Response)
+
+    render(<LoginPage />)
+
+    fireEvent.change(screen.getByPlaceholderText('you@email.com'), { target: { value: 'ava@example.com' } })
+    fireEvent.change(screen.getByPlaceholderText('Enter your secure password'), { target: { value: 'Abcd!123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled()
+      expect(pushMock).toHaveBeenCalledWith('/email-not-verified?email=ava%40example.com')
+    })
+  })
 })

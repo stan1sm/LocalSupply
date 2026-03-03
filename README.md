@@ -53,6 +53,7 @@ SMTP_SECURE=false
 SMTP_USER=mailer@example.com
 SMTP_PASS=your-password
 SMTP_FROM=LocalSupply <mailer@example.com>
+EMAIL_VERIFICATION_ALLOW_FALLBACK=false
 ```
 
 Prisma setup:
@@ -66,7 +67,7 @@ Run the API:
 npm run dev
 ```
 
-User registration now requires email verification. The backend sends a verification link to the registered email address, verifies the token on the API, and redirects the user to the frontend confirmation page.
+User registration now requires email verification. The backend sends a verification link to the registered email address, verifies the token on the API, and redirects the user to the frontend confirmation page. For development or staging without a verified sender domain, you can set `EMAIL_VERIFICATION_ALLOW_FALLBACK=true` to return a direct verification link in the UI when email delivery fails.
 
 ### Frontend
 From `frontend/`:
