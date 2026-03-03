@@ -58,8 +58,8 @@ describe('POST /api/auth/register', () => {
     const createArgs = createUserMock.mock.calls[0]?.[0]
     expect(createArgs.data.passwordHash).toMatch(/^scrypt\$[a-f0-9]+\$[a-f0-9]+$/)
     expect(createArgs.data.passwordHash).not.toBe('Abcd!123')
+    expect(createArgs.data.emailVerified).toBe(false)
     expect(createArgs.data.emailVerificationTokenHash).toMatch(/^[a-f0-9]{64}$/)
-    expect(createArgs.data.emailVerificationExpiresAt).toBeInstanceOf(Date)
     expect(sendUserVerificationEmailMock).toHaveBeenCalledWith(
       expect.objectContaining({
         email: 'ava@example.com',
