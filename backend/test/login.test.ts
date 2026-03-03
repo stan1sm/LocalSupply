@@ -28,7 +28,7 @@ describe('POST /api/auth/login', () => {
       lastName: 'Johnson',
       email: 'ava@example.com',
       passwordHash: await hashPassword('Abcd!123'),
-      emailVerifiedAt: new Date('2026-03-03T00:00:00.000Z'),
+      emailVerified: true,
     })
 
     const response = await request(app).post('/api/auth/login').send({
@@ -51,7 +51,7 @@ describe('POST /api/auth/login', () => {
       lastName: 'Johnson',
       email: 'ava@example.com',
       passwordHash: await hashPassword('Abcd!123'),
-      emailVerifiedAt: new Date('2026-03-03T00:00:00.000Z'),
+      emailVerified: true,
     })
 
     const response = await request(app).post('/api/auth/login').send({
@@ -82,7 +82,7 @@ describe('POST /api/auth/login', () => {
       lastName: 'Johnson',
       email: 'ava@example.com',
       passwordHash: await hashPassword('Abcd!123'),
-      emailVerifiedAt: null,
+      emailVerified: false,
     })
 
     const response = await request(app).post('/api/auth/login').send({

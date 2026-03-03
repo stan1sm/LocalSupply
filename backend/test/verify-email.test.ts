@@ -39,17 +39,13 @@ describe('GET /api/auth/verify-email', () => {
     expect(findFirstUserMock).toHaveBeenCalledWith({
       where: {
         emailVerificationTokenHash: verification.tokenHash,
-        emailVerificationExpiresAt: {
-          gt: expect.any(Date),
-        },
       },
     })
     expect(updateUserMock).toHaveBeenCalledWith({
       where: { id: 'user_123' },
       data: {
-        emailVerifiedAt: expect.any(Date),
+        emailVerified: true,
         emailVerificationTokenHash: null,
-        emailVerificationExpiresAt: null,
       },
     })
   })

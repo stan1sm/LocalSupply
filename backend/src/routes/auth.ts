@@ -46,9 +46,9 @@ authRouter.post('/register', async (req, res) => {
         firstName,
         lastName,
         email,
+        emailVerified: false,
         passwordHash,
         emailVerificationTokenHash: emailVerification.tokenHash,
-        emailVerificationExpiresAt: emailVerification.expiresAt,
       },
     })
 
@@ -133,7 +133,7 @@ authRouter.post('/login', async (req, res) => {
       return
     }
 
-    if (!user.emailVerifiedAt) {
+    if (!user.emailVerified) {
       res.status(403).json({
         message: EMAIL_NOT_VERIFIED_MESSAGE,
         email: user.email,
@@ -175,7 +175,7 @@ authRouter.post('/resend-verification', async (req, res) => {
       where: { email },
     })
 
-    if (!user || user.emailVerifiedAt) {
+    if (!user || user.emailVerified) {
       res.status(200).json({
         message: RESEND_VERIFICATION_MESSAGE,
       })
@@ -187,7 +187,6 @@ authRouter.post('/resend-verification', async (req, res) => {
       where: { id: user.id },
       data: {
         emailVerificationTokenHash: emailVerification.tokenHash,
-        emailVerificationExpiresAt: emailVerification.expiresAt,
       },
     })
 
@@ -224,9 +223,6 @@ authRouter.get('/verify-email', async (req, res) => {
     const user = await prisma.user.findFirst({
       where: {
         emailVerificationTokenHash: tokenHash,
-        emailVerificationExpiresAt: {
-          gt: new Date(),
-        },
       },
     })
 
@@ -238,9 +234,8 @@ authRouter.get('/verify-email', async (req, res) => {
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        emailVerifiedAt: new Date(),
+        emailVerified: true,
         emailVerificationTokenHash: null,
-        emailVerificationExpiresAt: null,
       },
     })
 
