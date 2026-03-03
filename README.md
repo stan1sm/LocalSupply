@@ -45,6 +45,14 @@ Create a `.env` file:
 ```bash
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE"
 PORT=3001
+FRONTEND_BASE_URL=http://localhost:3000
+BACKEND_BASE_URL=http://localhost:3001
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=mailer@example.com
+SMTP_PASS=your-password
+SMTP_FROM=LocalSupply <mailer@example.com>
 ```
 
 Prisma setup:
@@ -57,6 +65,8 @@ Run the API:
 ```bash
 npm run dev
 ```
+
+User registration now requires email verification. The backend sends a verification link to the registered email address, verifies the token on the API, and redirects the user to the frontend confirmation page.
 
 ### Frontend
 From `frontend/`:
