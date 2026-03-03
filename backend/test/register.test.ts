@@ -1,15 +1,17 @@
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { createUserMock, sendUserVerificationEmailMock } = vi.hoisted(() => ({
+const { createUserMock, sendUserVerificationEmailMock, deleteUserMock } = vi.hoisted(() => ({
   createUserMock: vi.fn(),
   sendUserVerificationEmailMock: vi.fn(),
+  deleteUserMock: vi.fn(),
 }))
 
 vi.mock('../src/lib/prisma.js', () => ({
   getPrismaClient: () => ({
     user: {
       create: createUserMock,
+      delete: deleteUserMock,
     },
   }),
 }))
@@ -25,6 +27,7 @@ describe('POST /api/auth/register', () => {
   beforeEach(() => {
     createUserMock.mockReset()
     sendUserVerificationEmailMock.mockReset()
+    deleteUserMock.mockReset()
   })
 
   it('creates an unverified user, stores a hashed password, and sends a verification email', async () => {
@@ -36,7 +39,7 @@ describe('POST /api/auth/register', () => {
       passwordHash: 'scrypt$abc$def',
       createdAt: new Date('2026-02-24T00:00:00.000Z'),
     })
-    sendUserVerificationEmailMock.mockResolvedValue(undefined)
+    sendUserVerificationEmailMock.mockResolvedValue({ mode: 'email' })
 
     const response = await request(app).post('/api/auth/register').send({
       firstName: 'Ava',
@@ -64,6 +67,35 @@ describe('POST /api/auth/register', () => {
         verificationToken: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
     )
+  })
+
+  it('returns a preview verification link when fallback delivery is active', async () => {
+    createUserMock.mockResolvedValue({
+      id: 'user_123',
+      firstName: 'Ava',
+      lastName: 'Johnson',
+      email: 'ava@example.com',
+      passwordHash: 'scrypt$abc$def',
+      createdAt: new Date('2026-02-24T00:00:00.000Z'),
+    })
+    sendUserVerificationEmailMock.mockResolvedValue({
+      mode: 'fallback',
+      verificationUrl: 'https://localsupply-api.vercel.app/api/auth/verify-email?token=preview',
+    })
+
+    const response = await request(app).post('/api/auth/register').send({
+      firstName: 'Ava',
+      lastName: 'Johnson',
+      email: 'ava@example.com',
+      password: 'Abcd!123',
+      confirmPassword: 'Abcd!123',
+      termsAccepted: true,
+    })
+
+    expect(response.status).toBe(201)
+    expect(response.body.deliveryMode).toBe('fallback')
+    expect(response.body.verificationPreviewUrl).toBe('https://localsupply-api.vercel.app/api/auth/verify-email?token=preview')
+    expect(deleteUserMock).not.toHaveBeenCalled()
   })
 
   it('rejects duplicate emails', async () => {

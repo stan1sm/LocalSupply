@@ -7,6 +7,10 @@ type VerificationEmailInput = {
   verificationBaseUrl?: string
 }
 
+export type VerificationDeliveryResult =
+  | { mode: 'email'; verificationUrl?: undefined }
+  | { mode: 'fallback'; verificationUrl: string }
+
 function isTruthy(value: string | undefined) {
   return Boolean(value && value.trim().length > 0)
 }
@@ -25,11 +29,15 @@ function buildVerificationUrl(token: string) {
   return url.toString()
 }
 
-function buildVerificationUrlFromBaseUrl(token: string, baseUrl: string) {
+export function buildVerificationUrlFromBaseUrl(token: string, baseUrl: string) {
   const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, '')
   const url = new URL('/api/auth/verify-email', normalizedBaseUrl)
   url.searchParams.set('token', token)
   return url.toString()
+}
+
+function allowVerificationFallback() {
+  return (process.env.EMAIL_VERIFICATION_ALLOW_FALLBACK ?? 'false').toLowerCase() === 'true'
 }
 
 export function buildEmailVerifiedRedirectUrl(status: 'success' | 'invalid' = 'success') {
@@ -76,34 +84,60 @@ function getMailFromAddress() {
   throw new Error('SMTP_FROM or SMTP_USER must be configured to send verification emails.')
 }
 
-export async function sendUserVerificationEmail({ email, firstName, verificationToken, verificationBaseUrl }: VerificationEmailInput) {
+export async function sendUserVerificationEmail({
+  email,
+  firstName,
+  verificationToken,
+  verificationBaseUrl,
+}: VerificationEmailInput): Promise<VerificationDeliveryResult> {
   const transport = getMailTransport()
   const verificationUrl = verificationBaseUrl
     ? buildVerificationUrlFromBaseUrl(verificationToken, verificationBaseUrl)
     : buildVerificationUrl(verificationToken)
 
   if (!transport) {
+    if (allowVerificationFallback()) {
+      return {
+        mode: 'fallback',
+        verificationUrl,
+      }
+    }
+
     throw new Error('SMTP_HOST, SMTP_USER, and SMTP_PASS must be configured to send verification emails.')
   }
 
-  await transport.sendMail({
-    from: getMailFromAddress(),
-    to: email,
-    subject: 'Verify your LocalSupply email',
-    text: [
-      `Hi ${firstName},`,
-      '',
-      'Thanks for registering with LocalSupply.',
-      'Verify your email by opening this link:',
-      verificationUrl,
-      '',
-      'This link expires in 24 hours.',
-    ].join('\n'),
-    html: [
-      `<p>Hi ${firstName},</p>`,
-      '<p>Thanks for registering with LocalSupply.</p>',
-      `<p><a href="${verificationUrl}">Verify your email address</a></p>`,
-      '<p>This link expires in 24 hours.</p>',
-    ].join(''),
-  })
+  try {
+    await transport.sendMail({
+      from: getMailFromAddress(),
+      to: email,
+      subject: 'Verify your LocalSupply email',
+      text: [
+        `Hi ${firstName},`,
+        '',
+        'Thanks for registering with LocalSupply.',
+        'Verify your email by opening this link:',
+        verificationUrl,
+        '',
+        'This link expires in 24 hours.',
+      ].join('\n'),
+      html: [
+        `<p>Hi ${firstName},</p>`,
+        '<p>Thanks for registering with LocalSupply.</p>',
+        `<p><a href="${verificationUrl}">Verify your email address</a></p>`,
+        '<p>This link expires in 24 hours.</p>',
+      ].join(''),
+    })
+
+    return { mode: 'email' }
+  } catch (error) {
+    if (allowVerificationFallback()) {
+      console.warn('Verification email delivery failed, using fallback link instead.', error)
+      return {
+        mode: 'fallback',
+        verificationUrl,
+      }
+    }
+
+    throw error
+  }
 }

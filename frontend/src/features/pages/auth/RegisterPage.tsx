@@ -24,7 +24,9 @@ type RegisterFormData = {
 
 type RegisterFormErrors = Partial<Record<keyof RegisterFormData, string>>
 type RegisterApiErrorResponse = {
+  deliveryMode?: 'email' | 'fallback'
   message?: string
+  verificationPreviewUrl?: string
   errors?: RegisterFormErrors
 }
 
@@ -149,7 +151,11 @@ export default function RegisterPage() {
 
       setErrors({})
       setFormData(initialFormData)
-      router.push('/check-email')
+      const nextUrl = new URL('/check-email', window.location.origin)
+      if (payload.verificationPreviewUrl) {
+        nextUrl.searchParams.set('verificationPreviewUrl', payload.verificationPreviewUrl)
+      }
+      router.push(`${nextUrl.pathname}${nextUrl.search}`)
     } catch {
       setSubmitState('error')
       setSubmitMessage('Unable to reach the registration service. Please try again.')
