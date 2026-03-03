@@ -28,6 +28,7 @@ describe('POST /api/auth/login', () => {
       lastName: 'Johnson',
       email: 'ava@example.com',
       passwordHash: await hashPassword('Abcd!123'),
+      emailVerifiedAt: new Date('2026-03-03T00:00:00.000Z'),
     })
 
     const response = await request(app).post('/api/auth/login').send({
@@ -50,6 +51,7 @@ describe('POST /api/auth/login', () => {
       lastName: 'Johnson',
       email: 'ava@example.com',
       passwordHash: await hashPassword('Abcd!123'),
+      emailVerifiedAt: new Date('2026-03-03T00:00:00.000Z'),
     })
 
     const response = await request(app).post('/api/auth/login').send({
@@ -71,5 +73,24 @@ describe('POST /api/auth/login', () => {
     expect(response.body.errors.email).toBe('Enter a valid email address.')
     expect(response.body.errors.password).toBe('Password must be at least 8 characters.')
     expect(findUniqueUserMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects users who have not verified their email yet', async () => {
+    findUniqueUserMock.mockResolvedValue({
+      id: 'user_123',
+      firstName: 'Ava',
+      lastName: 'Johnson',
+      email: 'ava@example.com',
+      passwordHash: await hashPassword('Abcd!123'),
+      emailVerifiedAt: null,
+    })
+
+    const response = await request(app).post('/api/auth/login').send({
+      email: 'ava@example.com',
+      password: 'Abcd!123',
+    })
+
+    expect(response.status).toBe(403)
+    expect(response.body.message).toBe('Please verify your email before signing in.')
   })
 })
