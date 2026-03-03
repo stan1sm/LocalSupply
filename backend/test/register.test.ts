@@ -1,8 +1,9 @@
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { createUserMock } = vi.hoisted(() => ({
+const { createUserMock, sendUserVerificationEmailMock } = vi.hoisted(() => ({
   createUserMock: vi.fn(),
+  sendUserVerificationEmailMock: vi.fn(),
 }))
 
 vi.mock('../src/lib/prisma.js', () => ({
@@ -13,14 +14,20 @@ vi.mock('../src/lib/prisma.js', () => ({
   }),
 }))
 
+vi.mock('../src/lib/email.js', () => ({
+  sendUserVerificationEmail: sendUserVerificationEmailMock,
+  buildEmailVerifiedRedirectUrl: vi.fn(),
+}))
+
 import app from '../src/app.js'
 
 describe('POST /api/auth/register', () => {
   beforeEach(() => {
     createUserMock.mockReset()
+    sendUserVerificationEmailMock.mockReset()
   })
 
-  it('creates a user and stores a hashed password', async () => {
+  it('creates an unverified user, stores a hashed password, and sends a verification email', async () => {
     createUserMock.mockResolvedValue({
       id: 'user_123',
       firstName: 'Ava',
@@ -29,6 +36,7 @@ describe('POST /api/auth/register', () => {
       passwordHash: 'scrypt$abc$def',
       createdAt: new Date('2026-02-24T00:00:00.000Z'),
     })
+    sendUserVerificationEmailMock.mockResolvedValue(undefined)
 
     const response = await request(app).post('/api/auth/register').send({
       firstName: 'Ava',
@@ -41,11 +49,21 @@ describe('POST /api/auth/register', () => {
 
     expect(response.status).toBe(201)
     expect(response.body.user.email).toBe('ava@example.com')
+    expect(response.body.message).toBe('Account created. Check your email to verify it before signing in.')
 
     expect(createUserMock).toHaveBeenCalledTimes(1)
     const createArgs = createUserMock.mock.calls[0]?.[0]
     expect(createArgs.data.passwordHash).toMatch(/^scrypt\$[a-f0-9]+\$[a-f0-9]+$/)
     expect(createArgs.data.passwordHash).not.toBe('Abcd!123')
+    expect(createArgs.data.emailVerificationTokenHash).toMatch(/^[a-f0-9]{64}$/)
+    expect(createArgs.data.emailVerificationExpiresAt).toBeInstanceOf(Date)
+    expect(sendUserVerificationEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'ava@example.com',
+        firstName: 'Ava',
+        verificationToken: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+    )
   })
 
   it('rejects duplicate emails', async () => {
