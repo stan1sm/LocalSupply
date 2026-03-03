@@ -38,7 +38,7 @@ describe('POST /api/auth/resend-verification', () => {
       id: 'user_123',
       firstName: 'Ava',
       email: 'ava@example.com',
-      emailVerifiedAt: null,
+      emailVerified: false,
     })
     updateUserMock.mockResolvedValue({
       id: 'user_123',
@@ -57,7 +57,6 @@ describe('POST /api/auth/resend-verification', () => {
       where: { id: 'user_123' },
       data: {
         emailVerificationTokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
-        emailVerificationExpiresAt: expect.any(Date),
       },
     })
     expect(sendUserVerificationEmailMock).toHaveBeenCalledWith(
@@ -74,7 +73,7 @@ describe('POST /api/auth/resend-verification', () => {
       id: 'user_123',
       firstName: 'Ava',
       email: 'ava@example.com',
-      emailVerifiedAt: null,
+      emailVerified: false,
     })
     updateUserMock.mockResolvedValue({
       id: 'user_123',
