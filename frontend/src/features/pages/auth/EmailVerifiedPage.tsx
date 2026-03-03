@@ -1,11 +1,10 @@
-'use client'
-
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
 
-export default function EmailVerifiedPage() {
-  const searchParams = useSearchParams()
-  const status = searchParams.get('status')
+type EmailVerifiedPageProps = {
+  status?: string
+}
+
+export default function EmailVerifiedPage({ status }: EmailVerifiedPageProps) {
   const isInvalid = status === 'invalid'
 
   return (
