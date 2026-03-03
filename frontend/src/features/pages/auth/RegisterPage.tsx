@@ -147,7 +147,7 @@ export default function RegisterPage() {
 
       setErrors({})
       setSubmitState('success')
-      setSubmitMessage('Account created successfully. You can now sign in.')
+      setSubmitMessage('Account created. Check your email for a verification link before signing in.')
       setFormData(initialFormData)
     } catch {
       setSubmitState('error')
@@ -175,7 +175,7 @@ export default function RegisterPage() {
           <div className="relative mt-8 space-y-3 text-sm text-white/90">
             <p>Next-day local delivery windows</p>
             <p>Simple reorder flow for weekly staples</p>
-            <p>Real-time stock from trusted suppliers</p>
+            <p>Verify your email before your first sign-in</p>
           </div>
         </div>
 
