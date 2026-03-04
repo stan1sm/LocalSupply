@@ -46,6 +46,7 @@ export type CatalogSyncOptions = {
   maxPages?: number
   pageSize?: number
   requestDelayMs?: number
+  startPage?: number
 }
 
 export type CatalogSyncResult = {
@@ -441,7 +442,13 @@ export async function syncCatalog(options: CatalogSyncOptions = {}): Promise<Cat
   let importedPrices = 0
   let pagesSynced = 0
 
-  for (let page = 1; page <= maxPages; page += 1) {
+  const startPage = options.startPage && options.startPage > 1 ? options.startPage : 1
+
+  if (startPage > 1) {
+    logger.info(`Catalog sync: resuming from page ${startPage}`)
+  }
+
+  for (let page = startPage; page <= (startPage + maxPages - 1); page += 1) {
     const payload = await fetchKassalJson(buildSyncProductsUrl(page, pageSize), {
       logger,
       requestDelayMs,
@@ -484,7 +491,7 @@ export async function syncCatalog(options: CatalogSyncOptions = {}): Promise<Cat
     }
   }
 
-  if (catalogProducts.size === 0 || importedPrices === 0) {
+  if (catalogProducts.size === 0 && importedPrices === 0 && startPage === 1) {
     throw new Error('Catalog sync returned no importable rows.')
   }
 

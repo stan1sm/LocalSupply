@@ -1,6 +1,6 @@
 'use client'
 
-import { useDeferredValue, useEffect, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 
 type Product = {
@@ -42,6 +42,7 @@ type CategoryOption = {
 }
 
 type NavItem = {
+  href: string
   icon: string
   id: string
   label: string
@@ -56,28 +57,24 @@ const PAGE_SIZE = 50
 const CART_STORAGE_KEY = 'localsupply-marketplace-cart'
 
 const categoryOptions: CategoryOption[] = [
+  { id: 'all', label: 'All' },
   { id: 'produce', label: 'Fresh Produce' },
-  { id: 'dairy', label: 'Dairy & Eggs' },
+  { id: 'dairy', label: 'Dairy' },
   { id: 'pantry', label: 'Pantry Staples' },
   { id: 'protein', label: 'Meat & Seafood' },
   { id: 'drinks', label: 'Beverages' },
 ]
 
 const navItems: NavItem[] = [
-  { id: 'marketplace', label: 'Marketplace', icon: 'M' },
-  { id: 'suppliers', label: 'Suppliers', icon: 'S' },
-  { id: 'my-list', label: 'My Cart', icon: 'C' },
-  { id: 'orders', label: 'Orders', icon: 'O' },
-  { id: 'delivery', label: 'Delivery Tracking', icon: 'T' },
+  { id: 'marketplace', label: 'Marketplace', icon: 'M', href: '/marketplace/dashboard' },
+  { id: 'suppliers', label: 'Suppliers', icon: 'S', href: '#' },
+  { id: 'my-cart', label: 'My Cart', icon: 'C', href: '/cart' },
+  { id: 'orders', label: 'Orders', icon: 'O', href: '#' },
+  { id: 'delivery', label: 'Delivery Tracking', icon: 'T', href: '#' },
 ]
 
-const storeOptions: StoreOption[] = [
-  { value: 'all', label: 'All imported stores' },
-  { value: 'MENY_NO', label: 'MENY' },
-  { value: 'JOKER_NO', label: 'Joker' },
-  { value: 'SPAR_NO', label: 'Spar' },
-  { value: 'REMA_1000', label: 'REMA 1000' },
-  { value: 'KIWI', label: 'KIWI' },
+const DEFAULT_STORE_OPTIONS: StoreOption[] = [
+  { value: 'all', label: 'All stores' },
 ]
 
 function formatCurrency(value: number) {
@@ -107,7 +104,7 @@ function sortProducts(products: Product[], sortBy: string) {
 
 export default function MarketplaceDashboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCategoryId, setSelectedCategoryId] = useState('dairy')
+  const [selectedCategoryId, setSelectedCategoryId] = useState('all')
   const [selectedStore, setSelectedStore] = useState('all')
   const [sortBy, setSortBy] = useState('relevance')
   const [products, setProducts] = useState<Product[]>([])
@@ -115,12 +112,17 @@ export default function MarketplaceDashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [cartItems, setCartItems] = useState<CartItem[]>([])
+  const [storeOptions, setStoreOptions] = useState<StoreOption[]>(DEFAULT_STORE_OPTIONS)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const explicitSearchQuery = deferredSearchQuery.trim()
   const shouldRequestProducts = explicitSearchQuery.length >= 3 || Boolean(selectedCategoryId)
   const effectiveQuery = explicitSearchQuery
   const requestKeyRef = useRef('')
+  const hasMore = products.length < totalProducts
 
   useEffect(() => {
     try {
@@ -141,6 +143,25 @@ export default function MarketplaceDashboardPage() {
   }, [cartItems])
 
   useEffect(() => {
+    let cancelled = false
+    async function fetchStores() {
+      try {
+        const url = buildApiUrl('/api/products/stores')
+        const res = await fetch(url)
+        if (!res.ok) return
+        const data = (await res.json()) as { code: string; name: string }[]
+        if (cancelled || !Array.isArray(data)) return
+        setStoreOptions([
+          { value: 'all', label: 'All stores' },
+          ...data.map((s) => ({ value: s.code, label: s.name })),
+        ])
+      } catch { /* ignore */ }
+    }
+    fetchStores()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
     let isCancelled = false
     const controller = new AbortController()
     const requestKey = `${effectiveQuery || '<empty>'}::${selectedCategoryId}::${selectedStore}`
@@ -151,6 +172,7 @@ export default function MarketplaceDashboardPage() {
       setErrorMessage('')
       setProducts([])
       setTotalProducts(0)
+      setCurrentPage(1)
 
       if (!shouldRequestProducts) {
         setIsLoading(false)
@@ -165,7 +187,7 @@ export default function MarketplaceDashboardPage() {
         if (effectiveQuery) {
           url.searchParams.set('q', effectiveQuery)
         }
-        if (selectedCategoryId) {
+        if (selectedCategoryId && selectedCategoryId !== 'all') {
           url.searchParams.set('category', selectedCategoryId)
         }
         if (selectedStore !== 'all') {
@@ -205,6 +227,40 @@ export default function MarketplaceDashboardPage() {
       controller.abort()
     }
   }, [effectiveQuery, selectedCategoryId, selectedStore, shouldRequestProducts])
+
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || isLoading || !hasMore) return
+    const nextPage = currentPage + 1
+    setIsLoadingMore(true)
+    try {
+      const url = new URL(buildApiUrl('/api/products'), window.location.origin)
+      url.searchParams.set('page', String(nextPage))
+      url.searchParams.set('pageSize', String(PAGE_SIZE))
+      if (effectiveQuery) url.searchParams.set('q', effectiveQuery)
+      if (selectedCategoryId && selectedCategoryId !== 'all') url.searchParams.set('category', selectedCategoryId)
+      if (selectedStore !== 'all') url.searchParams.set('store', selectedStore)
+
+      const response = await fetch(url.toString())
+      const payload = (await response.json().catch(() => ({}))) as ProductResponse
+      if (response.ok && payload.items && payload.items.length > 0) {
+        setProducts((prev) => [...prev, ...payload.items!])
+        setCurrentPage(nextPage)
+      }
+    } catch { /* ignore */ } finally {
+      setIsLoadingMore(false)
+    }
+  }, [isLoadingMore, isLoading, hasMore, currentPage, effectiveQuery, selectedCategoryId, selectedStore])
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries[0]?.isIntersecting) loadMore() },
+      { rootMargin: '400px' },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [loadMore])
 
   const filteredProducts = sortProducts(products, sortBy)
 
@@ -268,19 +324,19 @@ export default function MarketplaceDashboardPage() {
               const isActive = item.id === 'marketplace'
 
               return (
-                <button
+                <a
                   aria-current={isActive ? 'page' : undefined}
                   className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-semibold transition ${
                     isActive ? 'bg-[#f0f4ef] text-[#1f2b22]' : 'text-[#4f5d52] hover:bg-[#f6faf5] hover:text-[#1f2b22]'
                   }`}
+                  href={item.href}
                   key={item.id}
-                  type="button"
                 >
                   <span className="grid h-7 w-7 place-items-center rounded-lg border border-[#d6dfd2] bg-white text-xs font-bold text-[#5a675d]">
                     {item.icon}
                   </span>
                   {item.label}
-                </button>
+                </a>
               )
             })}
           </nav>
@@ -298,7 +354,7 @@ export default function MarketplaceDashboardPage() {
               </div>
               <div className="rounded-2xl border border-[#d9e3d4] bg-[#f6faf5] px-4 py-3 text-sm text-[#36513e]">
                 <p className="font-semibold">{totalProducts > 0 ? `${totalProducts}+ imported products available` : 'Imported catalog connection ready'}</p>
-                <p className="mt-1 text-xs text-[#6a796f]">{shouldRequestProducts ? `Showing the first ${filteredProducts.length} loaded results` : 'Choose a category or search to begin'}</p>
+                <p className="mt-1 text-xs text-[#6a796f]">{shouldRequestProducts ? `Showing ${filteredProducts.length} of ${totalProducts} results` : 'Choose a category or search to begin'}</p>
               </div>
             </div>
 
@@ -307,7 +363,12 @@ export default function MarketplaceDashboardPage() {
                 <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-[#6b7b70]">Search</span>
                 <input
                   className="mt-2 w-full bg-transparent text-sm text-[#1f2937] outline-none placeholder:text-[#95a39a]"
-                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onChange={(event) => {
+                    setSearchQuery(event.target.value)
+                    if (event.target.value.trim().length > 0) {
+                      setSelectedCategoryId('all')
+                    }
+                  }}
                   placeholder="Search for melk, ost, kaffe, epler..."
                   type="search"
                   value={searchQuery}
@@ -393,7 +454,7 @@ export default function MarketplaceDashboardPage() {
                 <p className="mt-2 text-sm text-[#6c7c71]">The marketplace stays search-first so you are not loading a broad 20k-product catalog into one screen.</p>
               </div>
             ) : (
-              <div className="max-h-[calc(100vh-20rem)] min-h-[34rem] overflow-y-auto pr-2">
+              <div className="min-h-[34rem] pr-2">
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {filteredProducts.map((product) => {
                     const quantity = getProductQuantity(product.id)
@@ -406,10 +467,22 @@ export default function MarketplaceDashboardPage() {
                               alt={product.name}
                               className="h-full w-full object-contain p-4 transition duration-300 group-hover:scale-105"
                               src={product.imageUrl}
+                              onError={(e) => {
+                                const target = e.currentTarget
+                                target.style.display = 'none'
+                                const placeholder = target.parentElement?.querySelector('.img-placeholder')
+                                if (placeholder) (placeholder as HTMLElement).style.display = 'flex'
+                              }}
                             />
-                          ) : (
-                            <div className="flex h-full items-center justify-center text-4xl text-[#86a28f]">+</div>
-                          )}
+                          ) : null}
+                          <div
+                            className="img-placeholder h-full items-center justify-center text-4xl text-[#86a28f]"
+                            style={{ display: product.imageUrl ? 'none' : 'flex' }}
+                          >
+                            <svg className="h-12 w-12 text-[#c5d4c0]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                            </svg>
+                          </div>
                         </div>
                         <div className="space-y-2 p-3">
                           <div className="flex items-start justify-between gap-3">
@@ -442,6 +515,12 @@ export default function MarketplaceDashboardPage() {
                     )
                   })}
                 </div>
+                {isLoadingMore && (
+                  <div className="mt-4 flex justify-center py-6">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#d5ded1] border-t-[#2f9f4f]" />
+                  </div>
+                )}
+                <div ref={sentinelRef} className="h-1" />
               </div>
             )}
 
