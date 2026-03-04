@@ -1,6 +1,7 @@
 import cors, { type CorsOptions } from 'cors'
 import express from 'express'
 import authRouter from './routes/auth.js'
+import productsRouter from './routes/products.js'
 
 const app = express()
 
@@ -45,6 +46,7 @@ const corsOptions: CorsOptions = {
 app.use(cors(corsOptions))
 app.use(express.json())
 app.use('/api/auth', authRouter)
+app.use('/api/products', productsRouter)
 
 app.get('/', (_req, res) => {
   res.json({ status: 'ok' })

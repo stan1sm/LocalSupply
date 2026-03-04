@@ -20,9 +20,11 @@ model User {
   email                      String   @unique
   firstName                  String
   lastName                   String
-  passwordHash               String
+  passwordHash               String?
   emailVerified              Boolean  @default(false)
   emailVerificationTokenHash String?  @unique
+  vippsSub                   String?  @unique
+  vippsPhoneNumber           String?
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
@@ -61,6 +63,52 @@ model Product {
   orderItems OrderItem[]
 
   @@index([supplierId])
+}
+
+model CatalogProduct {
+  id         String   @id @default(cuid())
+  catalogKey String   @unique
+  externalId String?
+  gtin       String?
+  name       String
+  brand      String?
+  category   String?
+  unit       String?
+  imageUrl   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  prices CatalogProductPrice[]
+
+  @@index([externalId])
+  @@index([gtin])
+  @@index([name])
+  @@index([brand])
+  @@index([category])
+}
+
+model CatalogProductPrice {
+  id                   String    @id @default(cuid())
+  catalogProductId     String
+  externalId           String
+  storeCode            String
+  storeName            String
+  currentPrice         Decimal?  @db.Decimal(10, 2)
+  currentUnitPrice     Decimal?  @db.Decimal(10, 2)
+  currentUnitPriceUnit String?
+  productUrl           String?
+  lastCheckedAt        DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  catalogProduct CatalogProduct @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)
+
+  @@unique([catalogProductId, storeCode])
+  @@index([externalId])
+  @@index([storeCode])
+  @@index([storeCode, currentPrice])
+  @@index([storeName])
+  @@index([currentPrice])
 }
 
 model Order {
