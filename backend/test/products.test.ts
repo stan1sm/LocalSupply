@@ -46,18 +46,34 @@ describe('GET /api/products', () => {
     vi.unstubAllGlobals()
   })
 
-  it('returns an empty result without querying the database when no search or category is provided', async () => {
+  it('returns products from the default discovery view when no search or category is given', async () => {
+    catalogProductPriceFindManyMock.mockResolvedValue([
+      {
+        id: 'price_1',
+        storeName: 'MENY',
+        currentPrice: 32.9,
+        currentUnitPrice: 32.9,
+        currentUnitPriceUnit: 'l',
+        productUrl: null,
+        catalogProduct: {
+          brand: 'Tine',
+          category: 'Melk',
+          gtin: '7038010000001',
+          imageUrl: 'https://images.example.com/milk.jpg',
+          name: 'Lettmelk 1l',
+          unit: '1 l',
+        },
+      },
+    ])
+    catalogProductPriceCountMock.mockResolvedValue(500)
+
     const response = await request(app).get('/api/products?page=1&pageSize=50')
 
     expect(response.status).toBe(200)
-    expect(catalogProductPriceFindManyMock).not.toHaveBeenCalled()
-    expect(catalogProductPriceCountMock).not.toHaveBeenCalled()
-    expect(response.body).toEqual({
-      items: [],
-      page: 1,
-      pageSize: 50,
-      total: 0,
-    })
+    expect(catalogProductPriceFindManyMock).toHaveBeenCalled()
+    expect(response.body.items).toHaveLength(1)
+    expect(response.body.items[0].name).toBe('Lettmelk 1l')
+    expect(response.body.total).toBe(500)
   })
 
   it('returns catalog rows from the database with store filtering', async () => {
