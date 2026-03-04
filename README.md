@@ -54,6 +54,15 @@ SMTP_USER=mailer@example.com
 SMTP_PASS=your-password
 SMTP_FROM=LocalSupply <mailer@example.com>
 EMAIL_VERIFICATION_ALLOW_FALLBACK=false
+VIPPS_CLIENT_ID=your-vipps-client-id
+VIPPS_CLIENT_SECRET=your-vipps-client-secret
+VIPPS_REDIRECT_URI=http://localhost:3001/api/auth/vipps/callback
+VIPPS_API_BASE_URL=https://apitest.vipps.no
+VIPPS_SCOPES=openid name email phoneNumber
+KASSAL_API_KEY=your-kassal-api-key
+KASSALAPP_API_KEY=your-kassal-api-key
+KASSAL_API_BASE_URL=https://kassal.app/api/v1
+CATALOG_SYNC_SECRET=optional-secret-for-post-api-products-sync
 ```
 
 Prisma setup:
@@ -68,6 +77,35 @@ npm run dev
 ```
 
 User registration now requires email verification. The backend sends a verification link to the registered email address, verifies the token on the API, and redirects the user to the frontend confirmation page. For development or staging without a verified sender domain, you can set `EMAIL_VERIFICATION_ALLOW_FALLBACK=true` to return a direct verification link in the UI when email delivery fails.
+
+Vipps login/register is supported through the browser Login API flow. You need a configured Vipps app with a redirect URI that matches `VIPPS_REDIRECT_URI`, plus `VIPPS_CLIENT_ID` and `VIPPS_CLIENT_SECRET` on the backend project.
+
+Marketplace product discovery now uses a slim Postgres-backed catalog for Kassal imports. The backend stores lightweight product rows plus current prices per store, and the marketplace reads from the database instead of live-fetching every page view.
+
+The slim imported catalog stores:
+- `externalId`, `gtin`, `name`, `brand`, `category`, `unit`, `imageUrl`
+- current price rows per chain in a dedicated table
+
+It does not store:
+- image blobs
+- long descriptions or full historical payloads
+
+To populate or refresh the imported catalog from `backend/`, run:
+```bash
+npm run catalog:sync
+```
+
+You can also trigger the same sync over HTTP:
+```bash
+POST /api/products/sync
+```
+
+If `CATALOG_SYNC_SECRET` is set, send it as:
+```bash
+x-catalog-sync-secret: <your-secret>
+```
+
+The sync importer now walks the paginated Kassal `/products` catalog and upserts into Postgres, grouping store listings into one product row when they share a GTIN.
 
 ### Frontend
 From `frontend/`:
@@ -92,6 +130,7 @@ Backend:
 - `npm run dev` start API with hot reload
 - `npm run build` compile TypeScript to `dist/`
 - `npm run start` run compiled API
+- `npm run catalog:sync` upsert the imported Kassal catalog into Postgres
 - `npm run prisma -- <command>` run Prisma CLI
 
 Frontend:

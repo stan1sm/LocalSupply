@@ -125,6 +125,13 @@ authRouter.post('/login', async (req, res) => {
       return
     }
 
+    if (!user.passwordHash) {
+      res.status(401).json({
+        message: INVALID_CREDENTIALS_MESSAGE,
+      })
+      return
+    }
+
     const isValidPassword = await verifyPassword(password, user.passwordHash)
     if (!isValidPassword) {
       res.status(401).json({
