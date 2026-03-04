@@ -4,11 +4,22 @@ import { getPrismaClient } from '../lib/prisma.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
 import { validateUserEmailPayload, validateUserLoginPayload, validateUserRegistrationPayload } from '../lib/validation.js'
 import { generateEmailVerificationToken, hashEmailVerificationToken, isValidEmailVerificationToken } from '../lib/verification.js'
+import {
+  buildExpiredVippsOAuthCookie,
+  buildVippsAuthorizeUrl,
+  buildVippsErrorRedirect,
+  buildVippsOAuthCookie,
+  buildVippsSuccessRedirect,
+  exchangeVippsAuthorizationCode,
+  fetchVippsUserProfile,
+  readVippsOAuthCookie,
+} from '../lib/vipps.js'
 
 const authRouter = Router()
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
 const EMAIL_NOT_VERIFIED_MESSAGE = 'Please verify your email before signing in.'
 const RESEND_VERIFICATION_MESSAGE = 'If an unverified account exists for this email, a verification email has been sent.'
+const VIPPS_UNAVAILABLE_MESSAGE = 'Vipps login is not configured right now.'
 
 function getRequestBaseUrl(req: { protocol: string; get(name: string): string | undefined }) {
   const forwardedProto = req.get('x-forwarded-proto')?.split(',')[0]?.trim()
@@ -20,6 +31,10 @@ function getRequestBaseUrl(req: { protocol: string; get(name: string): string | 
   }
 
   return `${protocol}://${host}`
+}
+
+function asVippsIntent(value: unknown): 'login' | 'register' {
+  return value === 'register' ? 'register' : 'login'
 }
 
 authRouter.post('/register', async (req, res) => {
@@ -125,6 +140,13 @@ authRouter.post('/login', async (req, res) => {
       return
     }
 
+    if (!user.passwordHash) {
+      res.status(401).json({
+        message: INVALID_CREDENTIALS_MESSAGE,
+      })
+      return
+    }
+
     const isValidPassword = await verifyPassword(password, user.passwordHash)
     if (!isValidPassword) {
       res.status(401).json({
@@ -153,6 +175,99 @@ authRouter.post('/login', async (req, res) => {
   } catch (error) {
     console.error('User login failed', error)
     res.status(500).json({ message: 'Unable to sign in right now.' })
+  }
+})
+
+authRouter.get('/vipps/start', async (req, res) => {
+  const intent = asVippsIntent(req.query.intent)
+
+  try {
+    const vipps = buildVippsAuthorizeUrl(intent)
+    res.setHeader('Set-Cookie', buildVippsOAuthCookie(vipps.cookieValue))
+    res.redirect(302, vipps.url)
+  } catch (error) {
+    console.error('Vipps login start failed', error)
+    res.redirect(302, buildVippsErrorRedirect(intent, 'unavailable'))
+  }
+})
+
+authRouter.get('/vipps/callback', async (req, res) => {
+  const oauthCookie = readVippsOAuthCookie(req.headers.cookie)
+  const clearCookie = buildExpiredVippsOAuthCookie()
+  const fallbackIntent = oauthCookie?.intent ?? 'login'
+
+  if (typeof req.query.error === 'string') {
+    res.setHeader('Set-Cookie', clearCookie)
+    res.redirect(302, buildVippsErrorRedirect(fallbackIntent, 'cancelled'))
+    return
+  }
+
+  const code = typeof req.query.code === 'string' ? req.query.code.trim() : ''
+  const state = typeof req.query.state === 'string' ? req.query.state.trim() : ''
+
+  if (!oauthCookie || !code || !state || state !== oauthCookie.state) {
+    res.setHeader('Set-Cookie', clearCookie)
+    res.redirect(302, buildVippsErrorRedirect(fallbackIntent, 'invalid_state'))
+    return
+  }
+
+  try {
+    const token = await exchangeVippsAuthorizationCode(code, oauthCookie.codeVerifier)
+    const vippsUser = await fetchVippsUserProfile(token.access_token)
+    const prisma = getPrismaClient()
+
+    const existingVippsUser = await prisma.user.findUnique({
+      where: { vippsSub: vippsUser.sub },
+    })
+
+    if (existingVippsUser) {
+      await prisma.user.update({
+        where: { id: existingVippsUser.id },
+        data: {
+          email: vippsUser.email,
+          emailVerified: vippsUser.emailVerified,
+          firstName: vippsUser.firstName,
+          lastName: vippsUser.lastName,
+          ...(vippsUser.phoneNumber ? { vippsPhoneNumber: vippsUser.phoneNumber } : {}),
+        },
+      })
+    } else {
+      const existingEmailUser = await prisma.user.findUnique({
+        where: { email: vippsUser.email },
+      })
+
+      if (existingEmailUser) {
+        await prisma.user.update({
+          where: { id: existingEmailUser.id },
+          data: {
+            emailVerified: true,
+            firstName: vippsUser.firstName,
+            lastName: vippsUser.lastName,
+            vippsSub: vippsUser.sub,
+            ...(vippsUser.phoneNumber ? { vippsPhoneNumber: vippsUser.phoneNumber } : {}),
+          },
+        })
+      } else {
+        await prisma.user.create({
+          data: {
+            email: vippsUser.email,
+            emailVerified: true,
+            firstName: vippsUser.firstName,
+            lastName: vippsUser.lastName,
+            passwordHash: null,
+            vippsSub: vippsUser.sub,
+            ...(vippsUser.phoneNumber ? { vippsPhoneNumber: vippsUser.phoneNumber } : {}),
+          },
+        })
+      }
+    }
+
+    res.setHeader('Set-Cookie', clearCookie)
+    res.redirect(302, buildVippsSuccessRedirect())
+  } catch (error) {
+    console.error('Vipps login callback failed', error)
+    res.setHeader('Set-Cookie', clearCookie)
+    res.redirect(302, buildVippsErrorRedirect(oauthCookie.intent, 'failed'))
   }
 })
 

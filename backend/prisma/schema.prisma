@@ -20,9 +20,11 @@ model User {
   email                      String   @unique
   firstName                  String
   lastName                   String
-  passwordHash               String
+  passwordHash               String?
   emailVerified              Boolean  @default(false)
   emailVerificationTokenHash String?  @unique
+  vippsSub                   String?  @unique
+  vippsPhoneNumber           String?
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 

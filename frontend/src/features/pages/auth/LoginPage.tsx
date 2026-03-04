@@ -28,17 +28,37 @@ const initialFormData: LoginFormData = {
   password: '',
 }
 
-export default function LoginPage() {
+function getVippsErrorMessage(code?: string) {
+  switch (code) {
+    case 'cancelled':
+      return 'Vipps login was cancelled before completion.'
+    case 'invalid_state':
+      return 'Vipps login could not be verified. Please try again.'
+    case 'failed':
+      return 'Vipps login failed. Please try again.'
+    case 'unavailable':
+      return 'Vipps login is not configured right now.'
+    default:
+      return ''
+  }
+}
+
+type LoginPageProps = {
+  vippsError?: string
+}
+
+export default function LoginPage({ vippsError }: LoginPageProps) {
   const router = useRouter()
   const [formData, setFormData] = useState<LoginFormData>(initialFormData)
   const [errors, setErrors] = useState<LoginFormErrors>({})
-  const [submitMessage, setSubmitMessage] = useState('')
-  const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error'>('idle')
+  const [submitMessage, setSubmitMessage] = useState(getVippsErrorMessage(vippsError))
+  const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error'>(vippsError ? 'error' : 'idle')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const normalizedEmail = formData.email.trim().toLowerCase()
   const hasLiveInvalidEmail = normalizedEmail.length > 0 && !EMAIL_REGEX.test(normalizedEmail)
   const passwordRequirements = getPasswordRequirementStatus(formData.password)
+  const vippsLoginUrl = buildApiUrl('/api/auth/vipps/start?intent=login')
 
   function handleEmailChange(value: string) {
     setFormData((prev) => ({ ...prev, email: sanitizeEmailInput(value) }))
@@ -214,6 +234,12 @@ export default function LoginPage() {
             >
               {isSubmitting ? 'Signing In...' : 'Sign In'}
             </button>
+            <a
+              className="flex w-full items-center justify-center rounded-xl border border-[#f2c184] bg-[#fff7ed] px-4 py-3 text-sm font-semibold text-[#9a3412] transition hover:border-[#fb923c] hover:bg-[#ffedd5]"
+              href={vippsLoginUrl}
+            >
+              Continue with Vipps
+            </a>
             {submitMessage ? (
               <p
                 aria-live="polite"

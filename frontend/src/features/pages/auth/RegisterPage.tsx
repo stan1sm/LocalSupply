@@ -39,16 +39,36 @@ const initialFormData: RegisterFormData = {
   termsAccepted: false,
 }
 
-export default function RegisterPage() {
+function getVippsErrorMessage(code?: string) {
+  switch (code) {
+    case 'cancelled':
+      return 'Vipps registration was cancelled before completion.'
+    case 'invalid_state':
+      return 'Vipps registration could not be verified. Please try again.'
+    case 'failed':
+      return 'Vipps registration failed. Please try again.'
+    case 'unavailable':
+      return 'Vipps registration is not configured right now.'
+    default:
+      return ''
+  }
+}
+
+type RegisterPageProps = {
+  vippsError?: string
+}
+
+export default function RegisterPage({ vippsError }: RegisterPageProps) {
   const router = useRouter()
   const [formData, setFormData] = useState<RegisterFormData>(initialFormData)
   const [errors, setErrors] = useState<RegisterFormErrors>({})
-  const [submitMessage, setSubmitMessage] = useState('')
-  const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error'>('idle')
+  const [submitMessage, setSubmitMessage] = useState(getVippsErrorMessage(vippsError))
+  const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error'>(vippsError ? 'error' : 'idle')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const passwordRequirements = getPasswordRequirementStatus(formData.password)
   const hasLivePasswordMismatch =
     (formData.password.length > 0 || formData.confirmPassword.length > 0) && formData.confirmPassword !== formData.password
+  const vippsRegisterUrl = buildApiUrl('/api/auth/vipps/start?intent=register')
 
   function handleTextChange(field: 'firstName' | 'lastName', value: string) {
     setFormData((prev) => ({ ...prev, [field]: sanitizeTextInput(value, 50) }))
@@ -317,6 +337,12 @@ export default function RegisterPage() {
             >
               {isSubmitting ? 'Creating Account...' : 'Create Account'}
             </button>
+            <a
+              className="flex w-full items-center justify-center rounded-xl border border-[#f2c184] bg-[#fff7ed] px-4 py-3 text-sm font-semibold text-[#9a3412] transition hover:border-[#fb923c] hover:bg-[#ffedd5]"
+              href={vippsRegisterUrl}
+            >
+              Register with Vipps
+            </a>
             {submitMessage ? (
               <p
                 aria-live="polite"

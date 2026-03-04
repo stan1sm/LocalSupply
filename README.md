@@ -54,6 +54,11 @@ SMTP_USER=mailer@example.com
 SMTP_PASS=your-password
 SMTP_FROM=LocalSupply <mailer@example.com>
 EMAIL_VERIFICATION_ALLOW_FALLBACK=false
+VIPPS_CLIENT_ID=your-vipps-client-id
+VIPPS_CLIENT_SECRET=your-vipps-client-secret
+VIPPS_REDIRECT_URI=http://localhost:3001/api/auth/vipps/callback
+VIPPS_API_BASE_URL=https://apitest.vipps.no
+VIPPS_SCOPES=openid name email phoneNumber
 ```
 
 Prisma setup:
@@ -68,6 +73,8 @@ npm run dev
 ```
 
 User registration now requires email verification. The backend sends a verification link to the registered email address, verifies the token on the API, and redirects the user to the frontend confirmation page. For development or staging without a verified sender domain, you can set `EMAIL_VERIFICATION_ALLOW_FALLBACK=true` to return a direct verification link in the UI when email delivery fails.
+
+Vipps login/register is supported through the browser Login API flow. You need a configured Vipps app with a redirect URI that matches `VIPPS_REDIRECT_URI`, plus `VIPPS_CLIENT_ID` and `VIPPS_CLIENT_SECRET` on the backend project.
 
 ### Frontend
 From `frontend/`:
