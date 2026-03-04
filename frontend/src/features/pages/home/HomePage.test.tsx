@@ -16,8 +16,10 @@ describe('HomePage', () => {
     render(<HomePage />)
 
     expect(screen.getAllByText('LocalSupply').length).toBeGreaterThan(0)
-    expect(screen.getByRole('heading', { name: 'How LocalSupply Works' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Popular Shopping Lists' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'How It Works' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'AI that actually saves you money' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
+    expect(screen.getByRole('link', { name: 'Browse Marketplace' })).toHaveAttribute('href', '/marketplace/dashboard')
+    expect(screen.getByRole('link', { name: 'Marketplace' })).toHaveAttribute('href', '/marketplace/dashboard')
   })
 })
