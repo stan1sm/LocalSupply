@@ -5,6 +5,11 @@ import { getPrismaClient } from '../lib/prisma.js'
 const productsRouter = Router()
 const KASSAL_DEFAULT_PAGE_SIZE = 50
 
+const PLACEHOLDER_IMAGE_URLS = [
+  'https://nettbutikk.bunnpris.no/itemImages/noimage_f.png',
+  'https://res.cloudinary.com/norgesgruppen/image/upload/Product/404.jpg',
+]
+
 type NormalizedProduct = {
   brand: string | null
   category: string | null
@@ -134,6 +139,51 @@ function buildOrderBy(sort: string) {
   }
 }
 
+function scoreRelevance(product: NormalizedProduct, searchTerms: string[]): number {
+  let score = 0
+  const nameLower = (product.name ?? '').toLowerCase()
+  const brandLower = (product.brand ?? '').toLowerCase()
+  const categoryLower = (product.category ?? '').toLowerCase()
+
+  for (const term of searchTerms) {
+    const wordBoundary = new RegExp(`(^|\\s|,)${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|\\s|,)`, 'i')
+
+    if (wordBoundary.test(nameLower)) {
+      score += 50
+    } else if (nameLower.includes(term)) {
+      score += 5
+    }
+
+    if (nameLower.startsWith(term)) {
+      score += 30
+    }
+
+    if (wordBoundary.test(brandLower)) score += 15
+    if (wordBoundary.test(categoryLower)) score += 10
+  }
+
+  if (product.imageUrl) score += 20
+  if (product.price !== null) score += 10
+
+  return score
+}
+
+function rankByRelevance(products: NormalizedProduct[], query: string): NormalizedProduct[] {
+  if (!query || query.length < 2) return products
+
+  const terms = query.toLowerCase().split(/\s+/).filter((t) => t.length >= 2)
+  if (terms.length === 0) return products
+
+  return [...products].sort((a, b) => {
+    const scoreA = scoreRelevance(a, terms)
+    const scoreB = scoreRelevance(b, terms)
+    if (scoreB !== scoreA) return scoreB - scoreA
+    const imgA = a.imageUrl ? 0 : 1
+    const imgB = b.imageUrl ? 0 : 1
+    return imgA - imgB
+  })
+}
+
 function toMarketplaceProduct(row: {
   id: string
   storeName: string
@@ -159,7 +209,7 @@ function toMarketplaceProduct(row: {
     description: null,
     ean: row.catalogProduct.gtin,
     id: row.id,
-    imageUrl: row.catalogProduct.imageUrl,
+    imageUrl: row.catalogProduct.imageUrl && !PLACEHOLDER_IMAGE_URLS.includes(row.catalogProduct.imageUrl) ? row.catalogProduct.imageUrl : null,
     name: row.catalogProduct.name,
     price,
     priceText: formatPrice(price),
@@ -178,14 +228,40 @@ productsRouter.get('/', async (req, res) => {
   const sort = typeof req.query.sort === 'string' ? req.query.sort.trim() : 'relevance'
   const selectedStore = rawStore || null
 
-  if ((!q || q.length < 3) && !category) {
-    res.status(200).json({
-      items: [],
-      page,
-      pageSize,
-      total: 0,
-    })
-    return
+  const hasSearch = q.length >= 3
+  const hasCategory = Boolean(category) && category !== 'all'
+
+  if (!hasSearch && !hasCategory) {
+    try {
+      const prisma = getPrismaClient()
+      const where: any = {
+        storeCode: selectedStore ?? undefined,
+        currentPrice: { not: null },
+        catalogProduct: { imageUrl: { gt: '', notIn: PLACEHOLDER_IMAGE_URLS } },
+      }
+      const [rows, total] = await Promise.all([
+        prisma.catalogProductPrice.findMany({
+          where,
+          include: { catalogProduct: true },
+          orderBy: { updatedAt: 'desc' as const },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }),
+        prisma.catalogProductPrice.count({ where }),
+      ])
+
+      res.status(200).json({
+        items: (rows as any[]).map((row) => toMarketplaceProduct(row as Parameters<typeof toMarketplaceProduct>[0])),
+        page,
+        pageSize,
+        total,
+      })
+      return
+    } catch (error) {
+      console.error('Product discovery failed', error)
+      res.status(503).json({ message: 'Unable to load products right now.' })
+      return
+    }
   }
 
   try {
@@ -196,6 +272,10 @@ productsRouter.get('/', async (req, res) => {
       catalogProduct: productFilters.length > 0 ? { AND: productFilters } : undefined,
     }
 
+    const useRelevanceRanking = sort === 'relevance' && hasSearch
+    const fetchSize = useRelevanceRanking ? Math.min(500, pageSize * 8) : pageSize
+    const skipAmount = useRelevanceRanking ? 0 : (page - 1) * pageSize
+
     const [rows, total] = await Promise.all([
       prisma.catalogProductPrice.findMany({
         where,
@@ -203,14 +283,28 @@ productsRouter.get('/', async (req, res) => {
           catalogProduct: true,
         },
         orderBy: buildOrderBy(sort) as any,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip: skipAmount,
+        take: fetchSize,
       }),
       prisma.catalogProductPrice.count({ where }),
     ])
 
+    let items = (rows as any[]).map((row) => toMarketplaceProduct(row as Parameters<typeof toMarketplaceProduct>[0]))
+
+    if (useRelevanceRanking) {
+      items = rankByRelevance(items, q)
+      const start = (page - 1) * pageSize
+      items = items.slice(start, start + pageSize)
+    } else {
+      items.sort((a, b) => {
+        const imgA = a.imageUrl ? 0 : 1
+        const imgB = b.imageUrl ? 0 : 1
+        return imgA - imgB
+      })
+    }
+
     res.status(200).json({
-      items: (rows as any[]).map((row) => toMarketplaceProduct(row as Parameters<typeof toMarketplaceProduct>[0])),
+      items,
       page,
       pageSize,
       total,
@@ -220,6 +314,23 @@ productsRouter.get('/', async (req, res) => {
     res.status(503).json({
       message: 'Unable to load products right now.',
     })
+  }
+})
+
+productsRouter.get('/stores', async (_req, res) => {
+  try {
+    const prisma = getPrismaClient()
+    const stores = await prisma.catalogProductPrice.findMany({
+      select: { storeCode: true, storeName: true },
+      distinct: ['storeCode'],
+      orderBy: { storeName: 'asc' },
+    })
+    res.status(200).json(
+      stores.map((s) => ({ code: s.storeCode, name: s.storeName })),
+    )
+  } catch (error) {
+    console.error('Failed to load stores', error)
+    res.status(503).json({ message: 'Unable to load stores right now.' })
   }
 })
 
