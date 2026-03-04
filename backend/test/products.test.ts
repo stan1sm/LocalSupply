@@ -133,6 +133,7 @@ describe('GET /api/products', () => {
 describe('POST /api/products/sync', () => {
   beforeEach(() => {
     process.env.KASSAL_API_KEY = 'kassal-test-key'
+    process.env.CATALOG_SYNC_SECRET = 'test-sync-secret'
     process.env.CATALOG_SYNC_REQUEST_DELAY_MS = '0'
     catalogProductCountMock.mockReset()
     catalogProductPriceCountMock.mockReset()
@@ -200,7 +201,7 @@ describe('POST /api/products/sync', () => {
     catalogProductUpsertMock.mockResolvedValue({ id: 'catalog_1' })
     catalogProductPriceUpsertMock.mockResolvedValue({ id: 'price_1' })
 
-    const response = await request(app).post('/api/products/sync')
+    const response = await request(app).post('/api/products/sync').set('x-catalog-sync-secret', 'test-sync-secret')
 
     expect(response.status).toBe(200)
     expect(catalogProductUpsertMock).toHaveBeenCalledTimes(2)
@@ -276,7 +277,7 @@ describe('POST /api/products/sync', () => {
     catalogProductUpsertMock.mockResolvedValue({ id: 'catalog_1' })
     catalogProductPriceUpsertMock.mockResolvedValue({ id: 'price_1' })
 
-    const response = await request(app).post('/api/products/sync')
+    const response = await request(app).post('/api/products/sync').set('x-catalog-sync-secret', 'test-sync-secret')
 
     expect(response.status).toBe(200)
     expect(catalogProductPriceUpsertMock).toHaveBeenCalledWith(

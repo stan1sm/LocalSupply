@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import MarketplaceDashboardPage from './MarketplaceDashboardPage'
 
@@ -8,17 +8,7 @@ describe('MarketplaceDashboardPage', () => {
     window.localStorage.clear()
   })
 
-  it('stays idle until the user searches or chooses a category', () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
-
-    render(<MarketplaceDashboardPage />)
-
-    expect(fetchSpy).not.toHaveBeenCalled()
-    expect(screen.getByText('Search or choose a category to start browsing')).toBeInTheDocument()
-    expect(screen.getByText('Choose a category or search to begin')).toBeInTheDocument()
-  })
-
-  it('renders fetched marketplace products and shopping list totals', async () => {
+  it('fetches dairy products by default on initial load', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -46,21 +36,54 @@ describe('MarketplaceDashboardPage', () => {
 
     render(<MarketplaceDashboardPage />)
 
-    expect(screen.getByRole('heading', { name: 'Fresh grocery search across Norwegian stores' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Dairy & Eggs' }))
-
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalled()
       expect(screen.getByText('Organic Milk')).toBeInTheDocument()
       expect(screen.getByText('32.90 kr')).toBeInTheDocument()
     })
 
+    const fetchUrl = fetchSpy.mock.calls[0][0] as string
+    expect(fetchUrl).toContain('category=dairy')
+
+    expect(screen.getByRole('heading', { name: 'Fresh grocery search across Norwegian stores' })).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Marketplace navigation' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /My List$/ })).toBeInTheDocument()
-    expect(screen.getByText('Your list is empty')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /My Cart$/ })).toBeInTheDocument()
+    expect(screen.getByText('Your cart is empty')).toBeInTheDocument()
     expect(screen.getByText('100+ imported products available')).toBeInTheDocument()
     expect(screen.getByText('Showing the first 1 loaded results')).toBeInTheDocument()
-    expect(screen.queryByText('Fresh norsk melk')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Load more products/ })).not.toBeInTheDocument()
+  })
+
+  it('shows Add to Cart button on product cards', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: 'product_2',
+            name: 'Brunost',
+            price: 59.9,
+            priceText: '59.90 kr',
+            imageUrl: null,
+            store: 'KIWI',
+            unitInfo: null,
+            brand: null,
+            ean: null,
+            category: 'Dairy',
+            url: null,
+          },
+        ],
+        page: 1,
+        pageSize: 50,
+        total: 1,
+      }),
+    } as Response)
+
+    render(<MarketplaceDashboardPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Brunost')).toBeInTheDocument()
+    })
+
+    expect(screen.getByRole('button', { name: 'Add to Cart' })).toBeInTheDocument()
   })
 })
