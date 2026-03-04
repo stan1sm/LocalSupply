@@ -1,6 +1,26 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MarketplaceDashboardPage from './MarketplaceDashboardPage'
+
+class MockIntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+vi.stubGlobal('IntersectionObserver', MockIntersectionObserver)
+
+function mockProductResponse(items: Record<string, unknown>[] = [], total = 0) {
+  return {
+    ok: true,
+    json: async () => ({
+      items,
+      page: 1,
+      pageSize: 50,
+      total,
+    }),
+  } as Response
+}
 
 describe('MarketplaceDashboardPage', () => {
   afterEach(() => {
@@ -8,18 +28,17 @@ describe('MarketplaceDashboardPage', () => {
     window.localStorage.clear()
   })
 
-  it('fetches dairy products by default on initial load', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        items: [
+  it('fetches products on initial load with the default "All" category', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockProductResponse(
+        [
           {
             id: 'product_1',
             name: 'Organic Milk',
             description: 'Fresh norsk melk',
             price: 32.9,
             priceText: '32.90 kr',
-            imageUrl: null,
+            imageUrl: 'https://example.com/milk.jpg',
             store: 'MENY',
             unitInfo: '32.90 kr/l',
             brand: 'Fresh Farm',
@@ -28,11 +47,9 @@ describe('MarketplaceDashboardPage', () => {
             url: null,
           },
         ],
-        page: 1,
-        pageSize: 50,
-        total: 100,
-      }),
-    } as Response)
+        100,
+      ),
+    )
 
     render(<MarketplaceDashboardPage />)
 
@@ -42,22 +59,23 @@ describe('MarketplaceDashboardPage', () => {
       expect(screen.getByText('32.90 kr')).toBeInTheDocument()
     })
 
-    const fetchUrl = fetchSpy.mock.calls[0][0] as string
-    expect(fetchUrl).toContain('category=dairy')
+    const productFetchUrl = fetchSpy.mock.calls.find(
+      (call) => typeof call[0] === 'string' && call[0].includes('/api/products') && !call[0].includes('/stores'),
+    )?.[0] as string | undefined
+    expect(productFetchUrl).toBeDefined()
+    expect(productFetchUrl).not.toContain('category=')
 
     expect(screen.getByRole('heading', { name: 'Fresh grocery search across Norwegian stores' })).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Marketplace navigation' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /My Cart$/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /My Cart$/ })).toBeInTheDocument()
     expect(screen.getByText('Your cart is empty')).toBeInTheDocument()
     expect(screen.getByText('100+ imported products available')).toBeInTheDocument()
-    expect(screen.getByText('Showing the first 1 loaded results')).toBeInTheDocument()
   })
 
   it('shows Add to Cart button on product cards', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        items: [
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      mockProductResponse(
+        [
           {
             id: 'product_2',
             name: 'Brunost',
@@ -72,11 +90,9 @@ describe('MarketplaceDashboardPage', () => {
             url: null,
           },
         ],
-        page: 1,
-        pageSize: 50,
-        total: 1,
-      }),
-    } as Response)
+        1,
+      ),
+    )
 
     render(<MarketplaceDashboardPage />)
 
