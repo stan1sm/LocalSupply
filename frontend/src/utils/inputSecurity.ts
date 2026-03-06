@@ -8,7 +8,8 @@ export const PASSWORD_MIN_LENGTH = 8
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 export const HUMAN_NAME_REGEX = /^[A-Za-z][A-Za-z '-]{1,49}$/
 export const BUSINESS_NAME_REGEX = /^[A-Za-z0-9][A-Za-z0-9 '&().,-]{1,79}$/
-export const PHONE_REGEX = /^\+?[0-9()\-.\s]{10,20}$/
+// Norwegian phone numbers: we canonicalize to +47XXXXXXXX before validation
+export const PHONE_REGEX = /^\+47[0-9]{8}$/
 export const ADDRESS_REGEX = /^[A-Za-z0-9][A-Za-z0-9 '#&().,\-/]{5,120}$/
 
 function removeControlChars(value: string) {

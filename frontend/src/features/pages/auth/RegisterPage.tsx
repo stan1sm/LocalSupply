@@ -165,37 +165,50 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4 py-8 sm:px-6 lg:py-12">
-      <section className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-[#dfe5da] bg-white shadow-[0_20px_50px_rgba(17,24,39,0.08)] lg:grid-cols-[1.05fr_1fr]">
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#2fa04f] via-[#2a9448] to-[#1f7b3a] p-8 text-white sm:p-10">
+    <main className="flex min-h-screen items-center justify-center bg-[#f3f4f6] px-4 py-6 sm:px-6 lg:py-8">
+      <section className="grid w-full max-w-4xl overflow-hidden rounded-2xl border border-[#dfe5da] bg-white shadow-[0_20px_50px_rgba(17,24,39,0.08)] lg:max-h-[88vh] lg:grid-cols-[1.05fr_1fr] lg:grid-rows-[minmax(0,1fr)]">
+        <div className="relative min-h-0 overflow-y-auto overflow-x-hidden bg-gradient-to-br from-[#2fa04f] via-[#2a9448] to-[#1f7b3a] p-6 text-white sm:p-8">
           <div className="absolute -right-20 -top-20 h-52 w-52 rounded-full bg-white/10" />
           <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-white/10" />
-          <p className="relative text-sm font-semibold uppercase tracking-[0.2em] text-white/85">LocalSupply</p>
-          <h1 className="relative mt-6 text-3xl font-extrabold leading-tight sm:text-4xl">
+          <p className="relative text-sm font-semibold uppercase tracking-[0.2em] text-white">LocalSupply</p>
+          <h1 className="relative mt-4 text-2xl font-extrabold leading-tight text-white sm:text-3xl">
             Fresh essentials,
             <br />
             delivered fast.
           </h1>
-          <p className="relative mt-4 max-w-sm text-sm text-white/85 sm:text-base">
+          <p className="relative mt-3 max-w-sm text-sm text-white/95">
             Create your account to browse local groceries, manage orders, and keep your list organized in one place.
           </p>
-          <div className="relative mt-8 space-y-3 text-sm text-white/90">
+          <div className="relative mt-6 space-y-2 text-sm text-white/95">
             <p>Next-day local delivery windows</p>
             <p>Simple reorder flow for weekly staples</p>
             <p>Verify your email before your first sign-in</p>
           </div>
         </div>
 
-        <div className="p-6 sm:p-8 lg:p-10">
-          <h2 className="text-2xl font-bold text-[#1b2a1f]">Create your account</h2>
-          <p className="mt-2 text-sm text-[#5b665f]">
+        <div className="flex min-h-0 flex-col overflow-y-auto p-5 sm:p-6 lg:p-8">
+          <div className="mb-3 flex items-center justify-between text-xs">
+            <button
+              className="flex items-center gap-1 rounded-full border-2 border-[#c7d2c2] bg-white px-3 py-1.5 font-medium text-[#1f2937] shadow-sm transition hover:border-[#2f9f4f] hover:text-[#1f7b3a]"
+              onClick={() => router.push('/')}
+              type="button"
+            >
+              <span aria-hidden="true">←</span>
+              <span>Back to homepage</span>
+            </button>
+            <Link className="hidden text-xs font-semibold text-[#1f7b3a] underline underline-offset-2 hover:no-underline sm:inline" href="/supplier/login">
+              Supplier login
+            </Link>
+          </div>
+          <h2 className="text-xl font-bold text-[#1b2a1f]">Create your account</h2>
+          <p className="mt-1.5 text-sm text-[#5b665f]">
             Already registered?{' '}
             <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/login">
               Sign in
             </Link>
           </p>
 
-          <form className="mt-6 space-y-4" noValidate onSubmit={handleSubmit}>
+          <form className="mt-5 space-y-3.5" noValidate onSubmit={handleSubmit}>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="space-y-2 text-sm font-medium text-[#2e3b31]">
                 First Name
@@ -329,7 +342,7 @@ export default function RegisterPage() {
             ) : null}
           </form>
 
-          <p className="mt-6 text-center text-sm text-[#5b665f]">
+          <p className="mt-5 text-center text-sm text-[#5b665f]">
             Are you a business?{' '}
             <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/supplier/register">
               Go to supplier registration
