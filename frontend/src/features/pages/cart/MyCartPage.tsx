@@ -130,13 +130,18 @@ export default function MyCartPage() {
 
         <aside className="rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
           <div className="px-2 pb-4">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#2f9f4f]">LocalSupply</p>
-            <h2 className="mt-2 text-xl font-bold text-[#1f2b22]">Workspace</h2>
+            <a
+              className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#2f9f4f] hover:text-[#1f2937]"
+              href="/"
+            >
+              <span aria-hidden="true">←</span>
+              <span>LocalSupply</span>
+            </a>
           </div>
           <nav aria-label="Cart navigation" className="space-y-1">
             {[
               { id: 'marketplace', label: 'Marketplace', icon: 'M', href: '/marketplace/dashboard' },
-              { id: 'suppliers', label: 'Suppliers', icon: 'S', href: '#' },
+              { id: 'suppliers', label: 'Suppliers', icon: 'S', href: '/suppliers' },
               { id: 'my-cart', label: 'My Cart', icon: 'C', href: '/cart' },
               { id: 'orders', label: 'Orders', icon: 'O', href: '#' },
               { id: 'delivery', label: 'Delivery Tracking', icon: 'T', href: '#' },

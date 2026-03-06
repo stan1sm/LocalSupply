@@ -4,12 +4,7 @@ import { type FormEvent, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { buildApiUrl } from '../../../lib/api'
-import {
-  EMAIL_REGEX,
-  getPasswordRequirementStatus,
-  passwordPolicyError,
-  sanitizeEmailInput,
-} from '../../../utils/inputSecurity'
+import { EMAIL_REGEX, getPasswordRequirementStatus, passwordPolicyError, sanitizeEmailInput } from '../../../utils/inputSecurity'
 
 type LoginFormData = {
   email: string
@@ -17,9 +12,16 @@ type LoginFormData = {
 }
 
 type LoginFormErrors = Partial<Record<keyof LoginFormData, string>>
-type LoginApiResponse = {
-  email?: string
+
+type SupplierLoginResponse = {
   message?: string
+  supplier?: {
+    id: string
+    businessName: string
+    contactName: string
+    email: string
+    address: string
+  }
   errors?: LoginFormErrors
 }
 
@@ -28,7 +30,7 @@ const initialFormData: LoginFormData = {
   password: '',
 }
 
-export default function LoginPage() {
+export default function SupplierLoginPage() {
   const router = useRouter()
   const [formData, setFormData] = useState<LoginFormData>(initialFormData)
   const [errors, setErrors] = useState<LoginFormErrors>({})
@@ -58,7 +60,7 @@ export default function LoginPage() {
     const nextErrors: LoginFormErrors = {}
 
     if (!EMAIL_REGEX.test(data.email)) {
-      nextErrors.email = 'Enter a valid email address.'
+      nextErrors.email = 'Enter a valid business email.'
     }
 
     const passwordError = passwordPolicyError(data.password)
@@ -91,37 +93,34 @@ export default function LoginPage() {
     setIsSubmitting(true)
 
     try {
-      const response = await fetch(buildApiUrl('/api/auth/login'), {
+      const response = await fetch(buildApiUrl('/api/suppliers/login'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(normalizedData),
       })
-
-      const payload = (await response.json().catch(() => ({}))) as LoginApiResponse
+      const payload = (await response.json().catch(() => ({}))) as SupplierLoginResponse
 
       if (!response.ok) {
         if (payload.errors) {
           setErrors((prev) => ({ ...prev, ...payload.errors }))
         }
-
-        if (response.status === 403 && payload.email) {
-          const nextUrl = new URL('/email-not-verified', window.location.origin)
-          nextUrl.searchParams.set('email', payload.email)
-          router.push(`${nextUrl.pathname}${nextUrl.search}`)
-          return
-        }
-
         setSubmitState('error')
         setSubmitMessage(payload.message ?? 'Unable to sign in right now.')
         return
       }
 
+      if (payload.supplier) {
+        try {
+          window.localStorage.setItem('localsupply-supplier', JSON.stringify(payload.supplier))
+        } catch {
+          // ignore storage issues
+        }
+      }
+
       setErrors({})
       setSubmitState('success')
-      setSubmitMessage('Signed in successfully. Redirecting to your dashboard...')
-      router.push('/marketplace/dashboard')
+      setSubmitMessage('Signed in successfully. Redirecting to your supplier dashboard...')
+      router.push('/supplier/dashboard')
     } catch {
       setSubmitState('error')
       setSubmitMessage('Unable to reach the sign-in service. Please try again.')
@@ -138,17 +137,14 @@ export default function LoginPage() {
           <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-white/10" />
           <p className="relative text-sm font-semibold uppercase tracking-[0.2em] text-white">LocalSupply</p>
           <h1 className="relative mt-4 text-2xl font-extrabold leading-tight text-white sm:text-3xl">
-            Sign in to keep
-            <br />
-            your orders moving.
+            Supplier sign in
           </h1>
           <p className="relative mt-3 max-w-sm text-sm text-white/95">
-            Access saved carts, order tracking, and local supplier pricing with the same secure account you used to register.
+            Access your supplier dashboard to update products, pricing and orders.
           </p>
           <div className="relative mt-6 space-y-2 text-sm text-white/95">
-            <p>Use a valid email format like name@example.com</p>
-            <p>Passwords must meet the platform security requirements</p>
-            <p>Buyer accounts route straight to the marketplace dashboard</p>
+            <p>Use the same business email you registered with.</p>
+            <p>Passwords follow the same security rules as buyer accounts.</p>
           </div>
         </div>
 
@@ -162,21 +158,21 @@ export default function LoginPage() {
               <span aria-hidden="true">←</span>
               <span>Back to homepage</span>
             </button>
-            <Link className="hidden text-xs font-semibold text-[#1f7b3a] underline underline-offset-2 hover:no-underline sm:inline" href="/supplier/login">
-              Supplier login
+            <Link className="hidden text-xs font-semibold text-[#1f7b3a] underline underline-offset-2 hover:no-underline sm:inline" href="/login">
+              Buyer login
             </Link>
           </div>
-          <h2 className="text-xl font-bold text-[#1b2a1f]">Welcome back</h2>
+          <h2 className="text-xl font-bold text-[#1b2a1f]">Welcome supplier</h2>
           <p className="mt-1.5 text-sm text-[#5b665f]">
-            Need an account?{' '}
-            <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/register">
-              Create one
+            Need to create a supplier account?{' '}
+            <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/supplier/register">
+              Go to supplier registration
             </Link>
           </p>
 
           <form className="mt-5 space-y-3.5" noValidate onSubmit={handleSubmit}>
             <label className="block space-y-2 text-sm font-medium text-[#2e3b31]">
-              Email
+              Business email
               <input
                 aria-invalid={Boolean(errors.email) || hasLiveInvalidEmail}
                 autoComplete="email"
@@ -184,14 +180,14 @@ export default function LoginPage() {
                 maxLength={254}
                 name="email"
                 onChange={(event) => handleEmailChange(event.target.value)}
-                placeholder="you@email.com"
+                placeholder="orders@yourbusiness.com"
                 required
                 spellCheck={false}
                 type="email"
                 value={formData.email}
               />
               <p className={`text-xs ${hasLiveInvalidEmail ? 'text-[#c53030]' : 'text-[#5b665f]'}`}>
-                {hasLiveInvalidEmail ? 'Use a valid email format like name@example.com.' : 'Use the email address tied to your account.'}
+                {hasLiveInvalidEmail ? 'Use a valid email format like name@business.no.' : 'Use the email address tied to your supplier account.'}
               </p>
               {errors.email ? <p className="text-xs text-[#c53030]">{errors.email}</p> : null}
             </label>
@@ -240,9 +236,9 @@ export default function LoginPage() {
           </form>
 
           <p className="mt-5 text-center text-sm text-[#5b665f]">
-            Registering as a supplier?{' '}
-            <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/supplier/register">
-              Go to supplier registration
+            Need a regular buyer account instead?{' '}
+            <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/login">
+              Go to user sign in
             </Link>
           </p>
         </div>
@@ -250,3 +246,4 @@ export default function LoginPage() {
     </main>
   )
 }
+

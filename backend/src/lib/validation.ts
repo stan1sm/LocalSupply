@@ -5,6 +5,10 @@ const PASSWORD_SPECIAL_REGEX = /[!@#$%^&*()[\]{}\-_=+\\|;:'",<.>/?`~]/
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const HUMAN_NAME_REGEX = /^[A-Za-z][A-Za-z '-]{1,49}$/
+const BUSINESS_NAME_REGEX = /^[A-Za-z0-9][A-Za-z0-9 '&().,-]{1,79}$/
+// Norwegian phone numbers, canonical form +47XXXXXXXX
+const PHONE_REGEX = /^\+47[0-9]{8}$/
+const ADDRESS_REGEX = /^[A-Za-z0-9][A-Za-z0-9 '#&().,\-/]{5,120}$/
 const PASSWORD_MIN_LENGTH = 8
 
 export type UserRegistrationInput = {
@@ -31,6 +35,25 @@ export type UserEmailInput = {
 
 export type UserEmailErrors = Partial<Record<keyof UserEmailInput, string>>
 
+export type SupplierRegistrationInput = {
+  businessName: string
+  contactName: string
+  phoneNumber: string
+  email: string
+  password: string
+  confirmPassword: string
+  address: string
+}
+
+export type SupplierRegistrationErrors = Partial<Record<keyof SupplierRegistrationInput, string>>
+
+export type SupplierLoginInput = {
+  email: string
+  password: string
+}
+
+export type SupplierLoginErrors = Partial<Record<keyof SupplierLoginInput, string>>
+
 type ValidationResult =
   | { ok: true; data: UserRegistrationInput }
   | { ok: false; errors: UserRegistrationErrors }
@@ -42,6 +65,14 @@ type LoginValidationResult =
 type EmailValidationResult =
   | { ok: true; data: UserEmailInput }
   | { ok: false; errors: UserEmailErrors }
+
+type SupplierRegistrationValidationResult =
+  | { ok: true; data: SupplierRegistrationInput }
+  | { ok: false; errors: SupplierRegistrationErrors }
+
+type SupplierLoginValidationResult =
+  | { ok: true; data: SupplierLoginInput }
+  | { ok: false; errors: SupplierLoginErrors }
 
 function asTrimmedString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
@@ -151,6 +182,83 @@ export function validateUserEmailPayload(payload: unknown): EmailValidationResul
 
   if (!EMAIL_REGEX.test(data.email)) {
     errors.email = 'Enter a valid email address.'
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { ok: false, errors }
+  }
+
+  return { ok: true, data }
+}
+
+export function validateSupplierRegistrationPayload(payload: unknown): SupplierRegistrationValidationResult {
+  const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+
+  const data: SupplierRegistrationInput = {
+    businessName: asTrimmedString(body.businessName),
+    contactName: asTrimmedString(body.contactName),
+    phoneNumber: asTrimmedString(body.phoneNumber),
+    email: asTrimmedString(body.email).toLowerCase(),
+    password: typeof body.password === 'string' ? body.password.slice(0, 128) : '',
+    confirmPassword: typeof body.confirmPassword === 'string' ? body.confirmPassword.slice(0, 128) : '',
+    address: asTrimmedString(body.address),
+  }
+
+  const errors: SupplierRegistrationErrors = {}
+
+  if (!BUSINESS_NAME_REGEX.test(data.businessName)) {
+    errors.businessName = 'Use 2-80 valid business name characters.'
+  }
+
+  if (!HUMAN_NAME_REGEX.test(data.contactName)) {
+    errors.contactName = 'Use 2-50 letters, spaces, apostrophes, or hyphens.'
+  }
+
+  if (!PHONE_REGEX.test(data.phoneNumber)) {
+    errors.phoneNumber = 'Enter a valid phone number.'
+  }
+
+  if (!EMAIL_REGEX.test(data.email)) {
+    errors.email = 'Enter a valid business email address.'
+  }
+
+  const passwordError = passwordPolicyError(data.password)
+  if (passwordError) {
+    errors.password = passwordError
+  }
+
+  if (data.confirmPassword !== data.password) {
+    errors.confirmPassword = "Passwords don't match."
+  }
+
+  if (!ADDRESS_REGEX.test(data.address)) {
+    errors.address = 'Use a full address (5-120 valid characters).'
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { ok: false, errors }
+  }
+
+  return { ok: true, data }
+}
+
+export function validateSupplierLoginPayload(payload: unknown): SupplierLoginValidationResult {
+  const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+
+  const data: SupplierLoginInput = {
+    email: asTrimmedString(body.email).toLowerCase(),
+    password: typeof body.password === 'string' ? body.password.slice(0, 128) : '',
+  }
+
+  const errors: SupplierLoginErrors = {}
+
+  if (!EMAIL_REGEX.test(data.email)) {
+    errors.email = 'Enter a valid business email address.'
+  }
+
+  const passwordError = passwordPolicyError(data.password)
+  if (passwordError) {
+    errors.password = passwordError
   }
 
   if (Object.keys(errors).length > 0) {
