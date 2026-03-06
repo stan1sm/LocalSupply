@@ -23,6 +23,8 @@ type NormalizedProduct = {
   store: string | null
   unitInfo: string | null
   url: string | null
+  source?: 'catalog' | 'supplier'
+  supplierId?: string
 }
 
 type CategoryDefinition = {
@@ -230,6 +232,59 @@ productsRouter.get('/', async (req, res) => {
 
   const hasSearch = q.length >= 3
   const hasCategory = Boolean(category) && category !== 'all'
+  const isLocalSuppliers = category === 'local-suppliers'
+
+  if (isLocalSuppliers) {
+    try {
+      const prisma = getPrismaClient()
+      const where: { isActive: boolean; OR?: Array<{ name?: { contains: string; mode: 'insensitive' }; description?: { contains: string; mode: 'insensitive' } }> } = {
+        isActive: true,
+      }
+      if (hasSearch) {
+        const term = q.trim().toLowerCase()
+        where.OR = [
+          { name: { contains: term, mode: 'insensitive' } },
+          { description: { contains: term, mode: 'insensitive' } },
+        ]
+      }
+      const [rows, total] = await Promise.all([
+        prisma.product.findMany({
+          where,
+          include: { supplier: true },
+          orderBy: [{ name: 'asc' }],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }),
+        prisma.product.count({ where }),
+      ])
+      const items: NormalizedProduct[] = rows.map((row) => {
+        const price = asNumber(row.price)
+        const imageUrl = typeof row.imageUrl === 'string' && row.imageUrl.trim() ? row.imageUrl.trim() : null
+        return {
+          brand: null,
+          category: null,
+          description: row.description,
+          ean: null,
+          id: row.id,
+          imageUrl,
+          name: row.name,
+          price,
+          priceText: formatPrice(price),
+          store: row.supplier.businessName,
+          unitInfo: row.unit ?? null,
+          url: null,
+          source: 'supplier',
+          supplierId: row.supplier.id,
+        }
+      })
+      res.status(200).json({ items, page, pageSize, total })
+      return
+    } catch (error) {
+      console.error('Local supplier products failed', error)
+      res.status(503).json({ message: 'Unable to load products right now.' })
+      return
+    }
+  }
 
   if (!hasSearch && !hasCategory) {
     try {
