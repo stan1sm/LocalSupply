@@ -9,7 +9,6 @@ import {
   EMAIL_REGEX,
   HUMAN_NAME_REGEX,
   PHONE_REGEX,
-  getPasswordRequirementStatus,
   passwordPolicyError,
   sanitizeEmailInput,
   sanitizePhoneInput,
@@ -58,7 +57,6 @@ export default function SupplierRegistrationPage() {
   const addressSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const addressDropdownRef = useRef<HTMLDivElement | null>(null)
 
-  const passwordRequirements = getPasswordRequirementStatus(formData.password)
   const hasLivePasswordMismatch =
     (formData.password.length > 0 || formData.confirmPassword.length > 0) && formData.confirmPassword !== formData.password
 
