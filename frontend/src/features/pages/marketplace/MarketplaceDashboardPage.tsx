@@ -3,6 +3,11 @@
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 
+function productImageSrc(url: string | null): string | null {
+  if (!url) return null
+  return url.startsWith('/') ? buildApiUrl(url) : url
+}
+
 type Product = {
   brand: string | null
   category: string | null
@@ -16,6 +21,8 @@ type Product = {
   store: string | null
   unitInfo: string | null
   url: string | null
+  source?: 'catalog' | 'supplier'
+  supplierId?: string
 }
 
 type ProductResponse = {
@@ -58,6 +65,7 @@ const CART_STORAGE_KEY = 'localsupply-marketplace-cart'
 
 const categoryOptions: CategoryOption[] = [
   { id: 'all', label: 'All' },
+  { id: 'local-suppliers', label: 'Local suppliers' },
   { id: 'produce', label: 'Fresh Produce' },
   { id: 'dairy', label: 'Dairy' },
   { id: 'pantry', label: 'Pantry Staples' },
@@ -67,7 +75,7 @@ const categoryOptions: CategoryOption[] = [
 
 const navItems: NavItem[] = [
   { id: 'marketplace', label: 'Marketplace', icon: 'M', href: '/marketplace/dashboard' },
-  { id: 'suppliers', label: 'Suppliers', icon: 'S', href: '#' },
+  { id: 'suppliers', label: 'Suppliers', icon: 'S', href: '/suppliers' },
   { id: 'my-cart', label: 'My Cart', icon: 'C', href: '/cart' },
   { id: 'orders', label: 'Orders', icon: 'O', href: '#' },
   { id: 'delivery', label: 'Delivery Tracking', icon: 'T', href: '#' },
@@ -315,8 +323,13 @@ export default function MarketplaceDashboardPage() {
       <div className="mx-auto grid w-full max-w-[1600px] gap-6 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
         <aside className="rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
           <div className="px-2 pb-4">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#2f9f4f]">LocalSupply</p>
-            <h2 className="mt-2 text-xl font-bold text-[#1f2b22]">Workspace</h2>
+            <a
+              className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#2f9f4f] hover:text-[#1f2937]"
+              href="/"
+            >
+              <span aria-hidden="true">←</span>
+              <span>LocalSupply</span>
+            </a>
           </div>
 
           <nav aria-label="Marketplace navigation" className="space-y-1">
@@ -348,17 +361,23 @@ export default function MarketplaceDashboardPage() {
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#2f9f4f]">Marketplace</p>
                 <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-[#1c2b21]">Fresh grocery search across Norwegian stores</h1>
-                <p className="mt-2 max-w-2xl text-sm text-[#617166] sm:text-base">
-                  Start with a search or choose a category first, then browse the imported Kassal catalog directly from Postgres for faster lookup and sorting.
-                </p>
+
               </div>
               <div className="rounded-2xl border border-[#d9e3d4] bg-[#f6faf5] px-4 py-3 text-sm text-[#36513e]">
-                <p className="font-semibold">{totalProducts > 0 ? `${totalProducts}+ imported products available` : 'Imported catalog connection ready'}</p>
+                <p className="font-semibold">
+                  {selectedCategoryId === 'local-suppliers'
+                    ? totalProducts > 0
+                      ? `${totalProducts} product${totalProducts !== 1 ? 's' : ''} from local suppliers`
+                      : 'Products from registered local suppliers'
+                    : totalProducts > 0
+                      ? `${totalProducts}+ imported products available`
+                      : 'Imported catalog connection ready'}
+                </p>
                 <p className="mt-1 text-xs text-[#6a796f]">{shouldRequestProducts ? `Showing ${filteredProducts.length} of ${totalProducts} results` : 'Choose a category or search to begin'}</p>
               </div>
             </div>
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+            <div className={`mt-5 grid gap-4 ${selectedCategoryId === 'local-suppliers' ? 'lg:grid-cols-[minmax(0,1fr)_180px]' : 'lg:grid-cols-[minmax(0,1fr)_180px_180px]'}`}>
               <label className="rounded-2xl border border-[#dde5d9] bg-[#f7faf6] px-4 py-3">
                 <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-[#6b7b70]">Search</span>
                 <input
@@ -388,20 +407,22 @@ export default function MarketplaceDashboardPage() {
                   <option value="store-asc">Store: A-Z</option>
                 </select>
               </label>
-              <label className="rounded-2xl border border-[#dde5d9] bg-[#f7faf6] px-4 py-3">
-                <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-[#6b7b70]">Store</span>
-                <select
-                  className="mt-2 w-full bg-transparent text-sm text-[#1f2937] outline-none"
-                  onChange={(event) => setSelectedStore(event.target.value)}
-                  value={selectedStore}
-                >
-                  {storeOptions.map((store) => (
-                    <option key={store.value} value={store.value}>
-                      {store.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {selectedCategoryId !== 'local-suppliers' ? (
+                <label className="rounded-2xl border border-[#dde5d9] bg-[#f7faf6] px-4 py-3">
+                  <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-[#6b7b70]">Store</span>
+                  <select
+                    className="mt-2 w-full bg-transparent text-sm text-[#1f2937] outline-none"
+                    onChange={(event) => setSelectedStore(event.target.value)}
+                    value={selectedStore}
+                  >
+                    {storeOptions.map((store) => (
+                      <option key={store.value} value={store.value}>
+                        {store.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -466,7 +487,7 @@ export default function MarketplaceDashboardPage() {
                             <img
                               alt={product.name}
                               className="h-full w-full object-contain p-4 transition duration-300 group-hover:scale-105"
-                              src={product.imageUrl}
+                              src={productImageSrc(product.imageUrl) ?? ''}
                               onError={(e) => {
                                 const target = e.currentTarget
                                 target.style.display = 'none'
@@ -499,17 +520,26 @@ export default function MarketplaceDashboardPage() {
                           <div>
                             <p className="text-lg font-extrabold text-[#2f9f4f]">{product.priceText ?? 'Price unavailable'}</p>
                             <p className="truncate text-[11px] text-[#7b8b80]">
-                              {product.unitInfo ?? product.category ?? 'Updated from store catalog'}
+                              {product.unitInfo ?? product.category ?? (product.source === 'supplier' ? 'From local supplier' : 'Updated from store catalog')}
                             </p>
                           </div>
-                          <button
-                            className="w-full rounded-2xl bg-[#2f9f4f] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#a0c6ab]"
-                            disabled={product.price === null}
-                            onClick={() => updateQuantity(product, quantity + 1 || 1)}
-                            type="button"
-                          >
-                            {quantity > 0 ? 'Add one more' : 'Add to Cart'}
-                          </button>
+                          {product.source === 'supplier' && product.supplierId ? (
+                            <a
+                              className="flex w-full items-center justify-center rounded-2xl border-2 border-[#2f9f4f] bg-white px-3 py-2 text-xs font-semibold text-[#2f9f4f] transition hover:bg-[#eaf7ee]"
+                              href={`/suppliers/${product.supplierId}`}
+                            >
+                              View supplier
+                            </a>
+                          ) : (
+                            <button
+                              className="w-full rounded-2xl bg-[#2f9f4f] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#a0c6ab]"
+                              disabled={product.price === null}
+                              onClick={() => updateQuantity(product, quantity + 1 || 1)}
+                              type="button"
+                            >
+                              {quantity > 0 ? 'Add one more' : 'Add to Cart'}
+                            </button>
+                          )}
                         </div>
                       </article>
                     )
@@ -555,7 +585,7 @@ export default function MarketplaceDashboardPage() {
               cartItems.map((item) => (
                 <div className="flex gap-3 rounded-3xl border border-[#e6ede3] p-3" key={item.id}>
                   <div className="h-16 w-16 overflow-hidden rounded-2xl bg-[#eef5ee]">
-                    {item.imageUrl ? <img alt={item.name} className="h-full w-full object-cover" src={item.imageUrl} /> : null}
+                    {item.imageUrl ? <img alt={item.name} className="h-full w-full object-cover" src={productImageSrc(item.imageUrl) ?? ''} /> : null}
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate text-sm font-semibold text-[#1f2b22]">{item.name}</h3>
