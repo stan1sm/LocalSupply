@@ -4,12 +4,7 @@ import { type FormEvent, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { buildApiUrl } from '../../../lib/api'
-import {
-  EMAIL_REGEX,
-  getPasswordRequirementStatus,
-  passwordPolicyError,
-  sanitizeEmailInput,
-} from '../../../utils/inputSecurity'
+import { EMAIL_REGEX, passwordPolicyError, sanitizeEmailInput } from '../../../utils/inputSecurity'
 
 type LoginFormData = {
   email: string
@@ -46,7 +41,6 @@ export default function LoginPage() {
 
   const normalizedEmail = formData.email.trim().toLowerCase()
   const hasLiveInvalidEmail = normalizedEmail.length > 0 && !EMAIL_REGEX.test(normalizedEmail)
-  const passwordRequirements = getPasswordRequirementStatus(formData.password)
 
   function handleEmailChange(value: string) {
     setFormData((prev) => ({ ...prev, email: sanitizeEmailInput(value) }))
@@ -233,13 +227,7 @@ export default function LoginPage() {
                 type="password"
                 value={formData.password}
               />
-              <ul className="mt-2 space-y-1 text-xs">
-                <li className={passwordRequirements.hasMinLength ? 'text-[#2f9f4f]' : 'text-[#6b7280]'}>At least 8 characters</li>
-                <li className={passwordRequirements.hasUppercase ? 'text-[#2f9f4f]' : 'text-[#6b7280]'}>At least one uppercase letter</li>
-                <li className={passwordRequirements.hasLowercase ? 'text-[#2f9f4f]' : 'text-[#6b7280]'}>At least one lowercase letter</li>
-                <li className={passwordRequirements.hasNumber ? 'text-[#2f9f4f]' : 'text-[#6b7280]'}>At least one number</li>
-                <li className={passwordRequirements.hasSpecial ? 'text-[#2f9f4f]' : 'text-[#6b7280]'}>At least one special character</li>
-              </ul>
+              <p className="mt-2 text-xs text-[#5b665f]">Password must be at least 8 characters.</p>
               {errors.password ? <p className="text-xs text-[#c53030]">{errors.password}</p> : null}
             </label>
 
