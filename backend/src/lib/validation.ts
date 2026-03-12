@@ -123,8 +123,9 @@ export function validateUserRegistrationPayload(payload: unknown): ValidationRes
     errors.email = 'Enter a valid email address.'
   }
 
-  if (data.password.length < PASSWORD_MIN_LENGTH) {
-    errors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`
+  const passwordError = passwordPolicyError(data.password)
+  if (passwordError) {
+    errors.password = passwordError
   }
 
   if (data.confirmPassword !== data.password) {
