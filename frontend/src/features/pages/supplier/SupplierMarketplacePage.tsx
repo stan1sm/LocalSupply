@@ -10,6 +10,10 @@ type SupplierSummary = {
   address: string
   email: string
   isVerified: boolean
+  tagline?: string | null
+  storeType?: string | null
+  badgeText?: string | null
+  brandColor?: string | null
   productCount: number
 }
 
@@ -194,10 +198,24 @@ export default function SupplierMarketplacePage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7a8a7f]">
-                            {supplier.isVerified ? 'Verified supplier' : 'Supplier'}
+                            {supplier.isVerified ? 'Verified supplier' : supplier.storeType || 'Supplier'}
                           </p>
                           <h3 className="mt-1 text-base font-semibold text-[#1f2b22]">{supplier.businessName}</h3>
+                          {supplier.tagline ? (
+                            <p className="mt-1 text-xs text-[#5f6c62]">{supplier.tagline}</p>
+                          ) : null}
                         </div>
+                        {supplier.badgeText ? (
+                          <span
+                            className="shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold"
+                            style={{
+                              backgroundColor: supplier.brandColor || '#eef7ef',
+                              color: supplier.brandColor ? '#0b1810' : '#2f9f4f',
+                            }}
+                          >
+                            {supplier.badgeText}
+                          </span>
+                        ) : null}
                       </div>
                       <p className="text-xs text-[#6d7b70]">{supplier.address}</p>
                       <p className="text-xs text-[#859286]">

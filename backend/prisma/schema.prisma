@@ -32,16 +32,36 @@ model User {
 }
 
 model Supplier {
-  id           String   @id @default(cuid())
-  businessName String
-  contactName  String
-  phoneNumber  String
-  email        String   @unique
-  passwordHash String
-  address      String
-  isVerified   Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  businessName          String
+  contactName           String
+  phoneNumber           String
+  email                 String   @unique
+  passwordHash          String
+  address               String
+  isVerified            Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  // Store profile
+  logoUrl               String?
+  heroImageUrl          String?
+  tagline               String?
+  description           String?
+  storeType             String?
+  badgeText             String?
+  brandColor            String?
+  serviceRadiusKm       Int?
+  serviceAreas          String?
+  openingHours          String?
+  openingHoursNote      String?
+  websiteUrl            String?
+  instagramUrl          String?
+  facebookUrl           String?
+  preferredContactMethod String?
+  orderNotesHint        String?
+  showInMarketplace     Boolean  @default(true)
+  acceptDirectOrders    Boolean  @default(true)
+  minimumOrderAmount    Decimal? @db.Decimal(10, 2)
 
   products Product[]
   orders   Order[]   @relation("SupplierOrders")

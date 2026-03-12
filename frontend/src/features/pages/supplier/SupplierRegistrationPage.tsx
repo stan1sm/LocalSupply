@@ -8,6 +8,7 @@ import {
   EMAIL_REGEX,
   HUMAN_NAME_REGEX,
   PHONE_REGEX,
+  getPasswordRequirementStatus,
   passwordPolicyError,
   sanitizeEmailInput,
   sanitizePhoneInput,
@@ -58,6 +59,8 @@ export default function SupplierRegistrationPage() {
 
   const hasLivePasswordMismatch =
     (formData.password.length > 0 || formData.confirmPassword.length > 0) && formData.confirmPassword !== formData.password
+
+  const passwordRequirements = getPasswordRequirementStatus(formData.password)
 
   const runAddressSearch = useCallback(
     async (query: string, onResults?: (results: GeonorgeAdresse[]) => void) => {
@@ -274,9 +277,23 @@ export default function SupplierRegistrationPage() {
 
         if (!response.ok) {
           if (payload.errors) {
-            setErrors((prev) => ({ ...prev, ...payload.errors }))
+            const serverErrors = payload.errors as SupplierFormErrors & { address?: string }
+            const mappedErrors: SupplierFormErrors = {
+              ...serverErrors,
+              ...(serverErrors.address
+                ? {
+                    streetAddress: serverErrors.address,
+                    postalCode: serverErrors.address,
+                    city: serverErrors.address,
+                  }
+                : {}),
+            }
+            delete (mappedErrors as any).address
+            setErrors((prev) => ({ ...prev, ...mappedErrors }))
+            setSubmitMessage('Please fix the highlighted fields.')
+          } else {
+            setSubmitMessage(payload.message ?? 'Unable to create supplier account right now.')
           }
-          setSubmitMessage(payload.message ?? 'Unable to create supplier account right now.')
           return
         }
 
@@ -426,7 +443,23 @@ export default function SupplierRegistrationPage() {
                   type="password"
                   value={formData.password}
                 />
-                <p className="text-[10px] text-white/90">Uppercase, lowercase, number, special</p>
+                <ul className="mt-1 space-y-0.5 text-[11px]">
+                  <li className={passwordRequirements.hasMinLength ? 'text-white' : 'text-white/85'}>
+                    At least 8 characters
+                  </li>
+                  <li className={passwordRequirements.hasUppercase ? 'text-white' : 'text-white/85'}>
+                    Uppercase letter
+                  </li>
+                  <li className={passwordRequirements.hasLowercase ? 'text-white' : 'text-white/85'}>
+                    Lowercase letter
+                  </li>
+                  <li className={passwordRequirements.hasNumber ? 'text-white' : 'text-white/85'}>
+                    Number
+                  </li>
+                  <li className={passwordRequirements.hasSpecial ? 'text-white' : 'text-white/85'}>
+                    Special character
+                  </li>
+                </ul>
                 {errors.password ? <p className="text-[10px] text-[#ffdfdf]">{errors.password}</p> : null}
               </label>
               <label className="space-y-1 text-xs font-medium text-white">
