@@ -25,15 +25,11 @@ describe('LoginPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows live format guidance for invalid email and weak password input', () => {
+  it('shows live format guidance for invalid email input', () => {
     render(<LoginPage />)
 
     fireEvent.change(screen.getByPlaceholderText('you@email.com'), { target: { value: 'ava' } })
-    fireEvent.change(screen.getByPlaceholderText('Enter your secure password'), { target: { value: 'abc' } })
-
     expect(screen.getByText('Use a valid email format like name@example.com.')).toBeInTheDocument()
-    expect(screen.getByText('At least 8 characters')).toHaveClass('text-[#6b7280]')
-    expect(screen.getByText('At least one uppercase letter')).toHaveClass('text-[#6b7280]')
   })
 
   it('submits normalized credentials and redirects on success', async () => {

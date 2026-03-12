@@ -1,14 +1,8 @@
-const PASSWORD_LOWERCASE_REGEX = /[a-z]/
-const PASSWORD_UPPERCASE_REGEX = /[A-Z]/
-const PASSWORD_NUMBER_REGEX = /[0-9]/
-const PASSWORD_SPECIAL_REGEX = /[!@#$%^&*()[\]{}\-_=+\\|;:'",<.>/?`~]/
-
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const HUMAN_NAME_REGEX = /^[A-Za-z][A-Za-z '-]{1,49}$/
 const BUSINESS_NAME_REGEX = /^[A-Za-z0-9][A-Za-z0-9 '&().,-]{1,79}$/
 // Norwegian phone numbers, canonical form +47XXXXXXXX
 const PHONE_REGEX = /^\+47[0-9]{8}$/
-const ADDRESS_REGEX = /^[A-Za-z0-9][A-Za-z0-9 '#&().,\-/]{5,120}$/
 const PASSWORD_MIN_LENGTH = 8
 
 export type UserRegistrationInput = {
@@ -125,9 +119,8 @@ export function validateUserRegistrationPayload(payload: unknown): ValidationRes
     errors.email = 'Enter a valid email address.'
   }
 
-  const passwordError = passwordPolicyError(data.password)
-  if (passwordError) {
-    errors.password = passwordError
+  if (data.password.length < PASSWORD_MIN_LENGTH) {
+    errors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`
   }
 
   if (data.confirmPassword !== data.password) {
@@ -231,8 +224,8 @@ export function validateSupplierRegistrationPayload(payload: unknown): SupplierR
     errors.confirmPassword = "Passwords don't match."
   }
 
-  if (!ADDRESS_REGEX.test(data.address)) {
-    errors.address = 'Use a full address (5-120 valid characters).'
+  if (data.address.length < 5 || data.address.length > 200) {
+    errors.address = 'Use a full address (5-200 characters).'
   }
 
   if (Object.keys(errors).length > 0) {
