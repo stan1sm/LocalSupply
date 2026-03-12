@@ -4,7 +4,6 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  ADDRESS_REGEX,
   BUSINESS_NAME_REGEX,
   EMAIL_REGEX,
   HUMAN_NAME_REGEX,
