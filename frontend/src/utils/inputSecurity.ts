@@ -58,7 +58,6 @@ export function passwordPolicyError(password: string) {
   if (password.length < PASSWORD_MIN_LENGTH) return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`
   if (password.length > 128) return 'Password must be 128 characters or fewer.'
   const requirements = getPasswordRequirementStatus(password)
-
   if (!requirements.hasUppercase) return 'Password must include an uppercase letter.'
   if (!requirements.hasLowercase) return 'Password must include a lowercase letter.'
   if (!requirements.hasNumber) return 'Password must include a number.'

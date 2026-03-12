@@ -7,7 +7,6 @@ import { buildApiUrl } from '../../../lib/api'
 import {
   EMAIL_REGEX,
   HUMAN_NAME_REGEX,
-  getPasswordRequirementStatus,
   passwordPolicyError,
   sanitizeEmailInput,
   sanitizeTextInput,
@@ -46,7 +45,6 @@ export default function RegisterPage() {
   const [submitMessage, setSubmitMessage] = useState('')
   const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error'>('idle')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const passwordRequirements = getPasswordRequirementStatus(formData.password)
   const hasLivePasswordMismatch =
     (formData.password.length > 0 || formData.confirmPassword.length > 0) && formData.confirmPassword !== formData.password
 
@@ -276,13 +274,7 @@ export default function RegisterPage() {
                 type="password"
                 value={formData.password}
               />
-              <ul className="mt-2 space-y-1 text-xs">
-                <li className={passwordRequirements.hasMinLength ? 'text-[#2f9f4f]' : 'text-[#6b7280]'}>At least 8 characters</li>
-                <li className={passwordRequirements.hasUppercase ? 'text-[#2f9f4f]' : 'text-[#6b7280]'}>At least one uppercase letter</li>
-                <li className={passwordRequirements.hasLowercase ? 'text-[#2f9f4f]' : 'text-[#6b7280]'}>At least one lowercase letter</li>
-                <li className={passwordRequirements.hasNumber ? 'text-[#2f9f4f]' : 'text-[#6b7280]'}>At least one number</li>
-                <li className={passwordRequirements.hasSpecial ? 'text-[#2f9f4f]' : 'text-[#6b7280]'}>At least one special character</li>
-              </ul>
+              <p className="mt-2 text-xs text-[#5b665f]">Use at least 8 characters. Longer is usually safer.</p>
               {errors.password ? <p className="text-xs text-[#c53030]">{errors.password}</p> : null}
             </label>
 
