@@ -62,14 +62,15 @@ export default function SupplierSettingsPage() {
   }, [])
 
   useEffect(() => {
-    if (!session) return
+    const supplierId: string = session?.id ?? ''
+    if (!supplierId) return
 
     let cancelled = false
 
     async function loadProfile() {
       setErrorMessage('')
       try {
-        const response = await fetch(buildApiUrl(`/api/suppliers/${encodeURIComponent(session.id)}`))
+        const response = await fetch(buildApiUrl(`/api/suppliers/${encodeURIComponent(supplierId)}`))
         const payload = (await response.json().catch(() => ({}))) as SupplierProfile | { message?: string }
         if (!response.ok) {
           throw new Error((payload as { message?: string }).message ?? 'Unable to load supplier profile.')
