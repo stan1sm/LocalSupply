@@ -318,6 +318,11 @@ export default function MarketplaceDashboardPage() {
     return cartItems.find((item) => item.id === productId)?.quantity ?? 0
   }
 
+  function handleProceedToCheckout() {
+    if (cartItems.length === 0) return
+    window.location.href = '/cart'
+  }
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto grid w-full max-w-[1600px] gap-6 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
@@ -524,12 +529,20 @@ export default function MarketplaceDashboardPage() {
                             </p>
                           </div>
                           {product.source === 'supplier' && product.supplierId ? (
-                            <a
-                              className="flex w-full items-center justify-center rounded-2xl border-2 border-[#2f9f4f] bg-white px-3 py-2 text-xs font-semibold text-[#2f9f4f] transition hover:bg-[#eaf7ee]"
-                              href={`/suppliers/${product.supplierId}`}
-                            >
-                              View supplier
-                            </a>
+                            <div className="flex gap-2">
+                              <a
+                                className="flex-1 items-center justify-center rounded-2xl border-2 border-[#2f9f4f] bg-white px-3 py-2 text-center text-xs font-semibold text-[#2f9f4f] transition hover:bg-[#eaf7ee]"
+                                href={`/suppliers/${product.supplierId}`}
+                              >
+                                View supplier
+                              </a>
+                              <a
+                                className="flex-1 items-center justify-center rounded-2xl bg-[#2f9f4f] px-3 py-2 text-center text-xs font-semibold text-white transition hover:bg-[#25813f]"
+                                href={`/suppliers/${product.supplierId}?buy=${encodeURIComponent(product.id)}`}
+                              >
+                                Buy item
+                              </a>
+                            </div>
                           ) : (
                             <button
                               className="w-full rounded-2xl bg-[#2f9f4f] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#a0c6ab]"
@@ -649,6 +662,7 @@ export default function MarketplaceDashboardPage() {
             <button
               className="mt-5 w-full rounded-2xl bg-[#2f9f4f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#9ac7a6]"
               disabled={cartItems.length === 0}
+              onClick={handleProceedToCheckout}
               type="button"
             >
               Proceed to Checkout

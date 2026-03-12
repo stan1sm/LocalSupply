@@ -18,6 +18,12 @@ type LoginFormData = {
 
 type LoginFormErrors = Partial<Record<keyof LoginFormData, string>>
 type LoginApiResponse = {
+  user?: {
+    id: string
+    firstName: string
+    lastName: string
+    email: string
+  }
   email?: string
   message?: string
   errors?: LoginFormErrors
@@ -27,6 +33,8 @@ const initialFormData: LoginFormData = {
   email: '',
   password: '',
 }
+
+const BUYER_STORAGE_KEY = 'localsupply-user'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -121,6 +129,21 @@ export default function LoginPage() {
       setErrors({})
       setSubmitState('success')
       setSubmitMessage('Signed in successfully. Redirecting to your dashboard...')
+      if (payload.user && typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(
+            BUYER_STORAGE_KEY,
+            JSON.stringify({
+              id: payload.user.id,
+              firstName: payload.user.firstName,
+              lastName: payload.user.lastName,
+              email: payload.user.email,
+            }),
+          )
+        } catch {
+          // Ignore storage errors and continue.
+        }
+      }
       router.push('/marketplace/dashboard')
     } catch {
       setSubmitState('error')
