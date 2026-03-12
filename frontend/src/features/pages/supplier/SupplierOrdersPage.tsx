@@ -86,14 +86,15 @@ export default function SupplierOrdersPage() {
   }, [])
 
   useEffect(() => {
-    if (!supplier) return
+    const supplierId: string = supplier?.id ?? ''
+    if (!supplierId) return
 
     let cancelled = false
 
     async function loadOrders() {
       setErrorMessage('')
       try {
-        const response = await fetch(buildApiUrl(`/api/orders/supplier/${encodeURIComponent(supplier.id)}`))
+        const response = await fetch(buildApiUrl(`/api/orders/supplier/${encodeURIComponent(supplierId)}`))
         const payload = (await response.json().catch(() => ({}))) as OrderSummary[] | { message?: string }
 
         if (!response.ok) {

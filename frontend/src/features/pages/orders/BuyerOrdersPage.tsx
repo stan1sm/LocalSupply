@@ -84,14 +84,15 @@ export default function BuyerOrdersPage() {
   }, [])
 
   useEffect(() => {
-    if (!buyer || !buyer.id) return
+    const buyerId: string = buyer?.id ?? ''
+    if (!buyerId) return
 
     let cancelled = false
 
     async function loadOrders() {
       setErrorMessage('')
       try {
-        const response = await fetch(buildApiUrl(`/api/orders/buyer/${encodeURIComponent(buyer.id)}`))
+        const response = await fetch(buildApiUrl(`/api/orders/buyer/${encodeURIComponent(buyerId)}`))
         const payload = (await response.json().catch(() => ({}))) as OrderSummary[] | { message?: string }
 
         if (!response.ok) {

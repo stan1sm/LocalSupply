@@ -86,7 +86,8 @@ export default function SupplierOverviewPage() {
   }, [])
 
   useEffect(() => {
-    if (!supplier) return
+    const supplierId: string = supplier?.id ?? ''
+    if (!supplierId) return
 
     let cancelled = false
 
@@ -94,8 +95,8 @@ export default function SupplierOverviewPage() {
       setErrorMessage('')
       try {
         const [ordersRes, productsRes] = await Promise.all([
-          fetch(buildApiUrl(`/api/orders/supplier/${encodeURIComponent(supplier.id)}`)),
-          fetch(buildApiUrl(`/api/suppliers/${encodeURIComponent(supplier.id)}/products`)),
+          fetch(buildApiUrl(`/api/orders/supplier/${encodeURIComponent(supplierId)}`)),
+          fetch(buildApiUrl(`/api/suppliers/${encodeURIComponent(supplierId)}/products`)),
         ])
 
         const ordersPayload = (await ordersRes.json().catch(() => ({}))) as (OrderSummary & {
