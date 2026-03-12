@@ -7,7 +7,6 @@ import { buildApiUrl } from '../../../lib/api'
 import {
   EMAIL_REGEX,
   HUMAN_NAME_REGEX,
-  getPasswordRequirementStatus,
   passwordPolicyError,
   sanitizeEmailInput,
   sanitizeTextInput,
@@ -46,7 +45,6 @@ export default function RegisterPage() {
   const [submitMessage, setSubmitMessage] = useState('')
   const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error'>('idle')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const passwordRequirements = getPasswordRequirementStatus(formData.password)
   const hasLivePasswordMismatch =
     (formData.password.length > 0 || formData.confirmPassword.length > 0) && formData.confirmPassword !== formData.password
 

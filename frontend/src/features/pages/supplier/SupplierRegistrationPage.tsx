@@ -278,7 +278,7 @@ export default function SupplierRegistrationPage() {
         if (!response.ok) {
           if (payload.errors) {
             const serverErrors = payload.errors as SupplierFormErrors & { address?: string }
-            const mappedErrors: SupplierFormErrors = {
+            const mappedErrors: SupplierFormErrors & { address?: string } = {
               ...serverErrors,
               ...(serverErrors.address
                 ? {
@@ -288,7 +288,7 @@ export default function SupplierRegistrationPage() {
                   }
                 : {}),
             }
-            delete (mappedErrors as any).address
+            delete mappedErrors.address
             setErrors((prev) => ({ ...prev, ...mappedErrors }))
             setSubmitMessage('Please fix the highlighted fields.')
           } else {
