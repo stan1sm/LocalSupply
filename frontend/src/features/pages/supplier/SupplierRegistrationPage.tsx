@@ -210,9 +210,8 @@ export default function SupplierRegistrationPage() {
       nextErrors.city = 'Bruk et gyldig stedsnavn.'
     }
 
-    const fullAddress = `${streetAddress}, ${postalCode} ${city}`.trim()
-    if (!ADDRESS_REGEX.test(fullAddress)) {
-      nextErrors.streetAddress = 'Use a full address (5-120 valid characters).'
+    if (streetAddress.length < 2 || streetAddress.length > 120) {
+      nextErrors.streetAddress = 'Use 2-120 characters for street address.'
     }
 
     return nextErrors
@@ -453,7 +452,7 @@ export default function SupplierRegistrationPage() {
             </div>
 
             <div className="space-y-1.5 rounded-lg border border-white/30 bg-white/10 p-2" ref={addressDropdownRef}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-white">Address (Geonorge)</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-white">Address</p>
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[1fr_80px_1fr]">
                 <label className="relative space-y-1 text-xs font-medium text-white">
                   Street
