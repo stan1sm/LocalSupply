@@ -4,7 +4,7 @@ import { type FormEvent, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { buildApiUrl } from '../../../lib/api'
-import { EMAIL_REGEX, getPasswordRequirementStatus, passwordPolicyError, sanitizeEmailInput } from '../../../utils/inputSecurity'
+import { EMAIL_REGEX, passwordPolicyError, sanitizeEmailInput } from '../../../utils/inputSecurity'
 
 type LoginFormData = {
   email: string
@@ -40,7 +40,6 @@ export default function SupplierLoginPage() {
 
   const normalizedEmail = formData.email.trim().toLowerCase()
   const hasLiveInvalidEmail = normalizedEmail.length > 0 && !EMAIL_REGEX.test(normalizedEmail)
-  const passwordRequirements = getPasswordRequirementStatus(formData.password)
 
   function handleEmailChange(value: string) {
     setFormData((prev) => ({ ...prev, email: sanitizeEmailInput(value) }))
