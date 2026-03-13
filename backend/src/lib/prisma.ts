@@ -17,7 +17,7 @@ function createPrismaClient() {
   const pool = globalForPrisma.pgPool ?? new Pool({ connectionString: datasourceUrl })
   globalForPrisma.pgPool = pool
 
-  const adapter = new PrismaPg(pool)
+  const adapter = new PrismaPg(pool as any)
   return new PrismaClient({ adapter })
 }
 
