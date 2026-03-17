@@ -63,6 +63,7 @@ type MatchResponse = {
 }
 
 type IntentCartItem = {
+  imageUrl: string | null
   priceId: string
   catalogProductId: string
   name: string
@@ -240,7 +241,7 @@ export default function MyCartPage() {
 
       const newCartItems: CartItem[] = payload.items.map((item) => ({
         id: item.priceId,
-        imageUrl: null,
+        imageUrl: item.imageUrl,
         name: item.name,
         price: item.unitPrice,
         quantity: item.quantity,
@@ -404,6 +405,14 @@ export default function MyCartPage() {
                   {isPlanningIntent ? 'Planning…' : 'Plan meal'}
                 </button>
               </div>
+              {isPlanningIntent && !intentExplanation && (
+                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[#6c7c71]">
+                  <li>Understanding your request…</li>
+                  <li>Finding ingredients in the catalog…</li>
+                  <li>Comparing stores and delivery…</li>
+                  <li>Selecting the cheapest full cart…</li>
+                </ul>
+              )}
               {intentExplanation && intentExplanation.length > 0 ? (
                 <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[#556558]">
                   {intentExplanation.map((line, index) => (
