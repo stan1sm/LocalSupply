@@ -225,6 +225,7 @@ cartRouter.post('/intent', async (req, res) => {
       storeName: string
       items: {
         priceId: string
+        imageUrl: string | null
         catalogProductId: string
         name: string
         unitPrice: number
@@ -248,6 +249,7 @@ cartRouter.post('/intent', async (req, res) => {
       const delivery = getDeliveryEstimate(storeCode)
       const items: {
         priceId: string
+        imageUrl: string | null
         catalogProductId: string
         name: string
         unitPrice: number
@@ -268,6 +270,7 @@ cartRouter.post('/intent', async (req, res) => {
 
         let bestMatch: {
           priceId: string
+          imageUrl: string | null
           catalogProductId: string
           name: string
           unitPrice: number
@@ -299,6 +302,7 @@ cartRouter.post('/intent', async (req, res) => {
               if (!bestMatch || unitPrice < bestMatch.unitPrice) {
                 bestMatch = {
                   priceId: row.id,
+                  imageUrl: row.catalogProduct.imageUrl,
                   catalogProductId: row.catalogProductId,
                   name: row.catalogProduct.name,
                   unitPrice,
@@ -318,6 +322,7 @@ cartRouter.post('/intent', async (req, res) => {
 
         items.push({
           priceId: bestMatch.priceId,
+          imageUrl: bestMatch.imageUrl ?? null,
           catalogProductId: bestMatch.catalogProductId,
           name: bestMatch.name,
           unitPrice: bestMatch.unitPrice,
@@ -375,6 +380,7 @@ cartRouter.post('/intent', async (req, res) => {
     res.status(200).json({
       items: bestStore.items.map((item) => ({
         priceId: item.priceId,
+        imageUrl: item.imageUrl,
         catalogProductId: item.catalogProductId,
         name: item.name,
         unitPrice: item.unitPrice,
