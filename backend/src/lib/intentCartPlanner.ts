@@ -63,7 +63,7 @@ Example (for taco night for 4 people):
   })
 
   const people = Number.isFinite(result.people as number) && (result.people as number) > 0 ? result.people : 2
-  const slots = Array.isArray(result.slots)
+  let slots = Array.isArray(result.slots)
     ? result.slots
         .map((slot) => ({
           role: String(slot.role ?? '').slice(0, 64) || 'item',
@@ -77,6 +77,33 @@ Example (for taco night for 4 people):
         }))
         .filter((slot) => slot.tags.length > 0)
     : []
+
+  const lowerMealType = String(result.mealType ?? '').toLowerCase()
+  const lowerText = text.toLowerCase()
+  const hasProtein = slots.some((slot) => {
+    const role = slot.role.toLowerCase()
+    const tags = slot.tags.map((t) => t.toLowerCase())
+    const meatKeywords = ['kjøttdeig', 'karbonadedeig', 'biff', 'storfe', 'ground beef', 'minced meat', 'beef', 'meat']
+    const roleLooksProtein = role.includes('protein') || role.includes('kjøtt') || role.includes('meat')
+    const tagsContainMeat = tags.some((tag) => meatKeywords.some((k) => tag.includes(k)))
+    return roleLooksProtein || tagsContainMeat
+  })
+
+  const looksLikeTaco =
+    lowerMealType.includes('taco') ||
+    lowerText.includes('taco') ||
+    slots.some((slot) => slot.tags.some((t) => t.toLowerCase().includes('taco')))
+
+  if (looksLikeTaco && !hasProtein) {
+    slots = [
+      {
+        role: 'protein',
+        tags: ['kjøttdeig', 'taco', 'karbonadedeig', 'ground beef', 'minced meat'],
+        required: true,
+      },
+      ...slots,
+    ]
+  }
 
   return {
     mealType: String(result.mealType ?? '').slice(0, 64) || 'meal',
