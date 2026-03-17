@@ -215,169 +215,158 @@ cartRouter.post('/intent', async (req, res) => {
       return
     }
 
-    const ingredients: {
-      catalogProductId: string
-      name: string
+    const stores = await prisma.catalogProductPrice.findMany({
+      select: { storeCode: true, storeName: true },
+      distinct: ['storeCode'],
+    })
+
+    const storeCandidates: {
       storeCode: string
       storeName: string
-      unitPrice: number
-      quantity: number
+      items: {
+        priceId: string
+        catalogProductId: string
+        name: string
+        unitPrice: number
+        quantity: number
+        lineTotal: number
+      }[]
+      subtotal: number
+      deliveryCost: number
+      total: number
+      eta: string
+      etaMinutes: number
+      slotsFulfilled: number
+      requiredFulfilled: number
     }[] = []
 
-    for (const slot of slots) {
-      const tags = Array.isArray(slot.tags)
-        ? slot.tags
-            .map((tag) => String(tag ?? '').trim())
-            .filter((tag) => tag.length >= 2)
-        : []
+    const quantityMultiplier = people ?? mealPlan.people
 
-      if (tags.length === 0) {
-        continue
-      }
+    for (const storeRow of stores) {
+      const storeCode = storeRow.storeCode
+      const storeName = storeRow.storeName
+      const delivery = getDeliveryEstimate(storeCode)
+      const items: {
+        priceId: string
+        catalogProductId: string
+        name: string
+        unitPrice: number
+        quantity: number
+        lineTotal: number
+      }[] = []
+      let subtotal = 0
+      let requiredFulfilled = 0
 
-      let bestMatch:
-        | {
-            catalogProductId: string
-            name: string
-            storeCode: string
-            storeName: string
-            unitPrice: number
-          }
-        | null = null
+      for (const slot of slots) {
+        const tags = Array.isArray(slot.tags)
+          ? slot.tags
+              .map((tag) => String(tag ?? '').trim())
+              .filter((tag) => tag.length >= 2)
+          : []
 
-      for (const tag of tags) {
-        try {
-          const rows = await prisma.catalogProductPrice.findMany({
-            where: {
-              currentPrice: { not: null },
-              catalogProduct: {
-                OR: [
-                  { name: { contains: tag, mode: 'insensitive' } },
-                  { brand: { contains: tag, mode: 'insensitive' } },
-                  { category: { contains: tag, mode: 'insensitive' } },
-                ],
-              },
-            },
-            include: { catalogProduct: true },
-            orderBy: [{ currentPrice: 'asc' }],
-            take: 5,
-          })
+        if (tags.length === 0) continue
 
-          for (const row of rows) {
-            const unitPrice = Number(row.currentPrice)
-            if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue
-
-            if (!bestMatch || unitPrice < bestMatch.unitPrice) {
-              bestMatch = {
-                catalogProductId: row.catalogProductId,
-                name: row.catalogProduct.name,
-                storeCode: row.storeCode,
-                storeName: row.storeName,
-                unitPrice,
-              }
-            }
-          }
-        } catch (error) {
-          console.error(`Intent cart search failed for tag "${tag}"`, error)
-        }
-      }
-
-      if (!bestMatch) {
-        continue
-      }
-
-      const baseQuantity = slot.required ? 1 : 0.5
-      const quantityMultiplier = people ?? mealPlan.people
-      const quantity = Math.max(1, Math.round(baseQuantity * quantityMultiplier * 0.5))
-
-      ingredients.push({
-        catalogProductId: bestMatch.catalogProductId,
-        name: bestMatch.name,
-        storeCode: bestMatch.storeCode,
-        storeName: bestMatch.storeName,
-        unitPrice: bestMatch.unitPrice,
-        quantity,
-      })
-    }
-
-    if (!ingredients.length) {
-      res.status(200).json({ items: [], explanation: ['Could not find matching products in the catalog.'], storeChoice: null, totalPrice: 0 })
-      return
-    }
-
-    const itemsByStore = new Map<
-      string,
-      {
-        storeCode: string
-        storeName: string
-        items: {
+        let bestMatch: {
+          priceId: string
           catalogProductId: string
           name: string
           unitPrice: number
-          quantity: number
-          lineTotal: number
-        }[]
-        subtotal: number
-      }
-    >()
+        } | null = null
 
-    for (const ingredient of ingredients) {
-      if (!itemsByStore.has(ingredient.storeCode)) {
-        itemsByStore.set(ingredient.storeCode, {
-          storeCode: ingredient.storeCode,
-          storeName: ingredient.storeName,
-          items: [],
-          subtotal: 0,
+        for (const tag of tags) {
+          try {
+            const rows = await prisma.catalogProductPrice.findMany({
+              where: {
+                storeCode,
+                currentPrice: { not: null },
+                catalogProduct: {
+                  OR: [
+                    { name: { contains: tag, mode: 'insensitive' } },
+                    { brand: { contains: tag, mode: 'insensitive' } },
+                    { category: { contains: tag, mode: 'insensitive' } },
+                  ],
+                },
+              },
+              include: { catalogProduct: true },
+              orderBy: [{ currentPrice: 'asc' }],
+              take: 5,
+            })
+
+            for (const row of rows) {
+              const unitPrice = Number(row.currentPrice)
+              if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue
+
+              if (!bestMatch || unitPrice < bestMatch.unitPrice) {
+                bestMatch = {
+                  priceId: row.id,
+                  catalogProductId: row.catalogProductId,
+                  name: row.catalogProduct.name,
+                  unitPrice,
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`Intent cart search failed for tag "${tag}"`, error)
+          }
+        }
+
+        if (!bestMatch) continue
+
+        const baseQuantity = slot.required ? 1 : 0.5
+        const quantity = Math.max(1, Math.round(baseQuantity * quantityMultiplier * 0.5))
+        const lineTotal = bestMatch.unitPrice * quantity
+
+        items.push({
+          priceId: bestMatch.priceId,
+          catalogProductId: bestMatch.catalogProductId,
+          name: bestMatch.name,
+          unitPrice: bestMatch.unitPrice,
+          quantity,
+          lineTotal,
         })
+        subtotal += lineTotal
+        if (slot.required) requiredFulfilled += 1
       }
-      const store = itemsByStore.get(ingredient.storeCode)!
-      const lineTotal = ingredient.unitPrice * ingredient.quantity
-      store.items.push({
-        catalogProductId: ingredient.catalogProductId,
-        name: ingredient.name,
-        unitPrice: ingredient.unitPrice,
-        quantity: ingredient.quantity,
-        lineTotal,
-      })
-      store.subtotal += lineTotal
-    }
 
-    const storesWithDelivery = Array.from(itemsByStore.values()).map((store) => {
-      const delivery = getDeliveryEstimate(store.storeCode)
-      const total = Math.round((store.subtotal + delivery.deliveryCost) * 100) / 100
-      return {
-        storeCode: store.storeCode,
-        storeName: store.storeName,
-        items: store.items,
-        subtotal: Math.round(store.subtotal * 100) / 100,
+      const total = Math.round((subtotal + delivery.deliveryCost) * 100) / 100
+      storeCandidates.push({
+        storeCode,
+        storeName,
+        items,
+        subtotal: Math.round(subtotal * 100) / 100,
         deliveryCost: delivery.deliveryCost,
         total,
         eta: delivery.etaLabel,
         etaMinutes: delivery.etaMinutes,
-      }
-    })
-
-    if (!storesWithDelivery.length) {
-      res.status(200).json({ items: [], explanation: ['Could not find a store that can fulfill this meal.'], storeChoice: null, totalPrice: 0 })
-      return
+        slotsFulfilled: items.length,
+        requiredFulfilled,
+      })
     }
 
-    let bestStore: (typeof storesWithDelivery)[number] | null = null
-    for (const store of storesWithDelivery) {
-      if (!bestStore || store.total < bestStore.total) {
-        bestStore = store
-      }
-    }
+    const requiredCount = slots.filter((s) => s.required).length
+    const scored = storeCandidates
+      .filter((c) => c.slotsFulfilled > 0)
+      .sort((a, b) => {
+        if (a.requiredFulfilled !== b.requiredFulfilled) return b.requiredFulfilled - a.requiredFulfilled
+        if (a.slotsFulfilled !== b.slotsFulfilled) return b.slotsFulfilled - a.slotsFulfilled
+        return a.total - b.total
+      })
 
-    if (!bestStore) {
-      res.status(200).json({ items: [], explanation: ['Could not find a store that can fulfill this meal.'], storeChoice: null, totalPrice: 0 })
+    const bestStore = scored[0] ?? null
+
+    if (!bestStore || bestStore.items.length === 0) {
+      res.status(200).json({ items: [], explanation: ['Could not find matching products in the catalog.'], storeChoice: null, totalPrice: 0 })
       return
     }
 
     const explanation: string[] = [
       `Planned a "${mealPlan.mealType}" meal for ${mealPlan.people} people.`,
-      `Chose store ${bestStore.storeName} as the cheapest option including delivery.`,
+      `Chose store ${bestStore.storeName} as the cheapest option including delivery (${bestStore.slotsFulfilled} items).`,
     ]
+
+    if (bestStore.requiredFulfilled < requiredCount) {
+      explanation.push(`Note: Only ${bestStore.requiredFulfilled} of ${requiredCount} required ingredients found at this store.`)
+    }
 
     if (mealPlan.notes) {
       explanation.push(`Notes: ${mealPlan.notes}`)
@@ -385,6 +374,7 @@ cartRouter.post('/intent', async (req, res) => {
 
     res.status(200).json({
       items: bestStore.items.map((item) => ({
+        priceId: item.priceId,
         catalogProductId: item.catalogProductId,
         name: item.name,
         unitPrice: item.unitPrice,
