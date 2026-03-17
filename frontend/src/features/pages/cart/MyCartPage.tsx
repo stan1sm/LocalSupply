@@ -63,6 +63,7 @@ type MatchResponse = {
 }
 
 type IntentCartItem = {
+  priceId: string
   catalogProductId: string
   name: string
   unitPrice: number
@@ -238,7 +239,7 @@ export default function MyCartPage() {
       }
 
       const newCartItems: CartItem[] = payload.items.map((item) => ({
-        id: item.catalogProductId,
+        id: item.priceId,
         imageUrl: null,
         name: item.name,
         price: item.unitPrice,
