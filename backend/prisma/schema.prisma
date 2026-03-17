@@ -100,6 +100,7 @@ model CatalogProduct {
   updatedAt  DateTime @updatedAt
 
   prices CatalogProductPrice[]
+  embeddings ProductEmbedding[]
 
   @@index([externalId])
   @@index([gtin])
@@ -131,6 +132,21 @@ model CatalogProductPrice {
   @@index([storeName])
   @@index([currentPrice])
 }
+
+model ProductEmbedding {
+  id          String   @id @default(cuid())
+  productId   String
+  modelName   String
+  vectorJson  Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product CatalogProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, modelName])
+  @@index([modelName])
+}
+
 
 model Order {
   id          String      @id @default(cuid())
