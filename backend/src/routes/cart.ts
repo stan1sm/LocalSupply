@@ -364,8 +364,13 @@ cartRouter.post('/intent', async (req, res) => {
       return
     }
 
+    const rawMealType = String(mealPlan.mealType ?? 'meal').trim()
+    const readableMealTypeBase = rawMealType.replace(/_/g, ' ').toLowerCase()
+    const readableMealType =
+      readableMealTypeBase.charAt(0).toUpperCase() + readableMealTypeBase.slice(1)
+
     const explanation: string[] = [
-      `Planned a "${mealPlan.mealType}" meal for ${mealPlan.people} people.`,
+      `Planned a "${readableMealType}" meal for ${mealPlan.people} people.`,
       `Chose store ${bestStore.storeName} as the cheapest option including delivery (${bestStore.slotsFulfilled} items).`,
     ]
 
