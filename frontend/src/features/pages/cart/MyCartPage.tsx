@@ -108,6 +108,7 @@ export default function MyCartPage() {
   const [intentText, setIntentText] = useState('')
   const [isPlanningIntent, setIsPlanningIntent] = useState(false)
   const [intentExplanation, setIntentExplanation] = useState<string[] | null>(null)
+  const [intentProgressStep, setIntentProgressStep] = useState(0)
 
   useEffect(() => {
     try {
@@ -219,7 +220,21 @@ export default function MyCartPage() {
     if (!text) return
 
     setIsPlanningIntent(true)
+    setIntentProgressStep(0)
     setIntentExplanation(null)
+
+    const totalSteps = 4
+    let cancelled = false
+
+    const advanceStep = (step: number) => {
+      if (cancelled) return
+      setIntentProgressStep(step)
+      if (step < totalSteps - 1) {
+        window.setTimeout(() => advanceStep(step + 1), 650)
+      }
+    }
+
+    advanceStep(0)
 
     try {
       const response = await fetch(buildApiUrl('/api/cart/intent'), {
@@ -255,6 +270,8 @@ export default function MyCartPage() {
     } catch {
       setIntentExplanation(['Unable to plan cart right now.'])
     } finally {
+      cancelled = true
+      setIntentProgressStep(totalSteps)
       setIsPlanningIntent(false)
     }
   }
@@ -406,11 +423,30 @@ export default function MyCartPage() {
                 </button>
               </div>
               {isPlanningIntent && !intentExplanation && (
-                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[#6c7c71]">
-                  <li>Understanding your request…</li>
-                  <li>Finding ingredients in the catalog…</li>
-                  <li>Comparing stores and delivery…</li>
-                  <li>Selecting the cheapest full cart…</li>
+                <ul className="mt-2 space-y-0.5 pl-1 text-xs">
+                  {[
+                    'Understanding your request…',
+                    'Finding ingredients in the catalog…',
+                    'Comparing stores and delivery…',
+                    'Selecting the cheapest full cart…',
+                  ].map((label, index) => {
+                    const isDone = intentProgressStep > index
+                    const isCurrent = intentProgressStep === index
+                    return (
+                      <li
+                        key={label}
+                        className={
+                          isDone
+                            ? 'text-[#2f9f4f]'
+                            : isCurrent
+                              ? 'text-[#314136]'
+                              : 'text-[#9ca3af]'
+                        }
+                      >
+                        {label}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
               {intentExplanation && intentExplanation.length > 0 ? (
