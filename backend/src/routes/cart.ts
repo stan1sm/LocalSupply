@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { getPrismaClient } from '../lib/prisma.js'
+import { planMealFromText } from '../lib/intentCartPlanner.js'
 
 const cartRouter = Router()
 
@@ -189,6 +190,184 @@ cartRouter.post('/match', async (req, res) => {
   } catch (error) {
     console.error('Cart match failed', error)
     res.status(503).json({ message: 'Unable to match cart right now.' })
+  }
+})
+
+cartRouter.post('/intent', async (req, res) => {
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : ''
+  const language = req.body?.language === 'no' ? 'no' : 'en'
+  const people = typeof req.body?.people === 'number' && Number.isFinite(req.body.people) && req.body.people > 0 ? req.body.people : undefined
+
+  if (!text) {
+    res.status(400).json({ message: 'Text is required.' })
+    return
+  }
+
+  try {
+    const mealPlan = await planMealFromText(text, language)
+    const prisma = getPrismaClient()
+
+    const slots = mealPlan.slots
+    if (slots.length === 0) {
+      res
+        .status(200)
+        .json({ items: [], explanation: ['Could not identify specific ingredients from your request.'], storeChoice: null, totalPrice: 0 })
+      return
+    }
+
+    const ingredients: {
+      catalogProductId: string
+      name: string
+      storeCode: string
+      storeName: string
+      unitPrice: number
+      quantity: number
+    }[] = []
+
+    for (const slot of slots) {
+      const searchTerm = slot.tags.join(' ')
+
+      const rows = await prisma.catalogProductPrice.findMany({
+        where: {
+          currentPrice: { not: null },
+          catalogProduct: {
+            OR: [
+              { name: { contains: searchTerm, mode: 'insensitive' } },
+              { brand: { contains: searchTerm, mode: 'insensitive' } },
+              { category: { contains: searchTerm, mode: 'insensitive' } },
+            ],
+          },
+        },
+        include: { catalogProduct: true },
+        orderBy: [{ currentPrice: 'asc' }],
+        take: 10,
+      })
+
+      const [best] = rows
+      if (!best) continue
+      const unitPrice = Number(best.currentPrice)
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue
+
+      const baseQuantity = slot.required ? 1 : 0.5
+      const quantityMultiplier = people ?? mealPlan.people
+      const quantity = Math.max(1, Math.round(baseQuantity * quantityMultiplier * 0.5))
+
+      ingredients.push({
+        catalogProductId: best.catalogProductId,
+        name: best.catalogProduct.name,
+        storeCode: best.storeCode,
+        storeName: best.storeName,
+        unitPrice,
+        quantity,
+      })
+    }
+
+    if (!ingredients.length) {
+      res.status(200).json({ items: [], explanation: ['Could not find matching products in the catalog.'], storeChoice: null, totalPrice: 0 })
+      return
+    }
+
+    const itemsByStore = new Map<
+      string,
+      {
+        storeCode: string
+        storeName: string
+        items: {
+          catalogProductId: string
+          name: string
+          unitPrice: number
+          quantity: number
+          lineTotal: number
+        }[]
+        subtotal: number
+      }
+    >()
+
+    for (const ingredient of ingredients) {
+      if (!itemsByStore.has(ingredient.storeCode)) {
+        itemsByStore.set(ingredient.storeCode, {
+          storeCode: ingredient.storeCode,
+          storeName: ingredient.storeName,
+          items: [],
+          subtotal: 0,
+        })
+      }
+      const store = itemsByStore.get(ingredient.storeCode)!
+      const lineTotal = ingredient.unitPrice * ingredient.quantity
+      store.items.push({
+        catalogProductId: ingredient.catalogProductId,
+        name: ingredient.name,
+        unitPrice: ingredient.unitPrice,
+        quantity: ingredient.quantity,
+        lineTotal,
+      })
+      store.subtotal += lineTotal
+    }
+
+    const storesWithDelivery = Array.from(itemsByStore.values()).map((store) => {
+      const delivery = getDeliveryEstimate(store.storeCode)
+      const total = Math.round((store.subtotal + delivery.deliveryCost) * 100) / 100
+      return {
+        storeCode: store.storeCode,
+        storeName: store.storeName,
+        items: store.items,
+        subtotal: Math.round(store.subtotal * 100) / 100,
+        deliveryCost: delivery.deliveryCost,
+        total,
+        eta: delivery.etaLabel,
+        etaMinutes: delivery.etaMinutes,
+      }
+    })
+
+    if (!storesWithDelivery.length) {
+      res.status(200).json({ items: [], explanation: ['Could not find a store that can fulfill this meal.'], storeChoice: null, totalPrice: 0 })
+      return
+    }
+
+    let bestStore: (typeof storesWithDelivery)[number] | null = null
+    for (const store of storesWithDelivery) {
+      if (!bestStore || store.total < bestStore.total) {
+        bestStore = store
+      }
+    }
+
+    if (!bestStore) {
+      res.status(200).json({ items: [], explanation: ['Could not find a store that can fulfill this meal.'], storeChoice: null, totalPrice: 0 })
+      return
+    }
+
+    const explanation: string[] = [
+      `Planned a "${mealPlan.mealType}" meal for ${mealPlan.people} people.`,
+      `Chose store ${bestStore.storeName} as the cheapest option including delivery.`,
+    ]
+
+    if (mealPlan.notes) {
+      explanation.push(`Notes: ${mealPlan.notes}`)
+    }
+
+    res.status(200).json({
+      items: bestStore.items.map((item) => ({
+        catalogProductId: item.catalogProductId,
+        name: item.name,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        lineTotal: item.lineTotal,
+      })),
+      explanation,
+      storeChoice: {
+        storeCode: bestStore.storeCode,
+        storeName: bestStore.storeName,
+        subtotal: bestStore.subtotal,
+        deliveryCost: bestStore.deliveryCost,
+        total: bestStore.total,
+        eta: bestStore.eta,
+        etaMinutes: bestStore.etaMinutes,
+      },
+      totalPrice: bestStore.total,
+    })
+  } catch (error) {
+    console.error('Intent cart planning failed', error)
+    res.status(503).json({ message: 'Unable to plan cart right now.' })
   }
 })
 

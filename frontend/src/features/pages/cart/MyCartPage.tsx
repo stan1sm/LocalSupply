@@ -13,6 +13,25 @@ type CartItem = {
   unitInfo: string | null
 }
 
+type SubstitutionSuggestion = {
+  priceId: string
+  name: string
+  brand: string | null
+  imageUrl: string | null
+  unit: string | null
+  storeCode: string
+  storeName: string
+  price: number
+  savingsAmount: number
+  savingsPercentage: number | null
+  similarity: number
+  reason: string
+}
+
+type SubstitutionsResponse = {
+  suggestions: SubstitutionSuggestion[]
+}
+
 type MatchedStoreItem = {
   brand: string | null
   catalogProductId: string
@@ -43,6 +62,31 @@ type MatchResponse = {
   totalCartItems: number
 }
 
+type IntentCartItem = {
+  catalogProductId: string
+  name: string
+  unitPrice: number
+  quantity: number
+  lineTotal: number
+}
+
+type IntentCartStoreChoice = {
+  storeCode: string
+  storeName: string
+  subtotal: number
+  deliveryCost: number
+  total: number
+  eta: string
+  etaMinutes: number
+}
+
+type IntentCartResponse = {
+  items: IntentCartItem[]
+  explanation: string[]
+  storeChoice: IntentCartStoreChoice | null
+  totalPrice: number
+}
+
 const CART_STORAGE_KEY = 'localsupply-marketplace-cart'
 const BUYER_STORAGE_KEY = 'localsupply-user'
 
@@ -57,6 +101,12 @@ export default function MyCartPage() {
   const [selectedStoreCode, setSelectedStoreCode] = useState<string | null>(null)
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
   const [orderError, setOrderError] = useState('')
+  const [substitutions, setSubstitutions] = useState<Record<string, SubstitutionSuggestion[]>>({})
+  const [loadingSubFor, setLoadingSubFor] = useState<string | null>(null)
+  const [intentText, setIntentText] = useState('')
+  const [intentPeople, setIntentPeople] = useState(4)
+  const [isPlanningIntent, setIsPlanningIntent] = useState(false)
+  const [intentExplanation, setIntentExplanation] = useState<string[] | null>(null)
 
   useEffect(() => {
     try {
@@ -114,6 +164,90 @@ export default function MyCartPage() {
         .map((item) => (item.id === itemId ? { ...item, quantity: item.quantity + delta } : item))
         .filter((item) => item.quantity > 0),
     )
+  }
+
+  function replaceCartItem(oldPriceId: string, suggestion: SubstitutionSuggestion) {
+    setCartItems((current) =>
+      current.map((item) =>
+        item.id === oldPriceId
+          ? {
+              ...item,
+              id: suggestion.priceId,
+              name: suggestion.name,
+              imageUrl: suggestion.imageUrl,
+              price: suggestion.price,
+              store: suggestion.storeName,
+            }
+          : item,
+      ),
+    )
+  }
+
+  async function loadSubstitutions(priceId: string) {
+    if (!priceId || loadingSubFor === priceId) return
+
+    setLoadingSubFor(priceId)
+    try {
+      const response = await fetch(buildApiUrl(`/api/products/${encodeURIComponent(priceId)}/substitutions`))
+      if (!response.ok) {
+        return
+      }
+      const payload = (await response.json()) as SubstitutionsResponse
+      setSubstitutions((current) => ({
+        ...current,
+        [priceId]: payload.suggestions,
+      }))
+    } catch {
+      // ignore
+    } finally {
+      setLoadingSubFor((current) => (current === priceId ? null : current))
+    }
+  }
+
+  async function planIntentCart() {
+    const text = intentText.trim()
+    if (!text) return
+
+    setIsPlanningIntent(true)
+    setIntentExplanation(null)
+
+    try {
+      const response = await fetch(buildApiUrl('/api/cart/intent'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          people: intentPeople,
+        }),
+      })
+      const payload = (await response.json()) as IntentCartResponse
+      if (!response.ok) {
+        return
+      }
+
+      if (!payload.items || payload.items.length === 0 || !payload.storeChoice) {
+        setIntentExplanation(payload.explanation ?? ['Could not build a cart from this request.'])
+        return
+      }
+
+      const newCartItems: CartItem[] = payload.items.map((item) => ({
+        id: item.catalogProductId,
+        imageUrl: null,
+        name: item.name,
+        price: item.unitPrice,
+        quantity: item.quantity,
+        store: payload.storeChoice?.storeName ?? null,
+        unitInfo: null,
+      }))
+
+      setCartItems(newCartItems)
+      setIntentExplanation(payload.explanation)
+      setSelectedStoreCode(payload.storeChoice.storeCode)
+    } catch {
+      setIntentExplanation(['Unable to plan cart right now.'])
+    } finally {
+      setIsPlanningIntent(false)
+    }
   }
 
   function clearCart() {
@@ -233,6 +367,48 @@ export default function MyCartPage() {
           </div>
 
           <div className="px-5 py-5">
+            <div className="mb-5 rounded-2xl border border-[#d9e3d5] bg-[#f6faf5] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2f9f4f]">AI meal planner</p>
+              <p className="mt-1 text-sm text-[#314136]">
+                Describe what you want (e.g. “taco night for 4”) and we{"'"}ll build a cheap cart for you.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  className="flex-1 rounded-xl border border-[#cfd9cb] bg-white px-3 py-2 text-sm text-[#111827] placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:outline-none focus:ring-2 focus:ring-[#2f9f4f]/40"
+                  onChange={(event) => setIntentText(event.target.value)}
+                  placeholder="I want taco night for 4 people"
+                  type="text"
+                  value={intentText}
+                />
+                <input
+                  className="w-20 rounded-xl border border-[#cfd9cb] bg-white px-3 py-2 text-sm text-[#111827] placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:outline-none focus:ring-2 focus:ring-[#2f9f4f]/40"
+                  min={1}
+                  onChange={(event) => {
+                    const n = Number(event.target.value)
+                    if (Number.isFinite(n) && n > 0) {
+                      setIntentPeople(n)
+                    }
+                  }}
+                  type="number"
+                  value={intentPeople}
+                />
+                <button
+                  className="mt-2 inline-flex items-center justify-center rounded-2xl bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25813f] sm:mt-0"
+                  disabled={isPlanningIntent || !intentText.trim()}
+                  onClick={planIntentCart}
+                  type="button"
+                >
+                  {isPlanningIntent ? 'Planning…' : 'Plan meal'}
+                </button>
+              </div>
+              {intentExplanation && intentExplanation.length > 0 ? (
+                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[#556558]">
+                  {intentExplanation.map((line, index) => (
+                    <li key={index}>{line}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
             {cartItems.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-[#d2dcd0] bg-[#f8fbf7] px-5 py-16 text-center">
                 <p className="text-lg font-semibold text-[#304136]">Your cart is empty</p>
@@ -247,36 +423,79 @@ export default function MyCartPage() {
             ) : (
               <div className="space-y-3">
                 {cartItems.map((item) => (
-                  <div className="flex items-center gap-3 rounded-2xl border border-[#e6ede3] p-3" key={item.id}>
-                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-white">
+                <div className="flex flex-col gap-2 rounded-2xl border border-[#e6ede3] p-3" key={item.id}>
+                    <div className="flex items-center gap-3">
+                      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-white">
                       {item.imageUrl ? (
                         <img alt={item.name} className="h-full w-full object-contain p-1" src={item.imageUrl} />
                       ) : (
                         <div className="flex h-full items-center justify-center text-xl text-[#86a28f]">+</div>
                       )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-sm font-semibold text-[#1f2b22]">{item.name}</h3>
+                        <p className="text-xs text-[#6d7b70]">
+                          {formatCurrency(item.price)} · {item.store ?? 'Store'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="grid h-7 w-7 place-items-center rounded-lg border border-[#d4ddd0] text-sm text-[#516056] transition hover:border-[#9bb49f]"
+                          onClick={() => updateQuantity(item.id, -1)}
+                          type="button"
+                        >
+                          -
+                        </button>
+                        <span className="min-w-[1.5rem] text-center text-sm font-semibold text-[#1f2b22]">{item.quantity}</span>
+                        <button
+                          className="grid h-7 w-7 place-items-center rounded-lg border border-[#d4ddd0] text-sm text-[#516056] transition hover:border-[#9bb49f]"
+                          onClick={() => updateQuantity(item.id, 1)}
+                          type="button"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-sm font-semibold text-[#1f2b22]">{item.name}</h3>
-                      <p className="text-xs text-[#6d7b70]">
-                        {formatCurrency(item.price)} · {item.store ?? 'Store'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
+                    <div className="mt-1 flex flex-col gap-1 rounded-2xl bg-[#f6faf5] p-2">
                       <button
-                        className="grid h-7 w-7 place-items-center rounded-lg border border-[#d4ddd0] text-sm text-[#516056] transition hover:border-[#9bb49f]"
-                        onClick={() => updateQuantity(item.id, -1)}
+                        className="inline-flex items-center justify-between gap-2 text-xs font-semibold text-[#2f9f4f]"
+                        onClick={() => loadSubstitutions(item.id)}
                         type="button"
                       >
-                        -
+                        <span>
+                          {loadingSubFor === item.id
+                            ? 'Finding cheaper matches…'
+                            : 'Find the same, but cheaper'}
+                        </span>
+                        <span aria-hidden="true">↓</span>
                       </button>
-                      <span className="min-w-[1.5rem] text-center text-sm font-semibold text-[#1f2b22]">{item.quantity}</span>
-                      <button
-                        className="grid h-7 w-7 place-items-center rounded-lg border border-[#d4ddd0] text-sm text-[#516056] transition hover:border-[#9bb49f]"
-                        onClick={() => updateQuantity(item.id, 1)}
-                        type="button"
-                      >
-                        +
-                      </button>
+                      {substitutions[item.id] && substitutions[item.id].length > 0 ? (
+                        <div className="space-y-1">
+                          {substitutions[item.id].map((suggestion) => (
+                            <button
+                              className="flex w-full items-center justify-between rounded-xl bg-white px-2 py-1.5 text-left text-xs text-[#314136] shadow-sm ring-1 ring-[#dde8d9] hover:bg-[#f1f7f0]"
+                              key={suggestion.priceId}
+                              onClick={() => replaceCartItem(item.id, suggestion)}
+                              type="button"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate font-semibold">
+                                  {suggestion.name}
+                                </p>
+                                <p className="text-[10px] text-[#6c7c71]">
+                                  Save {formatCurrency(suggestion.savingsAmount)}{' '}
+                                  {suggestion.savingsPercentage !== null
+                                    ? `(${suggestion.savingsPercentage.toFixed(1)}%)`
+                                    : ''}
+                                </p>
+                              </div>
+                              <span className="text-[11px] font-semibold text-[#2f9f4f]">Switch</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : loadingSubFor === item.id ? (
+                        <p className="text-[11px] text-[#6c7c71]">Looking for alternatives…</p>
+                      ) : null}
                     </div>
                   </div>
                 ))}
