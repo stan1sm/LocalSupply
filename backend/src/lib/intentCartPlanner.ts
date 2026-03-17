@@ -37,7 +37,9 @@ Return a JSON object with:
 - "notes": short free-text notes about dietary preferences or constraints
 - "slots": array of ingredient slots, each with:
   - "role": e.g. "protein", "tortillas", "cheese", "salsa", "vegetables"
-  - "tags": array of short keywords useful for searching the grocery catalog
+  - "tags": array of short keywords useful for searching the grocery catalog.
+    IMPORTANT: always include both Norwegian and English grocery terms here, with Norwegian first.
+    Example: ["smør", "butter"], ["kjøttdeig", "ground beef"].
   - "required": boolean, true if the meal does not make sense without this slot
 
 Example (for taco night for 4 people):

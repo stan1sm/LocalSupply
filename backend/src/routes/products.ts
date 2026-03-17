@@ -414,7 +414,7 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
     }
 
     const baseProduct = priceRow.catalogProduct
-    const similar = await findSimilarProductsForProduct(baseProduct.id, { limit: 50 })
+    const similar = await findSimilarProductsForProduct(baseProduct.id, { limit: 100 })
 
     if (similar.length === 0) {
       res.status(200).json({ suggestions: [] })
@@ -426,7 +426,6 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
     const candidatePrices = await prisma.catalogProductPrice.findMany({
       where: {
         catalogProductId: { in: similarProductIds },
-        storeCode: priceRow.storeCode,
         currentPrice: { not: null },
       },
       include: {
@@ -440,16 +439,43 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
       return
     }
 
-    const enriched = candidatePrices
+    function tokenize(text: string | null | undefined): string[] {
+      if (!text) return []
+      return text
+        .toLowerCase()
+        .replace(/[^a-zæøå0-9\s]/gi, ' ')
+        .split(/\s+/)
+        .filter((token) => token.length >= 3 && !/^\d/.test(token))
+    }
+
+    const baseTokens = new Set(tokenize(baseProduct.name))
+    const baseCategory = baseProduct.category ?? null
+    const baseUnit = baseProduct.unit ?? null
+
+    function hasTokenOverlap(candidateName: string | null | undefined): boolean {
+      const tokens = tokenize(candidateName)
+      return tokens.some((t) => baseTokens.has(t))
+    }
+
+    function isSimilarUnit(candidateUnit: string | null | undefined): boolean {
+      if (!baseUnit || !candidateUnit) return true
+      return baseUnit.toLowerCase() === candidateUnit.toLowerCase()
+    }
+
+    const strictFiltered = candidatePrices
       .map((candidate) => {
         if (!candidate.currentPrice) return null
 
         const similarity = similar.find((entry) => entry.productId === candidate.catalogProductId)?.similarity ?? 0
-        const price = candidate.currentPrice
-        const priceDiff = price.minus(baseUnitPrice)
-        const isCheaperOrEqual = price.lte(baseUnitPrice)
+        if (similarity < 0.8) return null
 
+        const price = candidate.currentPrice
+        const isCheaperOrEqual = price.lte(baseUnitPrice)
         if (!isCheaperOrEqual) return null
+
+        if (candidate.catalogProduct.category !== baseCategory) return null
+        if (!isSimilarUnit(candidate.catalogProduct.unit)) return null
+        if (!hasTokenOverlap(candidate.catalogProduct.name)) return null
 
         const savingsAmount = baseUnitPrice.minus(price)
         const savingsPercentage = baseUnitPrice.gt(0) ? savingsAmount.div(baseUnitPrice).times(100) : null
@@ -478,12 +504,56 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
-    enriched.sort((a, b) => {
+    const looseFiltered =
+      strictFiltered.length > 0
+        ? strictFiltered
+        : candidatePrices
+            .map((candidate) => {
+              if (!candidate.currentPrice) return null
+
+              const similarity = similar.find((entry) => entry.productId === candidate.catalogProductId)?.similarity ?? 0
+              if (similarity < 0.75) return null
+
+              const price = candidate.currentPrice
+              const isCheaperOrEqual = price.lte(baseUnitPrice)
+              if (!isCheaperOrEqual) return null
+
+              if (candidate.catalogProduct.category !== baseCategory) return null
+              if (!hasTokenOverlap(candidate.catalogProduct.name)) return null
+
+              const savingsAmount = baseUnitPrice.minus(price)
+              const savingsPercentage = baseUnitPrice.gt(0) ? savingsAmount.div(baseUnitPrice).times(100) : null
+
+              let reason = 'Similar product with lower price'
+              if (candidate.catalogProduct.brand && candidate.catalogProduct.brand === baseProduct.brand) {
+                reason = 'Same brand, cheaper option'
+              } else if (candidate.catalogProduct.category && candidate.catalogProduct.category === baseProduct.category) {
+                reason = 'Same category, cheaper option'
+              }
+
+              return {
+                priceId: candidate.id,
+                name: candidate.catalogProduct.name,
+                brand: candidate.catalogProduct.brand,
+                imageUrl: candidate.catalogProduct.imageUrl,
+                unit: candidate.catalogProduct.unit,
+                storeCode: candidate.storeCode,
+                storeName: candidate.storeName,
+                price: Number(price),
+                savingsAmount: Number(savingsAmount),
+                savingsPercentage: savingsPercentage ? Number(savingsPercentage) : null,
+                similarity,
+                reason,
+              }
+            })
+            .filter((item): item is NonNullable<typeof item> => Boolean(item))
+
+    looseFiltered.sort((a, b) => {
       if (b.savingsAmount !== a.savingsAmount) return b.savingsAmount - a.savingsAmount
       return b.similarity - a.similarity
     })
 
-    const suggestions = enriched.slice(0, 5)
+    const suggestions = looseFiltered.slice(0, 5)
 
     res.status(200).json({ suggestions })
   } catch (error) {

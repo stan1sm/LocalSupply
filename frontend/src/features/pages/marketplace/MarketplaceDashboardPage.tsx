@@ -544,14 +544,40 @@ export default function MarketplaceDashboardPage() {
                               </a>
                             </div>
                           ) : (
-                            <button
-                              className="w-full rounded-2xl bg-[#2f9f4f] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#a0c6ab]"
-                              disabled={product.price === null}
-                              onClick={() => updateQuantity(product, quantity + 1 || 1)}
-                              type="button"
-                            >
-                              {quantity > 0 ? 'Add one more' : 'Add to Cart'}
-                            </button>
+                            <div className="pt-1">
+                              {quantity > 0 ? (
+                                <div className="flex h-9 w-full items-center justify-between rounded-2xl bg-[#2f9f4f] px-3 text-xs font-semibold text-white">
+                                  <button
+                                    className="grid h-7 w-7 place-items-center rounded-xl bg-white/10 text-xs font-semibold text-white hover:bg-white/20"
+                                    disabled={product.price === null}
+                                    onClick={() => updateQuantity(product, Math.max(quantity - 1, 0))}
+                                    type="button"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="min-w-[2rem] text-center">
+                                    {quantity}
+                                  </span>
+                                  <button
+                                    className="grid h-7 w-7 place-items-center rounded-xl bg-white/10 text-xs font-semibold text-white hover:bg-white/20"
+                                    disabled={product.price === null}
+                                    onClick={() => updateQuantity(product, quantity + 1)}
+                                    type="button"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  className="h-9 w-full rounded-2xl bg-[#2f9f4f] px-3 text-xs font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#a0c6ab]"
+                                  disabled={product.price === null}
+                                  onClick={() => updateQuantity(product, 1)}
+                                  type="button"
+                                >
+                                  Add to Cart
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       </article>
