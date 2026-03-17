@@ -225,39 +225,77 @@ cartRouter.post('/intent', async (req, res) => {
     }[] = []
 
     for (const slot of slots) {
-      const searchTerm = slot.tags.join(' ')
+      const tags = Array.isArray(slot.tags)
+        ? slot.tags
+            .map((tag) => String(tag ?? '').trim())
+            .filter((tag) => tag.length >= 2)
+        : []
 
-      const rows = await prisma.catalogProductPrice.findMany({
-        where: {
-          currentPrice: { not: null },
-          catalogProduct: {
-            OR: [
-              { name: { contains: searchTerm, mode: 'insensitive' } },
-              { brand: { contains: searchTerm, mode: 'insensitive' } },
-              { category: { contains: searchTerm, mode: 'insensitive' } },
-            ],
-          },
-        },
-        include: { catalogProduct: true },
-        orderBy: [{ currentPrice: 'asc' }],
-        take: 10,
-      })
+      if (tags.length === 0) {
+        continue
+      }
 
-      const [best] = rows
-      if (!best) continue
-      const unitPrice = Number(best.currentPrice)
-      if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue
+      let bestMatch:
+        | {
+            catalogProductId: string
+            name: string
+            storeCode: string
+            storeName: string
+            unitPrice: number
+          }
+        | null = null
+
+      for (const tag of tags) {
+        try {
+          const rows = await prisma.catalogProductPrice.findMany({
+            where: {
+              currentPrice: { not: null },
+              catalogProduct: {
+                OR: [
+                  { name: { contains: tag, mode: 'insensitive' } },
+                  { brand: { contains: tag, mode: 'insensitive' } },
+                  { category: { contains: tag, mode: 'insensitive' } },
+                ],
+              },
+            },
+            include: { catalogProduct: true },
+            orderBy: [{ currentPrice: 'asc' }],
+            take: 5,
+          })
+
+          for (const row of rows) {
+            const unitPrice = Number(row.currentPrice)
+            if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue
+
+            if (!bestMatch || unitPrice < bestMatch.unitPrice) {
+              bestMatch = {
+                catalogProductId: row.catalogProductId,
+                name: row.catalogProduct.name,
+                storeCode: row.storeCode,
+                storeName: row.storeName,
+                unitPrice,
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Intent cart search failed for tag "${tag}"`, error)
+        }
+      }
+
+      if (!bestMatch) {
+        continue
+      }
 
       const baseQuantity = slot.required ? 1 : 0.5
       const quantityMultiplier = people ?? mealPlan.people
       const quantity = Math.max(1, Math.round(baseQuantity * quantityMultiplier * 0.5))
 
       ingredients.push({
-        catalogProductId: best.catalogProductId,
-        name: best.catalogProduct.name,
-        storeCode: best.storeCode,
-        storeName: best.storeName,
-        unitPrice,
+        catalogProductId: bestMatch.catalogProductId,
+        name: bestMatch.name,
+        storeCode: bestMatch.storeCode,
+        storeName: bestMatch.storeName,
+        unitPrice: bestMatch.unitPrice,
         quantity,
       })
     }
