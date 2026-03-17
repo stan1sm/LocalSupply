@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { syncCatalog } from '../lib/catalogSync.js'
 import { getPrismaClient } from '../lib/prisma.js'
+import { findSimilarProductsForProduct } from '../lib/embeddings.js'
 
 const productsRouter = Router()
 const KASSAL_DEFAULT_PAGE_SIZE = 50
@@ -386,6 +387,108 @@ productsRouter.get('/stores', async (_req, res) => {
   } catch (error) {
     console.error('Failed to load stores', error)
     res.status(503).json({ message: 'Unable to load stores right now.' })
+  }
+})
+
+productsRouter.get('/:productId/substitutions', async (req, res) => {
+  const productId = typeof req.params.productId === 'string' ? req.params.productId.trim() : ''
+
+  if (!productId) {
+    res.status(400).json({ message: 'Product ID is required.' })
+    return
+  }
+
+  try {
+    const prisma = getPrismaClient()
+
+    const priceRow = await prisma.catalogProductPrice.findUnique({
+      where: { id: productId },
+      include: {
+        catalogProduct: true,
+      },
+    })
+
+    if (!priceRow) {
+      res.status(404).json({ message: 'Product not found.' })
+      return
+    }
+
+    const baseProduct = priceRow.catalogProduct
+    const similar = await findSimilarProductsForProduct(baseProduct.id, { limit: 50 })
+
+    if (similar.length === 0) {
+      res.status(200).json({ suggestions: [] })
+      return
+    }
+
+    const similarProductIds = similar.map((entry) => entry.productId)
+
+    const candidatePrices = await prisma.catalogProductPrice.findMany({
+      where: {
+        catalogProductId: { in: similarProductIds },
+        storeCode: priceRow.storeCode,
+        currentPrice: { not: null },
+      },
+      include: {
+        catalogProduct: true,
+      },
+    })
+
+    const baseUnitPrice = priceRow.currentPrice
+    if (!baseUnitPrice) {
+      res.status(200).json({ suggestions: [] })
+      return
+    }
+
+    const enriched = candidatePrices
+      .map((candidate) => {
+        if (!candidate.currentPrice) return null
+
+        const similarity = similar.find((entry) => entry.productId === candidate.catalogProductId)?.similarity ?? 0
+        const price = candidate.currentPrice
+        const priceDiff = price.minus(baseUnitPrice)
+        const isCheaperOrEqual = price.lte(baseUnitPrice)
+
+        if (!isCheaperOrEqual) return null
+
+        const savingsAmount = baseUnitPrice.minus(price)
+        const savingsPercentage = baseUnitPrice.gt(0) ? savingsAmount.div(baseUnitPrice).times(100) : null
+
+        let reason = 'Similar product with lower price'
+        if (candidate.catalogProduct.brand && candidate.catalogProduct.brand === baseProduct.brand) {
+          reason = 'Same brand, cheaper option'
+        } else if (candidate.catalogProduct.category && candidate.catalogProduct.category === baseProduct.category) {
+          reason = 'Same category, cheaper option'
+        }
+
+        return {
+          priceId: candidate.id,
+          name: candidate.catalogProduct.name,
+          brand: candidate.catalogProduct.brand,
+          imageUrl: candidate.catalogProduct.imageUrl,
+          unit: candidate.catalogProduct.unit,
+          storeCode: candidate.storeCode,
+          storeName: candidate.storeName,
+          price: Number(price),
+          savingsAmount: Number(savingsAmount),
+          savingsPercentage: savingsPercentage ? Number(savingsPercentage) : null,
+          similarity,
+          reason,
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+
+    enriched.sort((a, b) => {
+      if (b.savingsAmount !== a.savingsAmount) return b.savingsAmount - a.savingsAmount
+      return b.similarity - a.similarity
+    })
+
+    const suggestions = enriched.slice(0, 5)
+
+    res.status(200).json({ suggestions })
+  } catch (error) {
+    console.error('Product substitutions failed', error)
+    res.status(503).json({ message: 'Unable to load substitutions right now.' })
   }
 })
 
