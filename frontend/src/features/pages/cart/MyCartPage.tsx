@@ -104,7 +104,6 @@ export default function MyCartPage() {
   const [substitutions, setSubstitutions] = useState<Record<string, SubstitutionSuggestion[]>>({})
   const [loadingSubFor, setLoadingSubFor] = useState<string | null>(null)
   const [intentText, setIntentText] = useState('')
-  const [intentPeople, setIntentPeople] = useState(4)
   const [isPlanningIntent, setIsPlanningIntent] = useState(false)
   const [intentExplanation, setIntentExplanation] = useState<string[] | null>(null)
 
@@ -161,7 +160,11 @@ export default function MyCartPage() {
   function updateQuantity(itemId: string, delta: number) {
     setCartItems((current) =>
       current
-        .map((item) => (item.id === itemId ? { ...item, quantity: item.quantity + delta } : item))
+        .map((item) =>
+          item.id === itemId
+            ? { ...item, quantity: Math.max(item.quantity + delta, 0) }
+            : item,
+        )
         .filter((item) => item.quantity > 0),
     )
   }
@@ -181,6 +184,11 @@ export default function MyCartPage() {
           : item,
       ),
     )
+    setSubstitutions((current) => {
+      const next = { ...current }
+      delete next[oldPriceId]
+      return next
+    })
   }
 
   async function loadSubstitutions(priceId: string) {
@@ -217,7 +225,6 @@ export default function MyCartPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text,
-          people: intentPeople,
         }),
       })
       const payload = (await response.json()) as IntentCartResponse
@@ -372,25 +379,20 @@ export default function MyCartPage() {
               <p className="mt-1 text-sm text-[#314136]">
                 Describe what you want (e.g. “taco night for 4”) and we{"'"}ll build a cheap cart for you.
               </p>
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                <input
-                  className="flex-1 rounded-xl border border-[#cfd9cb] bg-white px-3 py-2 text-sm text-[#111827] placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:outline-none focus:ring-2 focus:ring-[#2f9f4f]/40"
-                  onChange={(event) => setIntentText(event.target.value)}
-                  placeholder="I want taco night for 4 people"
-                  type="text"
-                  value={intentText}
-                />
-                <input
-                  className="w-20 rounded-xl border border-[#cfd9cb] bg-white px-3 py-2 text-sm text-[#111827] placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:outline-none focus:ring-2 focus:ring-[#2f9f4f]/40"
-                  min={1}
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
+                <textarea
+                  className="flex-1 resize-none overflow-hidden rounded-xl border border-[#cfd9cb] bg-white px-3 py-2 text-sm text-[#111827] placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:outline-none focus:ring-2 focus:ring-[#2f9f4f]/40"
                   onChange={(event) => {
-                    const n = Number(event.target.value)
-                    if (Number.isFinite(n) && n > 0) {
-                      setIntentPeople(n)
-                    }
+                    setIntentText(event.target.value)
                   }}
-                  type="number"
-                  value={intentPeople}
+                  onInput={(event) => {
+                    const target = event.currentTarget
+                    target.style.height = '0px'
+                    target.style.height = `${target.scrollHeight}px`
+                  }}
+                  placeholder="I want taco night for 4 people"
+                  rows={1}
+                  value={intentText}
                 />
                 <button
                   className="mt-2 inline-flex items-center justify-center rounded-2xl bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25813f] sm:mt-0"
