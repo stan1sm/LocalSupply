@@ -130,6 +130,13 @@ export default function CheckoutPage() {
     setIsReady(true)
   }, [])
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (isReady && !buyer) {
+      window.location.href = '/login?redirect=/checkout'
+    }
+  }, [isReady, buyer])
+
   // Run store match
   useEffect(() => {
     if (!isReady || cartItems.length === 0) return
@@ -272,22 +279,6 @@ export default function CheckoutPage() {
   }
 
   if (!isReady) return null
-
-  if (!buyer) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f3f6f1] px-4">
-        <div className="w-full max-w-md rounded-3xl border border-[#dfe5da] bg-white p-6 text-center shadow-[0_20px_50px_rgba(17,24,39,0.08)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#2f9f4f]">Checkout</p>
-          <h1 className="mt-2 text-xl font-bold text-[#1b2a1f]">Sign in to place an order</h1>
-          <p className="mt-2 text-sm text-[#5b665f]">You need to be logged in to complete your purchase.</p>
-          <div className="mt-4 flex flex-col gap-2 text-sm">
-            <a className="rounded-2xl bg-[#2f9f4f] px-4 py-2.5 font-semibold text-white transition hover:bg-[#25813f]" href="/login">Go to Login</a>
-            <a className="rounded-2xl border border-[#d4ddcf] bg-white px-4 py-2.5 font-semibold text-[#314237] transition hover:border-[#9db5a4]" href="/cart">Back to Cart</a>
-          </div>
-        </div>
-      </main>
-    )
-  }
 
   if (cartItems.length === 0) {
     return (
@@ -464,8 +455,8 @@ export default function CheckoutPage() {
           <div className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
             <div className="border-b border-[#e5ece2] px-5 py-4">
               <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Step 2 — Delivery</p>
-              <p className="mt-1 text-base font-bold text-[#1f2b22]">{buyer.firstName} {buyer.lastName}</p>
-              <p className="text-xs text-[#6d7b70]">{buyer.email}</p>
+              <p className="mt-1 text-base font-bold text-[#1f2b22]">{buyer?.firstName} {buyer?.lastName}</p>
+              <p className="text-xs text-[#6d7b70]">{buyer?.email}</p>
             </div>
 
             <div className="space-y-4 px-5 py-4">
