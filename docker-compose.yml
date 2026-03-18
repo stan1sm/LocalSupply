@@ -11,31 +11,29 @@ services:
       - "5433:5432" # host:container
     volumes:
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U localsupply -d localsupply"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env.docker
     environment:
       DATABASE_URL: "postgresql://localsupply:localsupply@db:5432/localsupply"
-      PORT: "3001"
-      FRONTEND_BASE_URL: "http://localhost:3000"
-      BACKEND_BASE_URL: "http://localhost:3001"
-      EMAIL_VERIFICATION_ALLOW_FALLBACK: "true"
-      # set these as needed:
-      SMTP_HOST: "smtp.example.com"
-      SMTP_PORT: "587"
-      SMTP_SECURE: "false"
-      SMTP_USER: "mailer@example.com"
-      SMTP_PASS: "password"
-      SMTP_FROM: "LocalSupply <mailer@example.com>"
-      KASSAL_API_KEY: "your-kassal-key"
-      KASSALAPP_API_KEY: "your-kassal-key"
-      KASSAL_API_BASE_URL: "https://kassal.app/api/v1"
+    command: sh -c "npx prisma migrate deploy && npm run start"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     ports:
       - "3001:3001"
+    volumes:
+      - backend_uploads:/app/uploads
 
 volumes:
   db_data:
+  backend_uploads:
