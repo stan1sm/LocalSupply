@@ -109,8 +109,11 @@ export default function MyCartPage() {
   const [intentExplanation, setIntentExplanation] = useState<string[] | null>(null)
   const [intentProgressStep, setIntentProgressStep] = useState(0)
 
-  const buyerIdForAi = getBuyerIdFromStorage()
-  const isAiLoggedIn = Boolean(buyerIdForAi)
+  const [isAiLoggedIn, setIsAiLoggedIn] = useState(false)
+
+  useEffect(() => {
+    setIsAiLoggedIn(Boolean(getBuyerIdFromStorage()))
+  }, [])
 
   useEffect(() => {
     try {
