@@ -486,8 +486,8 @@ export default function MarketplaceDashboardPage() {
                     const quantity = getProductQuantity(product.id)
 
                     return (
-                      <article className="group overflow-hidden rounded-3xl border border-[#e5ece2] bg-white shadow-[0_12px_24px_rgba(18,38,24,0.06)]" key={product.id}>
-                        <div className="relative h-40 overflow-hidden bg-white">
+                      <article className="group flex flex-col overflow-hidden rounded-3xl border border-[#e5ece2] bg-white shadow-[0_12px_24px_rgba(18,38,24,0.06)]" key={product.id}>
+                        <div className="relative h-40 shrink-0 overflow-hidden bg-white">
                           {product.imageUrl ? (
                             <img
                               alt={product.name}
@@ -510,7 +510,7 @@ export default function MarketplaceDashboardPage() {
                             </svg>
                           </div>
                         </div>
-                        <div className="space-y-2 p-3">
+                        <div className="flex flex-1 flex-col p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[#1f2b22]">{product.name}</h3>
@@ -522,63 +522,59 @@ export default function MarketplaceDashboardPage() {
                               </span>
                             ) : null}
                           </div>
-                          <div>
+                          <div className="mt-2">
                             <p className="text-lg font-extrabold text-[#2f9f4f]">{product.priceText ?? 'Price unavailable'}</p>
                             <p className="truncate text-[11px] text-[#7b8b80]">
                               {product.unitInfo ?? product.category ?? (product.source === 'supplier' ? 'From local supplier' : 'Updated from store catalog')}
                             </p>
                           </div>
-                          {product.source === 'supplier' && product.supplierId ? (
-                            <div className="flex gap-2">
-                              <a
-                                className="flex-1 items-center justify-center rounded-2xl border-2 border-[#2f9f4f] bg-white px-3 py-2 text-center text-xs font-semibold text-[#2f9f4f] transition hover:bg-[#eaf7ee]"
-                                href={`/suppliers/${product.supplierId}`}
-                              >
-                                View supplier
-                              </a>
-                              <a
-                                className="flex-1 items-center justify-center rounded-2xl bg-[#2f9f4f] px-3 py-2 text-center text-xs font-semibold text-white transition hover:bg-[#25813f]"
-                                href={`/suppliers/${product.supplierId}?buy=${encodeURIComponent(product.id)}`}
-                              >
-                                Buy item
-                              </a>
-                            </div>
-                          ) : (
-                            <div className="pt-1">
-                              {quantity > 0 ? (
-                                <div className="flex h-9 w-full items-center justify-between rounded-2xl bg-[#2f9f4f] px-3 text-xs font-semibold text-white">
-                                  <button
-                                    className="grid h-7 w-7 place-items-center rounded-xl bg-white/10 text-xs font-semibold text-white hover:bg-white/20"
-                                    disabled={product.price === null}
-                                    onClick={() => updateQuantity(product, Math.max(quantity - 1, 0))}
-                                    type="button"
-                                  >
-                                    -
-                                  </button>
-                                  <span className="min-w-[2rem] text-center">
-                                    {quantity}
-                                  </span>
-                                  <button
-                                    className="grid h-7 w-7 place-items-center rounded-xl bg-white/10 text-xs font-semibold text-white hover:bg-white/20"
-                                    disabled={product.price === null}
-                                    onClick={() => updateQuantity(product, quantity + 1)}
-                                    type="button"
-                                  >
-                                    +
-                                  </button>
-                                </div>
-                              ) : (
+                          <div className="mt-auto pt-3">
+                            {product.source === 'supplier' && product.supplierId ? (
+                              <div className="flex gap-2">
+                                <a
+                                  className="flex-1 items-center justify-center rounded-2xl border-2 border-[#2f9f4f] bg-white px-3 py-2 text-center text-xs font-semibold text-[#2f9f4f] transition hover:bg-[#eaf7ee]"
+                                  href={`/suppliers/${product.supplierId}`}
+                                >
+                                  View supplier
+                                </a>
+                                <a
+                                  className="flex-1 items-center justify-center rounded-2xl bg-[#2f9f4f] px-3 py-2 text-center text-xs font-semibold text-white transition hover:bg-[#25813f]"
+                                  href={`/suppliers/${product.supplierId}?buy=${encodeURIComponent(product.id)}`}
+                                >
+                                  Buy item
+                                </a>
+                              </div>
+                            ) : quantity > 0 ? (
+                              <div className="flex h-9 w-full items-center justify-between rounded-2xl bg-[#2f9f4f] px-3 text-xs font-semibold text-white">
                                 <button
-                                  className="h-9 w-full rounded-2xl bg-[#2f9f4f] px-3 text-xs font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#a0c6ab]"
+                                  className="grid h-7 w-7 place-items-center rounded-xl bg-white/10 text-xs font-semibold text-white hover:bg-white/20"
                                   disabled={product.price === null}
-                                  onClick={() => updateQuantity(product, 1)}
+                                  onClick={() => updateQuantity(product, Math.max(quantity - 1, 0))}
                                   type="button"
                                 >
-                                  Add to Cart
+                                  -
                                 </button>
-                              )}
-                            </div>
-                          )}
+                                <span className="min-w-[2rem] text-center">{quantity}</span>
+                                <button
+                                  className="grid h-7 w-7 place-items-center rounded-xl bg-white/10 text-xs font-semibold text-white hover:bg-white/20"
+                                  disabled={product.price === null}
+                                  onClick={() => updateQuantity(product, quantity + 1)}
+                                  type="button"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                className="h-9 w-full rounded-2xl bg-[#2f9f4f] px-3 text-xs font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#a0c6ab]"
+                                disabled={product.price === null}
+                                onClick={() => updateQuantity(product, 1)}
+                                type="button"
+                              >
+                                Add to Cart
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </article>
                     )
