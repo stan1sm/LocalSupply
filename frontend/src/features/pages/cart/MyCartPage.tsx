@@ -102,8 +102,6 @@ export default function MyCartPage() {
   const [matchResult, setMatchResult] = useState<MatchResponse | null>(null)
   const [isMatching, setIsMatching] = useState(false)
   const [selectedStoreCode, setSelectedStoreCode] = useState<string | null>(null)
-  const [isPlacingOrder, setIsPlacingOrder] = useState(false)
-  const [orderError, setOrderError] = useState('')
   const [substitutions, setSubstitutions] = useState<Record<string, SubstitutionSuggestion[]>>({})
   const [loadingSubFor, setLoadingSubFor] = useState<Record<string, boolean>>({})
   const [intentText, setIntentText] = useState('')
@@ -320,64 +318,6 @@ export default function MyCartPage() {
   const stores = matchResult?.stores ?? []
   const savings = matchResult?.savings ?? 0
   const selectedStore = stores.find((s) => s.storeCode === selectedStoreCode) ?? bestMatch
-
-  async function handlePlaceOrder() {
-    if (!selectedStore || cartItems.length === 0 || isPlacingOrder) return
-
-    setOrderError('')
-
-    let buyerId: string | null = null
-    try {
-      const storedBuyer = typeof window !== 'undefined' ? window.localStorage.getItem(BUYER_STORAGE_KEY) : null
-      if (storedBuyer) {
-        const parsed = JSON.parse(storedBuyer) as { id?: string }
-        if (parsed && typeof parsed.id === 'string') {
-          buyerId = parsed.id
-        }
-      }
-    } catch {
-      buyerId = null
-    }
-
-    if (!buyerId) {
-      window.location.href = '/login'
-      return
-    }
-
-    setIsPlacingOrder(true)
-    try {
-      const response = await fetch(buildApiUrl('/api/orders'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          buyerId,
-          deliveryFee: selectedStore.deliveryCost,
-          items: selectedStore.items.map((item) => ({
-            name: item.name,
-            unit: 'unit',
-            unitPrice: item.unitPrice,
-            quantity: item.quantity,
-          })),
-          notes: `Marketplace order at ${selectedStore.storeName}`,
-        }),
-      })
-
-      const payload = (await response.json().catch(() => ({}))) as { message?: string; id?: string }
-
-      if (!response.ok) {
-        const message = payload.message ?? 'Unable to place order right now.'
-        setOrderError(message)
-        return
-      }
-
-      clearCart()
-      window.location.href = '/orders'
-    } catch {
-      setOrderError('Unable to place order right now.')
-    } finally {
-      setIsPlacingOrder(false)
-    }
-  }
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
@@ -634,14 +574,14 @@ export default function MyCartPage() {
                     <h2 className="mt-1 text-xl font-bold text-[#1f2b22]">{bestMatch.storeName}</h2>
                     <p className="mt-1 text-sm text-[#617166]">Your smartest grocery choice for maximum savings.</p>
                   </div>
-                  <button
-                    className="shrink-0 rounded-2xl bg-[#2f9f4f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25813f]"
-                    onClick={handlePlaceOrder}
-                    type="button"
-                    disabled={isPlacingOrder || !selectedStore}
+                  <a
+                    className={`shrink-0 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white transition ${
+                      !selectedStore ? 'pointer-events-none bg-[#9ac7a6]' : 'bg-[#2f9f4f] hover:bg-[#25813f]'
+                    }`}
+                    href={selectedStore ? `/checkout?store=${encodeURIComponent(selectedStore.storeCode)}` : '#'}
                   >
-                    {isPlacingOrder ? 'Placing order…' : 'Place order'}
-                  </button>
+                    Go to checkout →
+                  </a>
                 </div>
                 <div className="mt-4 flex items-end gap-4">
                   <p className="text-3xl font-extrabold text-[#1f2b22]">{formatCurrency(bestMatch.total)}</p>
@@ -691,11 +631,6 @@ export default function MyCartPage() {
                 </div>
               </div>
 
-              {orderError ? (
-                <div className="rounded-[20px] border border-[#f0d4d4] bg-[#fff5f5] px-4 py-3 text-xs text-[#9b2c2c]">
-                  {orderError}
-                </div>
-              ) : null}
 
               {selectedStore ? (
                 <div className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">

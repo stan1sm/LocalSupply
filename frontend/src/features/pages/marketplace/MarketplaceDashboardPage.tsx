@@ -320,7 +320,7 @@ export default function MarketplaceDashboardPage() {
 
   function handleProceedToCheckout() {
     if (cartItems.length === 0) return
-    window.location.href = '/cart'
+    window.location.href = '/checkout'
   }
 
   return (
