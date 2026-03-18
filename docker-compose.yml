@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
@@ -25,7 +23,7 @@ services:
       - ./backend/.env.docker
     environment:
       DATABASE_URL: "postgresql://localsupply:localsupply@db:5432/localsupply"
-    command: sh -c "npx prisma migrate deploy && npm run start"
+    command: sh -c "npx prisma migrate deploy && npx tsx src/index.ts"
     depends_on:
       db:
         condition: service_healthy
