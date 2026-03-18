@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { getPrismaClient } from '../lib/prisma.js'
 import { planMealFromText } from '../lib/intentCartPlanner.js'
+import { getEmbedding } from '../lib/aiClient.js'
 
 const cartRouter = Router()
 
@@ -29,6 +30,27 @@ const defaultDeliveryEstimate: StoreDeliveryEstimate = {
   etaLabel: '1-2 hours',
 }
 
+const DEFAULT_EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) return 0
+
+  let dot = 0
+  let normA = 0
+  let normB = 0
+
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i] ?? 0
+    const y = b[i] ?? 0
+    dot += x * y
+    normA += x * x
+    normB += y * y
+  }
+
+  if (normA === 0 || normB === 0) return 0
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB))
+}
+
 function getDeliveryEstimate(storeCode: string): StoreDeliveryEstimate {
   return storeDeliveryEstimates[storeCode] ?? defaultDeliveryEstimate
 }
@@ -54,6 +76,13 @@ function asNumber(value: unknown): number | null {
     }
   }
   return null
+}
+
+function formatUnitInfo(currentUnitPrice: number | null, currentUnitPriceUnit: string | null, fallbackUnit: string | null) {
+  if (currentUnitPrice !== null && currentUnitPriceUnit) {
+    return `${currentUnitPrice.toFixed(2)} kr/${currentUnitPriceUnit}`
+  }
+  return fallbackUnit
 }
 
 cartRouter.post('/match', async (req, res) => {
@@ -215,6 +244,50 @@ cartRouter.post('/intent', async (req, res) => {
       return
     }
 
+    const lowerMealType = String(mealPlan.mealType ?? '').toLowerCase()
+    const lowerText = text.toLowerCase()
+    const isTacoRequest =
+      lowerMealType.includes('taco') ||
+      lowerText.includes('taco') ||
+      slots.some((slot) => slot.tags.some((t) => t.toLowerCase().includes('taco')))
+
+    // For taco meals, make protein matching far more reliable by always extending tags with meat keywords.
+    const fallbackProteinTags = [
+      'kjøttdeig',
+      'karbonadedeig',
+      'biff',
+      'storfe',
+      'ground beef',
+      'minced meat',
+      'mince',
+      'beef mince',
+    ]
+
+    const isVegetarianRequest =
+      lowerText.includes('vegetar') ||
+      lowerText.includes('vegan') ||
+      lowerText.includes('vegetarisk') ||
+      lowerText.includes('vegansk') ||
+      lowerText.includes('tofu')
+
+    // Extra tokens to find meat even when the catalog uses slightly different naming.
+    const proteinSearchTokens = Array.from(
+      new Set([
+        ...fallbackProteinTags,
+        'kjottdeig',
+        'kjøtt',
+        'kjott',
+        'deig',
+        'ground meat',
+        'minced',
+        'mince',
+        'beef',
+        'storfe',
+      ]),
+    )
+
+    const forceProteinForTaco = isTacoRequest && !isVegetarianRequest
+
     const stores = await prisma.catalogProductPrice.findMany({
       select: { storeCode: true, storeName: true },
       distinct: ['storeCode'],
@@ -229,6 +302,7 @@ cartRouter.post('/intent', async (req, res) => {
         catalogProductId: string
         name: string
         unitPrice: number
+        unitInfo: string | null
         quantity: number
         lineTotal: number
       }[]
@@ -253,11 +327,13 @@ cartRouter.post('/intent', async (req, res) => {
         catalogProductId: string
         name: string
         unitPrice: number
+        unitInfo: string | null
         quantity: number
         lineTotal: number
       }[] = []
       let subtotal = 0
       let requiredFulfilled = 0
+      let pickedProteinLike = false
 
       for (const slot of slots) {
         const tags = Array.isArray(slot.tags)
@@ -268,15 +344,167 @@ cartRouter.post('/intent', async (req, res) => {
 
         if (tags.length === 0) continue
 
+        let effectiveTags = tags
+        const slotRoleLower = String(slot.role ?? '').toLowerCase()
+        const slotLooksProtein =
+          slotRoleLower.includes('protein') ||
+          slotRoleLower.includes('meat') ||
+          slotRoleLower.includes('kjøtt') ||
+          tags.some((t) => fallbackProteinTags.some((k) => t.toLowerCase().includes(k)))
+
+        if (isTacoRequest && slotLooksProtein) {
+          effectiveTags = Array.from(new Set([...tags, ...fallbackProteinTags]))
+        }
+
         let bestMatch: {
           priceId: string
           imageUrl: string | null
           catalogProductId: string
           name: string
           unitPrice: number
+          unitInfo: string | null
         } | null = null
 
-        for (const tag of tags) {
+        const orClauses = effectiveTags.flatMap((tag) => [
+          { name: { contains: tag, mode: 'insensitive' as const } },
+          { brand: { contains: tag, mode: 'insensitive' as const } },
+          { category: { contains: tag, mode: 'insensitive' as const } },
+        ])
+
+        const candidates = await prisma.catalogProductPrice.findMany({
+          where: {
+            storeCode,
+            currentPrice: { not: null },
+            catalogProduct: {
+              OR: orClauses,
+            },
+          },
+          include: { catalogProduct: true },
+          orderBy: [{ currentPrice: 'asc' }],
+          take: 40,
+        })
+
+        if (candidates.length > 0) {
+          let slotEmbedding: number[] | null = null
+          try {
+            const slotQueryText = `${slot.role} | ${effectiveTags.join(' ')}`
+            slotEmbedding = await getEmbedding(slotQueryText)
+          } catch {
+            slotEmbedding = null
+          }
+
+          const candidateProductIds = [...new Set(candidates.map((c) => c.catalogProductId))]
+          const embeddingRows =
+            slotEmbedding && candidateProductIds.length > 0
+              ? await (prisma as any).productEmbedding.findMany({
+                  where: {
+                    modelName: DEFAULT_EMBEDDING_MODEL,
+                    productId: { in: candidateProductIds },
+                  },
+                  select: { productId: true, vectorJson: true },
+                })
+              : []
+
+          const embeddingByProductId = new Map<string, number[]>()
+          if (slotEmbedding && Array.isArray(embeddingRows)) {
+            for (const row of embeddingRows) {
+              const vec = row.vectorJson as unknown as number[]
+              if (Array.isArray(vec) && vec.length > 0) embeddingByProductId.set(row.productId, vec)
+            }
+          }
+
+          // Default to cheapest candidate (since we sort by price asc).
+          for (const row of candidates) {
+            const unitPrice = asNumber(row.currentPrice)
+            if (unitPrice === null || unitPrice <= 0) continue
+            bestMatch = {
+              priceId: row.id,
+              imageUrl: row.catalogProduct.imageUrl,
+              catalogProductId: row.catalogProductId,
+              name: row.catalogProduct.name,
+              unitPrice,
+              unitInfo: formatUnitInfo(
+                asNumber(row.currentUnitPrice),
+                row.currentUnitPriceUnit ?? null,
+                row.catalogProduct.unit ?? null,
+              ),
+            }
+            break
+          }
+
+          if (slotEmbedding) {
+            let bestSimilarity = -Infinity
+            const similarityThreshold = 0.12
+
+            for (const row of candidates) {
+              const unitPrice = asNumber(row.currentPrice)
+              if (unitPrice === null || unitPrice <= 0) continue
+
+              const vec = embeddingByProductId.get(row.catalogProductId)
+              if (!vec) continue
+
+              const similarity = cosineSimilarity(slotEmbedding, vec)
+              if (similarity < similarityThreshold) continue
+
+              if (
+                similarity > bestSimilarity ||
+                (similarity === bestSimilarity && bestMatch && unitPrice < bestMatch.unitPrice)
+              ) {
+                bestSimilarity = similarity
+                bestMatch = {
+                  priceId: row.id,
+                  imageUrl: row.catalogProduct.imageUrl,
+                  catalogProductId: row.catalogProductId,
+                  name: row.catalogProduct.name,
+                  unitPrice,
+                  unitInfo: formatUnitInfo(
+                    asNumber(row.currentUnitPrice),
+                    row.currentUnitPriceUnit ?? null,
+                    row.catalogProduct.unit ?? null,
+                  ),
+                }
+              }
+            }
+          }
+        }
+
+        if (!bestMatch) continue
+
+        if (forceProteinForTaco && slotLooksProtein) {
+          pickedProteinLike = true
+        }
+
+        const baseQuantity = slot.required ? 1 : 0.5
+        const quantity = Math.max(1, Math.round(baseQuantity * quantityMultiplier * 0.5))
+        const lineTotal = bestMatch.unitPrice * quantity
+
+        items.push({
+          priceId: bestMatch.priceId,
+          imageUrl: bestMatch.imageUrl ?? null,
+          catalogProductId: bestMatch.catalogProductId,
+          name: bestMatch.name,
+          unitPrice: bestMatch.unitPrice,
+          unitInfo: bestMatch.unitInfo,
+          quantity,
+          lineTotal,
+        })
+        subtotal += lineTotal
+        if (slot.required) requiredFulfilled += 1
+      }
+
+      // If the planner failed to match any protein item for a taco-like request,
+      // force-pick the cheapest meat/mince option from the store so the cart is complete.
+      if (forceProteinForTaco && !pickedProteinLike) {
+        let forcedBest: {
+          priceId: string
+          imageUrl: string | null
+          catalogProductId: string
+          name: string
+          unitPrice: number
+          unitInfo: string | null
+        } | null = null
+
+        for (const token of proteinSearchTokens) {
           try {
             const rows = await prisma.catalogProductPrice.findMany({
               where: {
@@ -284,9 +512,9 @@ cartRouter.post('/intent', async (req, res) => {
                 currentPrice: { not: null },
                 catalogProduct: {
                   OR: [
-                    { name: { contains: tag, mode: 'insensitive' } },
-                    { brand: { contains: tag, mode: 'insensitive' } },
-                    { category: { contains: tag, mode: 'insensitive' } },
+                    { name: { contains: token, mode: 'insensitive' } },
+                    { brand: { contains: token, mode: 'insensitive' } },
+                    { category: { contains: token, mode: 'insensitive' } },
                   ],
                 },
               },
@@ -299,38 +527,41 @@ cartRouter.post('/intent', async (req, res) => {
               const unitPrice = Number(row.currentPrice)
               if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue
 
-              if (!bestMatch || unitPrice < bestMatch.unitPrice) {
-                bestMatch = {
+              if (!forcedBest || unitPrice < forcedBest.unitPrice) {
+                forcedBest = {
                   priceId: row.id,
                   imageUrl: row.catalogProduct.imageUrl,
                   catalogProductId: row.catalogProductId,
                   name: row.catalogProduct.name,
                   unitPrice,
+                  unitInfo: formatUnitInfo(
+                    asNumber(row.currentUnitPrice),
+                    row.currentUnitPriceUnit ?? null,
+                    row.catalogProduct.unit ?? null,
+                  ),
                 }
               }
             }
           } catch (error) {
-            console.error(`Intent cart search failed for tag "${tag}"`, error)
+            console.error(`Forced protein search failed for token "${token}"`, error)
           }
         }
 
-        if (!bestMatch) continue
-
-        const baseQuantity = slot.required ? 1 : 0.5
-        const quantity = Math.max(1, Math.round(baseQuantity * quantityMultiplier * 0.5))
-        const lineTotal = bestMatch.unitPrice * quantity
-
-        items.push({
-          priceId: bestMatch.priceId,
-          imageUrl: bestMatch.imageUrl ?? null,
-          catalogProductId: bestMatch.catalogProductId,
-          name: bestMatch.name,
-          unitPrice: bestMatch.unitPrice,
-          quantity,
-          lineTotal,
-        })
-        subtotal += lineTotal
-        if (slot.required) requiredFulfilled += 1
+        if (forcedBest) {
+          const quantity = Math.max(1, Math.round(1 * quantityMultiplier * 0.5))
+          const lineTotal = forcedBest.unitPrice * quantity
+          items.push({
+            priceId: forcedBest.priceId,
+            imageUrl: forcedBest.imageUrl ?? null,
+            catalogProductId: forcedBest.catalogProductId,
+            name: forcedBest.name,
+            unitPrice: forcedBest.unitPrice,
+            unitInfo: forcedBest.unitInfo,
+            quantity,
+            lineTotal,
+          })
+          subtotal += lineTotal
+        }
       }
 
       const total = Math.round((subtotal + delivery.deliveryCost) * 100) / 100
@@ -389,6 +620,7 @@ cartRouter.post('/intent', async (req, res) => {
         catalogProductId: item.catalogProductId,
         name: item.name,
         unitPrice: item.unitPrice,
+        unitInfo: item.unitInfo,
         quantity: item.quantity,
         lineTotal: item.lineTotal,
       })),
