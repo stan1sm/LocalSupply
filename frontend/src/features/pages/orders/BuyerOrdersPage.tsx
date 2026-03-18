@@ -173,6 +173,7 @@ export default function BuyerOrdersPage() {
               { id: 'my-cart', label: 'My Cart', icon: 'C', href: '/cart' },
               { id: 'orders', label: 'Orders', icon: 'O', href: '/orders' },
               { id: 'delivery', label: 'Delivery Tracking', icon: 'T', href: '#' },
+              { id: 'settings', label: 'Settings', icon: 'G', href: '/settings' },
             ].map((item) => {
               const isActive = item.id === 'orders'
               return (

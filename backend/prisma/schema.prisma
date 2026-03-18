@@ -30,7 +30,41 @@ model User {
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
-  orders Order[] @relation("BuyerOrders")
+  orders         Order[]             @relation("BuyerOrders")
+  addresses      UserAddress[]
+  paymentMethods UserPaymentMethod[]
+}
+
+model UserAddress {
+  id        String   @id @default(cuid())
+  userId    String
+  label     String?
+  address   String
+  phone     String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserPaymentMethod {
+  id             String   @id @default(cuid())
+  userId         String
+  cardholderName String
+  maskedNumber   String
+  lastFour       String
+  expiry         String
+  cardType       String?
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Supplier {

@@ -62,7 +62,25 @@ type GeoNorgeAddress = {
   kommunenavn: string
 }
 
-type PaymentMethod = 'invoice' | 'vipps' | 'card'
+type PaymentMethod = 'vipps' | 'card'
+
+type SavedAddress = {
+  id: string
+  label: string | null
+  address: string
+  phone: string | null
+  isDefault: boolean
+}
+
+type SavedPaymentMethod = {
+  id: string
+  cardholderName: string
+  maskedNumber: string
+  lastFour: string
+  expiry: string
+  cardType: string | null
+  isDefault: boolean
+}
 
 function formatCurrency(value: number) {
   return `${value.toFixed(2)} kr`
@@ -78,6 +96,33 @@ function formatExpiry(raw: string) {
   return digits
 }
 
+function detectCardType(number: string): string {
+  const digits = number.replace(/\s/g, '')
+  if (/^4/.test(digits)) return 'Visa'
+  if (/^5[1-5]/.test(digits) || /^2[2-7]/.test(digits)) return 'Mastercard'
+  if (/^3[47]/.test(digits)) return 'Amex'
+  return ''
+}
+
+function validateCardNumber(number: string): boolean {
+  const digits = number.replace(/\s/g, '')
+  return /^\d{16}$/.test(digits)
+}
+
+function validateExpiry(expiry: string): boolean {
+  if (!/^\d{2}\/\d{2}$/.test(expiry)) return false
+  const [mm, yy] = expiry.split('/').map(Number)
+  if (mm < 1 || mm > 12) return false
+  const now = new Date()
+  const year = 2000 + yy
+  const month = mm - 1
+  return new Date(year, month + 1, 0) >= now
+}
+
+function validateCvv(cvv: string): boolean {
+  return /^\d{3,4}$/.test(cvv)
+}
+
 export default function CheckoutPage() {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [buyer, setBuyer] = useState<BuyerSession | null>(null)
@@ -87,6 +132,12 @@ export default function CheckoutPage() {
   const [matchError, setMatchError] = useState('')
   const [isReady, setIsReady] = useState(false)
 
+  // Saved addresses + payment methods
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
+  const [savedPayments, setSavedPayments] = useState<SavedPaymentMethod[]>([])
+  const [selectedAddressId, setSelectedAddressId] = useState<string | 'manual'>('manual')
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | 'new'>('new')
+
   // Address
   const [addressQuery, setAddressQuery] = useState('')
   const [addressSuggestions, setAddressSuggestions] = useState<GeoNorgeAddress[]>([])
@@ -95,19 +146,21 @@ export default function CheckoutPage() {
   const addressRef = useRef<HTMLDivElement>(null)
 
   // Payment
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('invoice')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('card')
   const [cardNumber, setCardNumber] = useState('')
   const [cardName, setCardName] = useState('')
   const [cardExpiry, setCardExpiry] = useState('')
   const [cardCvv, setCardCvv] = useState('')
   const [vippsPhone, setVippsPhone] = useState('')
 
+  // Card validation errors
+  const [cardErrors, setCardErrors] = useState<{ number?: string; expiry?: string; cvv?: string; name?: string }>({})
+
   // Order
   const [notes, setNotes] = useState('')
   const [isPlacing, setIsPlacing] = useState(false)
   const [orderError, setOrderError] = useState('')
 
-  // Items breakdown toggle per store
   const [expandedStore, setExpandedStore] = useState<string | null>(null)
 
   useEffect(() => {
@@ -142,6 +195,44 @@ export default function CheckoutPage() {
       window.location.href = '/login?redirect=/checkout'
     }
   }, [isReady, buyer])
+
+  // Load saved addresses and payment methods
+  useEffect(() => {
+    if (!buyer) return
+    const uid = encodeURIComponent(buyer.id)
+
+    fetch(buildApiUrl(`/api/auth/addresses?userId=${uid}`))
+      .then((r) => r.json())
+      .then((data: SavedAddress[]) => {
+        if (Array.isArray(data)) {
+          setSavedAddresses(data)
+          const def = data.find((a) => a.isDefault) ?? data[0]
+          if (def) {
+            setSelectedAddressId(def.id)
+            setAddressQuery(def.address)
+          }
+        }
+      })
+      .catch(() => { /* ignore */ })
+
+    fetch(buildApiUrl(`/api/auth/payment-methods?userId=${uid}`))
+      .then((r) => r.json())
+      .then((data: SavedPaymentMethod[]) => {
+        if (Array.isArray(data)) {
+          setSavedPayments(data)
+          const def = data.find((p) => p.isDefault) ?? data[0]
+          if (def) setSelectedPaymentId(def.id)
+        }
+      })
+      .catch(() => { /* ignore */ })
+  }, [buyer])
+
+  // When saved address selection changes, update addressQuery
+  useEffect(() => {
+    if (selectedAddressId === 'manual') return
+    const found = savedAddresses.find((a) => a.id === selectedAddressId)
+    if (found) setAddressQuery(found.address)
+  }, [selectedAddressId, savedAddresses])
 
   // Run store match
   useEffect(() => {
@@ -182,8 +273,9 @@ export default function CheckoutPage() {
     return () => { cancelled = true }
   }, [isReady, cartItems])
 
-  // GeoNorge address autocomplete
+  // GeoNorge address autocomplete (only when manual entry)
   useEffect(() => {
+    if (selectedAddressId !== 'manual') return
     if (addressQuery.length < 3) {
       setAddressSuggestions([])
       setShowSuggestions(false)
@@ -203,7 +295,7 @@ export default function CheckoutPage() {
       }
     }, 350)
     return () => clearTimeout(timer)
-  }, [addressQuery])
+  }, [addressQuery, selectedAddressId])
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -221,10 +313,19 @@ export default function CheckoutPage() {
     setShowSuggestions(false)
   }
 
-  // Find unavailable cart items for a given store
   function getUnavailableItems(store: MatchedStore): CartItem[] {
     const matchedNames = new Set(store.items.map((i) => i.name.toLowerCase()))
     return cartItems.filter((ci) => !matchedNames.has(ci.name.toLowerCase()))
+  }
+
+  function validateCard(): boolean {
+    const errors: typeof cardErrors = {}
+    if (!cardName.trim()) errors.name = 'Cardholder name is required'
+    if (!validateCardNumber(cardNumber)) errors.number = 'Enter a valid 16-digit card number'
+    if (!validateExpiry(cardExpiry)) errors.expiry = 'Enter a valid expiry (MM/YY)'
+    if (!validateCvv(cardCvv)) errors.cvv = 'Enter a valid CVV (3–4 digits)'
+    setCardErrors(errors)
+    return Object.keys(errors).length === 0
   }
 
   async function handlePlaceOrder() {
@@ -234,16 +335,24 @@ export default function CheckoutPage() {
       return
     }
 
+    // Validate card fields if paying by card with a new card
+    if (paymentMethod === 'card' && selectedPaymentId === 'new') {
+      if (!validateCard()) return
+    }
+
     setOrderError('')
     setIsPlacing(true)
 
     try {
-      const paymentNote =
-        paymentMethod === 'card'
-          ? `Payment: Card ending in ${cardNumber.replace(/\s/g, '').slice(-4)}`
-          : paymentMethod === 'vipps'
-            ? `Payment: Vipps (${vippsPhone})`
-            : 'Payment: Invoice'
+      let paymentNote: string
+      if (paymentMethod === 'vipps') {
+        paymentNote = `Payment: Vipps (${vippsPhone})`
+      } else if (selectedPaymentId !== 'new') {
+        const saved = savedPayments.find((p) => p.id === selectedPaymentId)
+        paymentNote = saved ? `Payment: ${saved.cardType ?? 'Card'} ${saved.maskedNumber}` : `Payment: Saved card`
+      } else {
+        paymentNote = `Payment: Card ending in ${cardNumber.replace(/\s/g, '').slice(-4)}`
+      }
 
       const response = await fetch(buildApiUrl('/api/orders'), {
         method: 'POST',
@@ -300,6 +409,7 @@ export default function CheckoutPage() {
 
   const stores = matchResult?.stores ?? []
   const savings = matchResult?.savings ?? 0
+  const usingNewCard = paymentMethod === 'card' && selectedPaymentId === 'new'
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
@@ -320,6 +430,7 @@ export default function CheckoutPage() {
               { id: 'my-cart', label: 'My Cart', icon: 'C', href: '/cart' },
               { id: 'orders', label: 'Orders', icon: 'O', href: '/orders' },
               { id: 'delivery', label: 'Delivery Tracking', icon: 'T', href: '#' },
+              { id: 'settings', label: 'Settings', icon: 'G', href: '/settings' },
             ].map((item) => (
               <a
                 className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-semibold text-[#4f5d52] transition hover:bg-[#f6faf5] hover:text-[#1f2b22]"
@@ -380,7 +491,6 @@ export default function CheckoutPage() {
 
                   return (
                     <div key={store.storeCode} className={`rounded-2xl border-2 transition ${isSelected ? 'border-[#2f9f4f]' : 'border-[#e5ece2]'}`}>
-                      {/* Store header row */}
                       <button
                         className={`flex w-full items-center gap-4 rounded-2xl px-4 py-4 text-left transition ${isSelected ? 'bg-[#f0faf2]' : 'bg-white hover:bg-[#f8fbf7]'}`}
                         onClick={() => {
@@ -418,7 +528,6 @@ export default function CheckoutPage() {
                         </div>
                       </button>
 
-                      {/* Items breakdown */}
                       {isExpanded ? (
                         <div className="border-t border-[#eef2ec] px-4 pb-4 pt-3">
                           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-[#6b7b70]">Items breakdown</p>
@@ -466,44 +575,83 @@ export default function CheckoutPage() {
             </div>
 
             <div className="space-y-4 px-5 py-4">
-              {/* GeoNorge address autocomplete */}
-              <div ref={addressRef} className="relative">
-                <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7b70]">
-                  Delivery address
-                </label>
-                <div className="relative mt-2">
-                  <input
-                    autoComplete="off"
-                    className="w-full rounded-xl border border-[#d4ddd0] bg-[#f7faf6] px-3 py-2.5 pr-8 text-sm text-[#1f2937] outline-none placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/30"
-                    onChange={(e) => setAddressQuery(e.target.value)}
-                    onFocus={() => addressSuggestions.length > 0 && setShowSuggestions(true)}
-                    placeholder="Start typing your address…"
-                    type="text"
-                    value={addressQuery}
-                  />
-                  {isSearchingAddress ? (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#2f9f4f]/40 border-t-[#2f9f4f]" />
-                    </span>
+              {/* Saved addresses */}
+              {savedAddresses.length > 0 ? (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7b70]">Delivery address</label>
+                  <div className="mt-2 space-y-2">
+                    {savedAddresses.map((addr) => (
+                      <button
+                        key={addr.id}
+                        type="button"
+                        onClick={() => setSelectedAddressId(addr.id)}
+                        className={`flex w-full items-start gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition ${selectedAddressId === addr.id ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
+                      >
+                        <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${selectedAddressId === addr.id ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
+                          {selectedAddressId === addr.id ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                        </span>
+                        <div className="min-w-0">
+                          {addr.label ? <p className="text-xs font-semibold text-[#1f2b22]">{addr.label}</p> : null}
+                          <p className="text-xs text-[#4f5d52]">{addr.address}</p>
+                          {addr.phone ? <p className="text-xs text-[#6d7b70]">{addr.phone}</p> : null}
+                        </div>
+                        {addr.isDefault ? <span className="ml-auto shrink-0 rounded-full bg-[#dcf5e2] px-2 py-0.5 text-[10px] font-semibold text-[#1a7a34]">Default</span> : null}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedAddressId('manual'); setAddressQuery('') }}
+                      className={`flex w-full items-center gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition ${selectedAddressId === 'manual' ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
+                    >
+                      <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${selectedAddressId === 'manual' ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
+                        {selectedAddressId === 'manual' ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                      </span>
+                      <span className="text-xs font-semibold text-[#4f5d52]">Enter a different address</span>
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Manual address input */}
+              {(savedAddresses.length === 0 || selectedAddressId === 'manual') ? (
+                <div ref={addressRef} className="relative">
+                  {savedAddresses.length === 0 ? (
+                    <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7b70]">Delivery address</label>
+                  ) : null}
+                  <div className="relative mt-2">
+                    <input
+                      autoComplete="street-address"
+                      className="w-full rounded-xl border border-[#d4ddd0] bg-[#f7faf6] px-3 py-2.5 pr-8 text-sm text-[#1f2937] outline-none placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/30"
+                      onChange={(e) => setAddressQuery(e.target.value)}
+                      onFocus={() => addressSuggestions.length > 0 && setShowSuggestions(true)}
+                      placeholder="Start typing your address…"
+                      type="text"
+                      value={addressQuery}
+                    />
+                    {isSearchingAddress ? (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#2f9f4f]/40 border-t-[#2f9f4f]" />
+                      </span>
+                    ) : null}
+                  </div>
+                  {showSuggestions && addressSuggestions.length > 0 ? (
+                    <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-[#d4ddd0] bg-white shadow-lg">
+                      {addressSuggestions.map((addr, i) => (
+                        <li key={i}>
+                          <button
+                            className="flex w-full flex-col px-3 py-2.5 text-left text-xs hover:bg-[#f0faf2]"
+                            onMouseDown={() => selectAddress(addr)}
+                            type="button"
+                          >
+                            <span className="font-semibold text-[#1f2b22]">{addr.adressetekst}</span>
+                            <span className="text-[#6d7b70]">{addr.postnummer} {addr.poststed}, {addr.kommunenavn}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   ) : null}
                 </div>
-                {showSuggestions && addressSuggestions.length > 0 ? (
-                  <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-[#d4ddd0] bg-white shadow-lg">
-                    {addressSuggestions.map((addr, i) => (
-                      <li key={i}>
-                        <button
-                          className="flex w-full flex-col px-3 py-2.5 text-left text-xs hover:bg-[#f0faf2]"
-                          onMouseDown={() => selectAddress(addr)}
-                          type="button"
-                        >
-                          <span className="font-semibold text-[#1f2b22]">{addr.adressetekst}</span>
-                          <span className="text-[#6d7b70]">{addr.postnummer} {addr.poststed}, {addr.kommunenavn}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
+              ) : null}
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7b70]">
@@ -527,78 +675,115 @@ export default function CheckoutPage() {
             </div>
 
             <div className="space-y-2 px-5 py-4">
-              {(
-                [
-                  { id: 'invoice', label: 'Invoice / Faktura', sub: 'Bill sent to your email after delivery' },
-                  { id: 'vipps', label: 'Vipps', sub: 'Pay with your Vipps account' },
-                  { id: 'card', label: 'Credit / Debit card', sub: 'Visa, Mastercard' },
-                ] as { id: PaymentMethod; label: string; sub: string }[]
-              ).map((opt) => (
+              {/* Saved payment methods */}
+              {savedPayments.map((pm) => (
                 <button
-                  className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${paymentMethod === opt.id ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
-                  key={opt.id}
-                  onClick={() => setPaymentMethod(opt.id)}
+                  key={pm.id}
                   type="button"
+                  onClick={() => { setSelectedPaymentId(pm.id); setPaymentMethod('card') }}
+                  className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${selectedPaymentId === pm.id ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
                 >
-                  <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${paymentMethod === opt.id ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
-                    {paymentMethod === opt.id ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                  <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${selectedPaymentId === pm.id ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
+                    {selectedPaymentId === pm.id ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
                   </span>
                   <div>
-                    <p className="text-sm font-semibold text-[#1f2b22]">{opt.label}</p>
-                    <p className="text-xs text-[#6d7b70]">{opt.sub}</p>
+                    <p className="text-sm font-semibold text-[#1f2b22]">{pm.cardType ?? 'Card'} {pm.maskedNumber}</p>
+                    <p className="text-xs text-[#6d7b70]">{pm.cardholderName} · Expires {pm.expiry}</p>
                   </div>
+                  {pm.isDefault ? <span className="ml-auto shrink-0 rounded-full bg-[#dcf5e2] px-2 py-0.5 text-[10px] font-semibold text-[#1a7a34]">Default</span> : null}
                 </button>
               ))}
 
-              {/* Card fields */}
-              {paymentMethod === 'card' ? (
+              {/* Vipps */}
+              <button
+                className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${paymentMethod === 'vipps' ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
+                onClick={() => { setPaymentMethod('vipps'); setSelectedPaymentId('new') }}
+                type="button"
+              >
+                <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${paymentMethod === 'vipps' ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
+                  {paymentMethod === 'vipps' ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-[#1f2b22]">Vipps</p>
+                  <p className="text-xs text-[#6d7b70]">Pay with your Vipps account</p>
+                </div>
+              </button>
+
+              {/* New card */}
+              <button
+                className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${usingNewCard ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
+                onClick={() => { setPaymentMethod('card'); setSelectedPaymentId('new') }}
+                type="button"
+              >
+                <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${usingNewCard ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
+                  {usingNewCard ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-[#1f2b22]">New credit / debit card</p>
+                  <p className="text-xs text-[#6d7b70]">Visa, Mastercard</p>
+                </div>
+              </button>
+
+              {/* New card fields */}
+              {usingNewCard ? (
                 <div className="mt-3 space-y-3 rounded-xl border border-[#e5ece2] bg-[#f8fbf7] p-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#6b7b70]">Cardholder name</label>
                     <input
-                      className="mt-1.5 w-full rounded-lg border border-[#d4ddd0] bg-white px-3 py-2 text-sm text-[#1f2937] outline-none focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/30"
-                      onChange={(e) => setCardName(e.target.value)}
+                      autoComplete="cc-name"
+                      className={`mt-1.5 w-full rounded-lg border bg-white px-3 py-2 text-sm text-[#1f2937] outline-none focus:ring-2 focus:ring-[#2f9f4f]/30 ${cardErrors.name ? 'border-red-400 focus:border-red-400' : 'border-[#d4ddd0] focus:border-[#2f9f4f]'}`}
+                      onChange={(e) => { setCardName(e.target.value); setCardErrors((p) => ({ ...p, name: undefined })) }}
                       placeholder="Full name on card"
                       type="text"
                       value={cardName}
                     />
+                    {cardErrors.name ? <p className="mt-1 text-xs text-red-500">{cardErrors.name}</p> : null}
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#6b7b70]">Card number</label>
+                    <label className="block text-xs font-semibold text-[#6b7b70]">
+                      Card number
+                      {detectCardType(cardNumber) ? <span className="ml-2 font-normal text-[#2f9f4f]">{detectCardType(cardNumber)}</span> : null}
+                    </label>
                     <input
-                      className="mt-1.5 w-full rounded-lg border border-[#d4ddd0] bg-white px-3 py-2 font-mono text-sm text-[#1f2937] outline-none focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/30"
+                      autoComplete="cc-number"
+                      className={`mt-1.5 w-full rounded-lg border bg-white px-3 py-2 font-mono text-sm text-[#1f2937] outline-none focus:ring-2 focus:ring-[#2f9f4f]/30 ${cardErrors.number ? 'border-red-400 focus:border-red-400' : 'border-[#d4ddd0] focus:border-[#2f9f4f]'}`}
                       inputMode="numeric"
                       maxLength={19}
-                      onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                      onChange={(e) => { setCardNumber(formatCardNumber(e.target.value)); setCardErrors((p) => ({ ...p, number: undefined })) }}
                       placeholder="0000 0000 0000 0000"
                       type="text"
                       value={cardNumber}
                     />
+                    {cardErrors.number ? <p className="mt-1 text-xs text-red-500">{cardErrors.number}</p> : null}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-[#6b7b70]">Expiry</label>
                       <input
-                        className="mt-1.5 w-full rounded-lg border border-[#d4ddd0] bg-white px-3 py-2 font-mono text-sm text-[#1f2937] outline-none focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/30"
+                        autoComplete="cc-exp"
+                        className={`mt-1.5 w-full rounded-lg border bg-white px-3 py-2 font-mono text-sm text-[#1f2937] outline-none focus:ring-2 focus:ring-[#2f9f4f]/30 ${cardErrors.expiry ? 'border-red-400 focus:border-red-400' : 'border-[#d4ddd0] focus:border-[#2f9f4f]'}`}
                         inputMode="numeric"
                         maxLength={5}
-                        onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
+                        onChange={(e) => { setCardExpiry(formatExpiry(e.target.value)); setCardErrors((p) => ({ ...p, expiry: undefined })) }}
                         placeholder="MM/YY"
                         type="text"
                         value={cardExpiry}
                       />
+                      {cardErrors.expiry ? <p className="mt-1 text-xs text-red-500">{cardErrors.expiry}</p> : null}
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-[#6b7b70]">CVV</label>
                       <input
-                        className="mt-1.5 w-full rounded-lg border border-[#d4ddd0] bg-white px-3 py-2 font-mono text-sm text-[#1f2937] outline-none focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/30"
+                        autoComplete="cc-csc"
+                        className={`mt-1.5 w-full rounded-lg border bg-white px-3 py-2 font-mono text-sm text-[#1f2937] outline-none focus:ring-2 focus:ring-[#2f9f4f]/30 ${cardErrors.cvv ? 'border-red-400 focus:border-red-400' : 'border-[#d4ddd0] focus:border-[#2f9f4f]'}`}
                         inputMode="numeric"
                         maxLength={4}
-                        onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        onChange={(e) => { setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4)); setCardErrors((p) => ({ ...p, cvv: undefined })) }}
                         placeholder="CVV"
-                        type="password"
+                        type="text"
                         value={cardCvv}
                       />
+                      {cardErrors.cvv ? <p className="mt-1 text-xs text-red-500">{cardErrors.cvv}</p> : null}
                     </div>
                   </div>
                 </div>

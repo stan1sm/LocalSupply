@@ -303,4 +303,169 @@ authRouter.patch('/profile', async (req, res) => {
   }
 })
 
+// ── Addresses ────────────────────────────────────────────────────────────────
+
+authRouter.get('/addresses', async (req, res) => {
+  const userId = typeof req.query.userId === 'string' ? req.query.userId.trim() : ''
+  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
+  const prisma = getPrismaClient()
+  const addresses = await prisma.userAddress.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } })
+  res.json(addresses)
+})
+
+authRouter.post('/addresses', async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
+  const address = typeof body.address === 'string' ? body.address.trim() : ''
+  const label = typeof body.label === 'string' ? body.label.trim() : null
+  const phone = typeof body.phone === 'string' ? body.phone.trim() : null
+  const makeDefault = body.isDefault === true
+
+  if (!userId || !address) { res.status(400).json({ message: 'userId and address are required.' }); return }
+
+  const prisma = getPrismaClient()
+  const existing = await prisma.userAddress.count({ where: { userId } })
+
+  if (makeDefault || existing === 0) {
+    await prisma.userAddress.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } })
+  }
+
+  const created = await prisma.userAddress.create({
+    data: { userId, address, label: label || null, phone: phone || null, isDefault: makeDefault || existing === 0 },
+  })
+  res.status(201).json(created)
+})
+
+authRouter.patch('/addresses/:id', async (req, res) => {
+  const { id } = req.params
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
+  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
+
+  const prisma = getPrismaClient()
+  const existing = await prisma.userAddress.findUnique({ where: { id } })
+  if (!existing || existing.userId !== userId) { res.status(404).json({ message: 'Address not found.' }); return }
+
+  if (body.isDefault === true) {
+    await prisma.userAddress.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } })
+  }
+
+  const updated = await prisma.userAddress.update({
+    where: { id },
+    data: {
+      ...(typeof body.address === 'string' ? { address: body.address.trim() } : {}),
+      ...(typeof body.label === 'string' ? { label: body.label.trim() || null } : {}),
+      ...(typeof body.phone === 'string' ? { phone: body.phone.trim() || null } : {}),
+      ...(body.isDefault === true ? { isDefault: true } : {}),
+    },
+  })
+  res.json(updated)
+})
+
+authRouter.delete('/addresses/:id', async (req, res) => {
+  const userId = typeof req.query.userId === 'string' ? req.query.userId.trim() : ''
+  const { id } = req.params
+  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
+
+  const prisma = getPrismaClient()
+  const existing = await prisma.userAddress.findUnique({ where: { id } })
+  if (!existing || existing.userId !== userId) { res.status(404).json({ message: 'Address not found.' }); return }
+
+  await prisma.userAddress.delete({ where: { id } })
+
+  // if deleted was default, promote next
+  if (existing.isDefault) {
+    const next = await prisma.userAddress.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } })
+    if (next) await prisma.userAddress.update({ where: { id: next.id }, data: { isDefault: true } })
+  }
+
+  res.status(204).end()
+})
+
+// ── Payment methods ───────────────────────────────────────────────────────────
+
+authRouter.get('/payment-methods', async (req, res) => {
+  const userId = typeof req.query.userId === 'string' ? req.query.userId.trim() : ''
+  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
+  const prisma = getPrismaClient()
+  const methods = await prisma.userPaymentMethod.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } })
+  res.json(methods)
+})
+
+authRouter.post('/payment-methods', async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
+  const cardholderName = typeof body.cardholderName === 'string' ? body.cardholderName.trim() : ''
+  const lastFour = typeof body.lastFour === 'string' ? body.lastFour.trim() : ''
+  const maskedNumber = typeof body.maskedNumber === 'string' ? body.maskedNumber.trim() : ''
+  const expiry = typeof body.expiry === 'string' ? body.expiry.trim() : ''
+  const cardType = typeof body.cardType === 'string' ? body.cardType.trim() : null
+  const makeDefault = body.isDefault === true
+
+  if (!userId || !cardholderName || !lastFour || !expiry) {
+    res.status(400).json({ message: 'userId, cardholderName, lastFour, and expiry are required.' })
+    return
+  }
+
+  const prisma = getPrismaClient()
+  const existing = await prisma.userPaymentMethod.count({ where: { userId } })
+
+  if (makeDefault || existing === 0) {
+    await prisma.userPaymentMethod.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } })
+  }
+
+  const created = await prisma.userPaymentMethod.create({
+    data: {
+      userId,
+      cardholderName,
+      lastFour,
+      maskedNumber: maskedNumber || `•••• •••• •••• ${lastFour}`,
+      expiry,
+      cardType: cardType || null,
+      isDefault: makeDefault || existing === 0,
+    },
+  })
+  res.status(201).json(created)
+})
+
+authRouter.patch('/payment-methods/:id', async (req, res) => {
+  const { id } = req.params
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
+  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
+
+  const prisma = getPrismaClient()
+  const existing = await prisma.userPaymentMethod.findUnique({ where: { id } })
+  if (!existing || existing.userId !== userId) { res.status(404).json({ message: 'Payment method not found.' }); return }
+
+  if (body.isDefault === true) {
+    await prisma.userPaymentMethod.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } })
+  }
+
+  const updated = await prisma.userPaymentMethod.update({
+    where: { id },
+    data: { ...(body.isDefault === true ? { isDefault: true } : {}) },
+  })
+  res.json(updated)
+})
+
+authRouter.delete('/payment-methods/:id', async (req, res) => {
+  const userId = typeof req.query.userId === 'string' ? req.query.userId.trim() : ''
+  const { id } = req.params
+  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
+
+  const prisma = getPrismaClient()
+  const existing = await prisma.userPaymentMethod.findUnique({ where: { id } })
+  if (!existing || existing.userId !== userId) { res.status(404).json({ message: 'Payment method not found.' }); return }
+
+  await prisma.userPaymentMethod.delete({ where: { id } })
+
+  if (existing.isDefault) {
+    const next = await prisma.userPaymentMethod.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } })
+    if (next) await prisma.userPaymentMethod.update({ where: { id: next.id }, data: { isDefault: true } })
+  }
+
+  res.status(204).end()
+})
+
 export default authRouter

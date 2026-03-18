@@ -1,4 +1,9 @@
+'use client'
+
 import Link from 'next/link'
+import { useState } from 'react'
+
+const BUYER_STORAGE_KEY = 'localsupply-user'
 
 const howItWorks = [
   {
@@ -75,8 +80,24 @@ const smartCartFeatures = [
   },
 ]
 
-
 export default function HomePage() {
+  const [loggedInName, setLoggedInName] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      const stored = window.localStorage.getItem(BUYER_STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored) as { firstName?: string; id?: string }
+        if (parsed?.id && parsed?.firstName) return parsed.firstName
+      }
+    } catch { /* ignore */ }
+    return null
+  })
+
+  function handleLogout() {
+    window.localStorage.removeItem(BUYER_STORAGE_KEY)
+    setLoggedInName(null)
+  }
+
   return (
     <main className="min-h-screen bg-[#f3f4f6] text-[#1f2937]">
       <section className="mx-auto w-full max-w-6xl px-4 pb-12 pt-5 sm:px-6 lg:px-8">
@@ -87,24 +108,49 @@ export default function HomePage() {
           </Link>
 
           <nav className="flex items-center gap-2">
-            <Link
-              className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]"
-              href="/marketplace/dashboard"
-            >
-              Marketplace
-            </Link>
-            <Link
-              className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]"
-              href="/login"
-            >
-              Login
-            </Link>
-            <Link
-              className="hidden rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a] sm:inline-block"
-              href="/supplier/login"
-            >
-              Supplier login
-            </Link>
+            {loggedInName ? (
+              <>
+                <Link
+                  className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]"
+                  href="/marketplace/dashboard"
+                >
+                  My Marketplace
+                </Link>
+                <Link
+                  className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]"
+                  href="/settings"
+                >
+                  Settings
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                >
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]"
+                  href="/marketplace/dashboard"
+                >
+                  Marketplace
+                </Link>
+                <Link
+                  className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]"
+                  href="/login"
+                >
+                  Login
+                </Link>
+                <Link
+                  className="hidden rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a] sm:inline-block"
+                  href="/supplier/login"
+                >
+                  Supplier login
+                </Link>
+              </>
+            )}
           </nav>
         </header>
 
@@ -126,26 +172,39 @@ export default function HomePage() {
               >
                 Browse Marketplace
               </Link>
-              <Link
-                className="rounded-lg border border-[#d1d5db] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#f0f4ee] hover:text-[#1f7b3a]"
-                href="/register"
-              >
-                Create Account
-              </Link>
-              <Link
-                className="rounded-lg border border-[#d1d5db] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#f0f4ee] hover:text-[#1f7b3a]"
-                href="/supplier/register"
-              >
-                For Suppliers
-              </Link>
+              {!loggedInName ? (
+                <>
+                  <Link
+                    className="rounded-lg border border-[#d1d5db] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#f0f4ee] hover:text-[#1f7b3a]"
+                    href="/register"
+                  >
+                    Create Account
+                  </Link>
+                  <Link
+                    className="rounded-lg border border-[#d1d5db] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#f0f4ee] hover:text-[#1f7b3a]"
+                    href="/supplier/register"
+                  >
+                    For Suppliers
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  className="rounded-lg border border-[#d1d5db] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#f0f4ee] hover:text-[#1f7b3a]"
+                  href="/orders"
+                >
+                  My Orders
+                </Link>
+              )}
             </div>
-            <p className="mt-2.5 text-xs text-[#6b7280]">
-              Already a supplier?{' '}
-              <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/supplier/login">
-                Log in to your dashboard
-              </Link>
-              .
-            </p>
+            {!loggedInName ? (
+              <p className="mt-2.5 text-xs text-[#6b7280]">
+                Already a supplier?{' '}
+                <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/supplier/login">
+                  Log in to your dashboard
+                </Link>
+                .
+              </p>
+            ) : null}
           </div>
 
           <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
