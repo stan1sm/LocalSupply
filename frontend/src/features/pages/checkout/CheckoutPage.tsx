@@ -21,6 +21,8 @@ type BuyerSession = {
   firstName: string
   lastName: string
   email: string
+  address: string | null
+  phone: string | null
 }
 
 type MatchedStoreItem = {
@@ -113,7 +115,11 @@ export default function CheckoutPage() {
       const stored = window.localStorage.getItem(BUYER_STORAGE_KEY)
       if (stored) {
         const parsed = JSON.parse(stored) as BuyerSession
-        if (parsed?.id) setBuyer(parsed)
+        if (parsed?.id) {
+          setBuyer(parsed)
+          if (parsed.address) setAddressQuery(parsed.address)
+          if (parsed.phone) setVippsPhone(parsed.phone)
+        }
       }
     } catch { /* ignore */ }
 

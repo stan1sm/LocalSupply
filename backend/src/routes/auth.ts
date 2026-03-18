@@ -155,6 +155,8 @@ authRouter.post('/login', async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
+        address: user.address ?? null,
+        phone: user.phone ?? null,
       },
     })
   } catch (error) {
@@ -250,6 +252,54 @@ authRouter.get('/verify-email', async (req, res) => {
   } catch (error) {
     console.error('Email verification failed', error)
     res.redirect(303, buildEmailVerifiedRedirectUrl('invalid'))
+  }
+})
+
+authRouter.patch('/profile', async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
+
+  if (!userId) {
+    res.status(400).json({ message: 'userId is required.' })
+    return
+  }
+
+  const address = typeof body.address === 'string' ? body.address.trim() : undefined
+  const phone = typeof body.phone === 'string' ? body.phone.trim() : undefined
+
+  if (address === undefined && phone === undefined) {
+    res.status(400).json({ message: 'Provide at least one field to update.' })
+    return
+  }
+
+  try {
+    const prisma = getPrismaClient()
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(address !== undefined ? { address: address || null } : {}),
+        ...(phone !== undefined ? { phone: phone || null } : {}),
+      },
+    })
+
+    res.status(200).json({
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        address: user.address ?? null,
+        phone: user.phone ?? null,
+      },
+    })
+  } catch (error) {
+    const code = typeof error === 'object' && error && 'code' in error ? String((error as any).code) : ''
+    if (code === 'P2025') {
+      res.status(404).json({ message: 'User not found.' })
+      return
+    }
+    console.error('Profile update failed', error)
+    res.status(500).json({ message: 'Unable to update profile right now.' })
   }
 })
 

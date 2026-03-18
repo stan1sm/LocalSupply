@@ -18,6 +18,8 @@ type LoginApiResponse = {
     firstName: string
     lastName: string
     email: string
+    address: string | null
+    phone: string | null
   }
   email?: string
   message?: string
@@ -132,6 +134,8 @@ export default function LoginPage() {
               firstName: payload.user.firstName,
               lastName: payload.user.lastName,
               email: payload.user.email,
+              address: payload.user.address ?? null,
+              phone: payload.user.phone ?? null,
             }),
           )
         } catch {

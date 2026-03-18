@@ -77,8 +77,9 @@ const navItems: NavItem[] = [
   { id: 'marketplace', label: 'Marketplace', icon: 'M', href: '/marketplace/dashboard' },
   { id: 'suppliers', label: 'Suppliers', icon: 'S', href: '/suppliers' },
   { id: 'my-cart', label: 'My Cart', icon: 'C', href: '/cart' },
-  { id: 'orders', label: 'Orders', icon: 'O', href: '#' },
+  { id: 'orders', label: 'Orders', icon: 'O', href: '/orders' },
   { id: 'delivery', label: 'Delivery Tracking', icon: 'T', href: '#' },
+  { id: 'settings', label: 'Settings', icon: 'G', href: '/settings' },
 ]
 
 const DEFAULT_STORE_OPTIONS: StoreOption[] = [
