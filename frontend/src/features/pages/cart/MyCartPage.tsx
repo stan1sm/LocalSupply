@@ -68,6 +68,7 @@ type IntentCartItem = {
   catalogProductId: string
   name: string
   unitPrice: number
+  unitInfo: string | null
   quantity: number
   lineTotal: number
 }
@@ -109,6 +110,9 @@ export default function MyCartPage() {
   const [isPlanningIntent, setIsPlanningIntent] = useState(false)
   const [intentExplanation, setIntentExplanation] = useState<string[] | null>(null)
   const [intentProgressStep, setIntentProgressStep] = useState(0)
+
+  const buyerIdForAi = getBuyerIdFromStorage()
+  const isAiLoggedIn = Boolean(buyerIdForAi)
 
   useEffect(() => {
     try {
@@ -291,7 +295,7 @@ export default function MyCartPage() {
         price: item.unitPrice,
         quantity: item.quantity,
         store: payload.storeChoice?.storeName ?? null,
-        unitInfo: null,
+        unitInfo: item.unitInfo,
       }))
 
       setCartItems(newCartItems)
@@ -445,11 +449,11 @@ export default function MyCartPage() {
                 />
                 <button
                   className="mt-2 inline-flex items-center justify-center rounded-2xl bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25813f] sm:mt-0"
-                  disabled={isPlanningIntent || !intentText.trim()}
+                  disabled={!isAiLoggedIn || isPlanningIntent || !intentText.trim()}
                   onClick={planIntentCart}
                   type="button"
                 >
-                  {isPlanningIntent ? 'Planning…' : 'Plan meal'}
+                  {!isAiLoggedIn ? 'Login to use AI features' : isPlanningIntent ? 'Planning…' : 'Plan meal'}
                 </button>
               </div>
               {isPlanningIntent && !intentExplanation && (
@@ -515,6 +519,11 @@ export default function MyCartPage() {
                         <p className="text-xs text-[#6d7b70]">
                           {formatCurrency(item.price)} · {item.store ?? 'Store'}
                         </p>
+                        {item.unitInfo ? (
+                          <p className="text-[11px] text-[#86a28f]">
+                            {item.unitInfo.includes('kr/') ? `Unit price: ${item.unitInfo}` : `Unit: ${item.unitInfo}`}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -548,8 +557,8 @@ export default function MyCartPage() {
                           )}
                           <span>
                             {loadingSubFor[item.id]
-                              ? 'Finding cheaper matches…'
-                              : 'Find the same, but cheaper'}
+                              ? 'Finding AI substitutions…'
+                              : 'Find substitutions with AI'}
                           </span>
                         </span>
                         <span aria-hidden="true" className="text-[10px]">
@@ -728,7 +737,14 @@ export default function MyCartPage() {
               <p className="text-sm font-semibold text-[#304136]">No store matches found</p>
               <p className="mt-2 text-xs text-[#6c7c71]">The products in your cart may not be available in the imported catalog yet.</p>
             </div>
-          ) : null}
+          ) : (
+            <div className="rounded-[28px] border border-dashed border-[#cfd9cb] bg-[#f8fbf7] p-6 text-center">
+              <p className="text-sm font-semibold text-[#304136]">Nothing to match yet</p>
+              <p className="mt-2 text-xs text-[#6c7c71]">
+                Plan a meal above or add items from the marketplace to see smart store matching.
+              </p>
+            </div>
+          )}
         </section>
 
       </div>

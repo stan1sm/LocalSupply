@@ -23,6 +23,11 @@ Always answer in the same JSON structure.
 Supported languages: English (en) and Norwegian (no).
 
 Do NOT include any explanations, only JSON.
+
+Hard rules:
+- If the user request is taco/tacos/taco night (or mealType indicates taco), you MUST include a "protein" slot with meat keywords (minced meat / ground beef) and mark it as required=true.
+  - The slot tags MUST contain at least one Norwegian meat keyword, preferably "kjøttdeig" (and optionally "karbonadedeig", "biff" or "storfe").
+  - The slot tags MUST also contain at least one English keyword: "ground beef" or "minced meat" (for cross-language matching).
 `.trim()
 
   const userPrompt = `
@@ -48,7 +53,7 @@ Example (for taco night for 4 people):
   "people": 4,
   "notes": "Norwegian style tacos, beef, with cheese and vegetables",
   "slots": [
-    { "role": "protein", "tags": ["kjøttdeig", "taco", "ground beef"], "required": true },
+    { "role": "protein", "tags": ["kjøttdeig", "karbonadedeig", "taco", "ground beef", "minced meat", "biff", "storfe"], "required": true },
     { "role": "tortillas", "tags": ["tortillalefser", "taco shells"], "required": true },
     { "role": "cheese", "tags": ["revet ost", "taco cheese"], "required": true },
     { "role": "salsa", "tags": ["salsa", "taco sauce"], "required": true },
@@ -83,7 +88,19 @@ Example (for taco night for 4 people):
   const hasProtein = slots.some((slot) => {
     const role = slot.role.toLowerCase()
     const tags = slot.tags.map((t) => t.toLowerCase())
-    const meatKeywords = ['kjøttdeig', 'karbonadedeig', 'biff', 'storfe', 'ground beef', 'minced meat', 'beef', 'meat']
+    const meatKeywords = [
+      'kjøttdeig',
+      'karbonadedeig',
+      'biff',
+      'storfe',
+      'ground beef',
+      'minced meat',
+      'mince',
+      'beef',
+      'meat',
+      'ground beef',
+      'beef mince',
+    ]
     const roleLooksProtein = role.includes('protein') || role.includes('kjøtt') || role.includes('meat')
     const tagsContainMeat = tags.some((tag) => meatKeywords.some((k) => tag.includes(k)))
     return roleLooksProtein || tagsContainMeat
@@ -98,7 +115,17 @@ Example (for taco night for 4 people):
     slots = [
       {
         role: 'protein',
-        tags: ['kjøttdeig', 'taco', 'karbonadedeig', 'ground beef', 'minced meat'],
+        tags: [
+          'kjøttdeig',
+          'karbonadedeig',
+          'biff',
+          'storfe',
+          'taco',
+          'ground beef',
+          'minced meat',
+          'mince',
+          'beef mince',
+        ],
         required: true,
       },
       ...slots,
