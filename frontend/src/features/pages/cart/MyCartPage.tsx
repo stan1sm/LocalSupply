@@ -68,6 +68,7 @@ type IntentCartItem = {
   catalogProductId: string
   name: string
   unitPrice: number
+  unitInfo: string | null
   quantity: number
   lineTotal: number
 }
@@ -104,11 +105,14 @@ export default function MyCartPage() {
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
   const [orderError, setOrderError] = useState('')
   const [substitutions, setSubstitutions] = useState<Record<string, SubstitutionSuggestion[]>>({})
-  const [loadingSubFor, setLoadingSubFor] = useState<string | null>(null)
+  const [loadingSubFor, setLoadingSubFor] = useState<Record<string, boolean>>({})
   const [intentText, setIntentText] = useState('')
   const [isPlanningIntent, setIsPlanningIntent] = useState(false)
   const [intentExplanation, setIntentExplanation] = useState<string[] | null>(null)
   const [intentProgressStep, setIntentProgressStep] = useState(0)
+
+  const buyerIdForAi = getBuyerIdFromStorage()
+  const isAiLoggedIn = Boolean(buyerIdForAi)
 
   useEffect(() => {
     try {
@@ -160,6 +164,20 @@ export default function MyCartPage() {
     runMatch(cartItems)
   }, [cartItems, runMatch])
 
+  function getBuyerIdFromStorage(): string | null {
+    try {
+      const storedBuyer = typeof window !== 'undefined' ? window.localStorage.getItem(BUYER_STORAGE_KEY) : null
+      if (!storedBuyer) return null
+      const parsed = JSON.parse(storedBuyer) as { id?: string }
+      if (parsed && typeof parsed.id === 'string' && parsed.id.trim().length > 0) {
+        return parsed.id
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
   function updateQuantity(itemId: string, delta: number) {
     setCartItems((current) =>
       current
@@ -195,9 +213,15 @@ export default function MyCartPage() {
   }
 
   async function loadSubstitutions(priceId: string) {
-    if (!priceId || loadingSubFor === priceId) return
+    if (!priceId || loadingSubFor[priceId]) return
 
-    setLoadingSubFor(priceId)
+    const buyerId = getBuyerIdFromStorage()
+    if (!buyerId) {
+      window.location.href = '/login'
+      return
+    }
+
+    setLoadingSubFor((current) => ({ ...current, [priceId]: true }))
     try {
       const response = await fetch(buildApiUrl(`/api/products/${encodeURIComponent(priceId)}/substitutions`))
       if (!response.ok) {
@@ -211,13 +235,23 @@ export default function MyCartPage() {
     } catch {
       // ignore
     } finally {
-      setLoadingSubFor((current) => (current === priceId ? null : current))
+      setLoadingSubFor((current) => {
+        const next = { ...current }
+        delete next[priceId]
+        return next
+      })
     }
   }
 
   async function planIntentCart() {
     const text = intentText.trim()
     if (!text) return
+
+    const buyerId = getBuyerIdFromStorage()
+    if (!buyerId) {
+      window.location.href = '/login'
+      return
+    }
 
     setIsPlanningIntent(true)
     setIntentProgressStep(0)
@@ -261,7 +295,7 @@ export default function MyCartPage() {
         price: item.unitPrice,
         quantity: item.quantity,
         store: payload.storeChoice?.storeName ?? null,
-        unitInfo: null,
+        unitInfo: item.unitInfo,
       }))
 
       setCartItems(newCartItems)
@@ -415,11 +449,11 @@ export default function MyCartPage() {
                 />
                 <button
                   className="mt-2 inline-flex items-center justify-center rounded-2xl bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25813f] sm:mt-0"
-                  disabled={isPlanningIntent || !intentText.trim()}
+                  disabled={!isAiLoggedIn || isPlanningIntent || !intentText.trim()}
                   onClick={planIntentCart}
                   type="button"
                 >
-                  {isPlanningIntent ? 'Planning…' : 'Plan meal'}
+                  {!isAiLoggedIn ? 'Login to use AI features' : isPlanningIntent ? 'Planning…' : 'Plan meal'}
                 </button>
               </div>
               {isPlanningIntent && !intentExplanation && (
@@ -485,6 +519,11 @@ export default function MyCartPage() {
                         <p className="text-xs text-[#6d7b70]">
                           {formatCurrency(item.price)} · {item.store ?? 'Store'}
                         </p>
+                        {item.unitInfo ? (
+                          <p className="text-[11px] text-[#86a28f]">
+                            {item.unitInfo.includes('kr/') ? `Unit price: ${item.unitInfo}` : `Unit: ${item.unitInfo}`}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -506,16 +545,25 @@ export default function MyCartPage() {
                     </div>
                     <div className="mt-1 flex flex-col gap-1 rounded-2xl bg-[#f6faf5] p-2">
                       <button
-                        className="inline-flex items-center justify-between gap-2 text-xs font-semibold text-[#2f9f4f]"
+                        className="inline-flex items-center justify-between gap-2 rounded-xl bg-[#e7f5eb] px-2 py-1.5 text-xs font-semibold text-[#1e7a39] shadow-sm ring-1 ring-[#c5e4ce] hover:bg-[#ddf0e3]"
                         onClick={() => loadSubstitutions(item.id)}
                         type="button"
                       >
-                        <span>
-                          {loadingSubFor === item.id
-                            ? 'Finding cheaper matches…'
-                            : 'Find the same, but cheaper'}
+                        <span className="flex items-center gap-1.5">
+                          {loadingSubFor[item.id] ? (
+                            <span className="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-[#1e7a39]/40 border-t-transparent" />
+                          ) : (
+                            <span className="inline-flex h-3 w-3 rounded-full bg-[#1e7a39]" />
+                          )}
+                          <span>
+                            {loadingSubFor[item.id]
+                              ? 'Finding AI substitutions…'
+                              : 'Find substitutions with AI'}
+                          </span>
                         </span>
-                        <span aria-hidden="true">↓</span>
+                        <span aria-hidden="true" className="text-[10px]">
+                          ↓
+                        </span>
                       </button>
                       {substitutions[item.id] && substitutions[item.id].length > 0 ? (
                         <div className="space-y-1">
@@ -541,7 +589,7 @@ export default function MyCartPage() {
                             </button>
                           ))}
                         </div>
-                      ) : loadingSubFor === item.id ? (
+                      ) : loadingSubFor[item.id] ? (
                         <p className="text-[11px] text-[#6c7c71]">Looking for alternatives…</p>
                       ) : null}
                     </div>
@@ -689,7 +737,14 @@ export default function MyCartPage() {
               <p className="text-sm font-semibold text-[#304136]">No store matches found</p>
               <p className="mt-2 text-xs text-[#6c7c71]">The products in your cart may not be available in the imported catalog yet.</p>
             </div>
-          ) : null}
+          ) : (
+            <div className="rounded-[28px] border border-dashed border-[#cfd9cb] bg-[#f8fbf7] p-6 text-center">
+              <p className="text-sm font-semibold text-[#304136]">Nothing to match yet</p>
+              <p className="mt-2 text-xs text-[#6c7c71]">
+                Plan a meal above or add items from the marketplace to see smart store matching.
+              </p>
+            </div>
+          )}
         </section>
 
       </div>
