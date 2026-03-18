@@ -10,14 +10,12 @@ WORKDIR /app
 # postinstall can run `prisma generate` successfully inside the container.
 COPY package*.json ./
 COPY prisma ./prisma
+COPY prisma.config.ts ./
 RUN npm install
 
 COPY . .
 
-# Build TypeScript
-RUN npm run build
-
 # Expose backend port (matches PORT env)
 EXPOSE 3001
 
-CMD ["npm", "run", "start"]
+CMD ["npx", "tsx", "src/index.ts"]
