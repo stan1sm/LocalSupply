@@ -25,6 +25,8 @@ model User {
   emailVerificationTokenHash String?  @unique
   vippsSub                   String?  @unique
   vippsPhoneNumber           String?
+  address                    String?
+  phone                      String?
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
