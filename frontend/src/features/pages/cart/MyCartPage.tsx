@@ -104,7 +104,7 @@ export default function MyCartPage() {
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
   const [orderError, setOrderError] = useState('')
   const [substitutions, setSubstitutions] = useState<Record<string, SubstitutionSuggestion[]>>({})
-  const [loadingSubFor, setLoadingSubFor] = useState<string | null>(null)
+  const [loadingSubFor, setLoadingSubFor] = useState<Record<string, boolean>>({})
   const [intentText, setIntentText] = useState('')
   const [isPlanningIntent, setIsPlanningIntent] = useState(false)
   const [intentExplanation, setIntentExplanation] = useState<string[] | null>(null)
@@ -160,6 +160,20 @@ export default function MyCartPage() {
     runMatch(cartItems)
   }, [cartItems, runMatch])
 
+  function getBuyerIdFromStorage(): string | null {
+    try {
+      const storedBuyer = typeof window !== 'undefined' ? window.localStorage.getItem(BUYER_STORAGE_KEY) : null
+      if (!storedBuyer) return null
+      const parsed = JSON.parse(storedBuyer) as { id?: string }
+      if (parsed && typeof parsed.id === 'string' && parsed.id.trim().length > 0) {
+        return parsed.id
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
   function updateQuantity(itemId: string, delta: number) {
     setCartItems((current) =>
       current
@@ -195,9 +209,15 @@ export default function MyCartPage() {
   }
 
   async function loadSubstitutions(priceId: string) {
-    if (!priceId || loadingSubFor === priceId) return
+    if (!priceId || loadingSubFor[priceId]) return
 
-    setLoadingSubFor(priceId)
+    const buyerId = getBuyerIdFromStorage()
+    if (!buyerId) {
+      window.location.href = '/login'
+      return
+    }
+
+    setLoadingSubFor((current) => ({ ...current, [priceId]: true }))
     try {
       const response = await fetch(buildApiUrl(`/api/products/${encodeURIComponent(priceId)}/substitutions`))
       if (!response.ok) {
@@ -211,13 +231,23 @@ export default function MyCartPage() {
     } catch {
       // ignore
     } finally {
-      setLoadingSubFor((current) => (current === priceId ? null : current))
+      setLoadingSubFor((current) => {
+        const next = { ...current }
+        delete next[priceId]
+        return next
+      })
     }
   }
 
   async function planIntentCart() {
     const text = intentText.trim()
     if (!text) return
+
+    const buyerId = getBuyerIdFromStorage()
+    if (!buyerId) {
+      window.location.href = '/login'
+      return
+    }
 
     setIsPlanningIntent(true)
     setIntentProgressStep(0)
@@ -506,16 +536,25 @@ export default function MyCartPage() {
                     </div>
                     <div className="mt-1 flex flex-col gap-1 rounded-2xl bg-[#f6faf5] p-2">
                       <button
-                        className="inline-flex items-center justify-between gap-2 text-xs font-semibold text-[#2f9f4f]"
+                        className="inline-flex items-center justify-between gap-2 rounded-xl bg-[#e7f5eb] px-2 py-1.5 text-xs font-semibold text-[#1e7a39] shadow-sm ring-1 ring-[#c5e4ce] hover:bg-[#ddf0e3]"
                         onClick={() => loadSubstitutions(item.id)}
                         type="button"
                       >
-                        <span>
-                          {loadingSubFor === item.id
-                            ? 'Finding cheaper matches…'
-                            : 'Find the same, but cheaper'}
+                        <span className="flex items-center gap-1.5">
+                          {loadingSubFor[item.id] ? (
+                            <span className="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-[#1e7a39]/40 border-t-transparent" />
+                          ) : (
+                            <span className="inline-flex h-3 w-3 rounded-full bg-[#1e7a39]" />
+                          )}
+                          <span>
+                            {loadingSubFor[item.id]
+                              ? 'Finding cheaper matches…'
+                              : 'Find the same, but cheaper'}
+                          </span>
                         </span>
-                        <span aria-hidden="true">↓</span>
+                        <span aria-hidden="true" className="text-[10px]">
+                          ↓
+                        </span>
                       </button>
                       {substitutions[item.id] && substitutions[item.id].length > 0 ? (
                         <div className="space-y-1">
@@ -541,7 +580,7 @@ export default function MyCartPage() {
                             </button>
                           ))}
                         </div>
-                      ) : loadingSubFor === item.id ? (
+                      ) : loadingSubFor[item.id] ? (
                         <p className="text-[11px] text-[#6c7c71]">Looking for alternatives…</p>
                       ) : null}
                     </div>
