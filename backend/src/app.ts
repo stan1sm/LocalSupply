@@ -2,6 +2,7 @@ import path from 'path'
 import cors, { type CorsOptions } from 'cors'
 import express from 'express'
 import addressesRouter from './routes/addresses.js'
+import adminRouter from './routes/admin.js'
 import authRouter from './routes/auth.js'
 import cartRouter from './routes/cart.js'
 import ordersRouter from './routes/orders.js'
@@ -56,6 +57,7 @@ const corsOptions: CorsOptions = {
 app.use(cors(corsOptions))
 app.use(express.json())
 app.use('/api/addresses', addressesRouter)
+app.use('/api/admin', adminRouter)
 app.use('/api/auth', authRouter)
 app.use('/api/cart', cartRouter)
 app.use('/api/orders', ordersRouter)
