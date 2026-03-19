@@ -82,6 +82,19 @@ type SavedPaymentMethod = {
   isDefault: boolean
 }
 
+type WoltEstimate = {
+  ok: true
+  fee: number
+  etaMinutes: number
+  currency: string
+}
+
+type WoltError = {
+  ok: false
+  errorCode: string
+  message: string
+}
+
 function formatCurrency(value: number) {
   return `${value.toFixed(2)} kr`
 }
@@ -105,8 +118,7 @@ function detectCardType(number: string): string {
 }
 
 function validateCardNumber(number: string): boolean {
-  const digits = number.replace(/\s/g, '')
-  return /^\d{16}$/.test(digits)
+  return /^\d{16}$/.test(number.replace(/\s/g, ''))
 }
 
 function validateExpiry(expiry: string): boolean {
@@ -114,14 +126,31 @@ function validateExpiry(expiry: string): boolean {
   const [mm, yy] = expiry.split('/').map(Number)
   if (mm < 1 || mm > 12) return false
   const now = new Date()
-  const year = 2000 + yy
-  const month = mm - 1
-  return new Date(year, month + 1, 0) >= now
+  return new Date(2000 + yy, mm, 0) >= now
 }
 
 function validateCvv(cvv: string): boolean {
   return /^\d{3,4}$/.test(cvv)
 }
+
+function etaLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} mins`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m === 0 ? `${h}h` : `${h}h ${m}min`
+}
+
+const WOLT_CLOSED_CODES = new Set([
+  'DELIVERY_AREA_CLOSED',
+  'DELIVERY_AREA_CLOSED_TEMPORARILY',
+  'REQUEST_OUTSIDE_DELIVERY_HOURS',
+  'VENUE_CLOSED',
+])
+
+const WOLT_OUTSIDE_AREA_CODES = new Set([
+  'DROPOFF_OUTSIDE_OF_DELIVERY_AREA',
+  'INVALID_DROPOFF_ADDRESS',
+])
 
 export default function CheckoutPage() {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -145,6 +174,12 @@ export default function CheckoutPage() {
   const [isSearchingAddress, setIsSearchingAddress] = useState(false)
   const addressRef = useRef<HTMLDivElement>(null)
 
+  // Wolt real-time delivery estimate
+  const [woltEstimate, setWoltEstimate] = useState<WoltEstimate | null>(null)
+  const [woltError, setWoltError] = useState<WoltError | null>(null)
+  const [isFetchingWolt, setIsFetchingWolt] = useState(false)
+  const woltTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Payment
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('card')
   const [cardNumber, setCardNumber] = useState('')
@@ -152,14 +187,13 @@ export default function CheckoutPage() {
   const [cardExpiry, setCardExpiry] = useState('')
   const [cardCvv, setCardCvv] = useState('')
   const [vippsPhone, setVippsPhone] = useState('')
-
-  // Card validation errors
   const [cardErrors, setCardErrors] = useState<{ number?: string; expiry?: string; cvv?: string; name?: string }>({})
 
   // Order
   const [notes, setNotes] = useState('')
   const [isPlacing, setIsPlacing] = useState(false)
   const [orderError, setOrderError] = useState('')
+  const [placedTrackingUrl, setPlacedTrackingUrl] = useState<string | null>(null)
 
   const [expandedStore, setExpandedStore] = useState<string | null>(null)
 
@@ -189,7 +223,6 @@ export default function CheckoutPage() {
     setIsReady(true)
   }, [])
 
-  // Redirect to login if not authenticated
   useEffect(() => {
     if (isReady && !buyer) {
       window.location.href = '/login?redirect=/checkout'
@@ -234,6 +267,46 @@ export default function CheckoutPage() {
     if (found) setAddressQuery(found.address)
   }, [selectedAddressId, savedAddresses])
 
+  // Debounced Wolt estimate fetch whenever address changes
+  useEffect(() => {
+    if (woltTimerRef.current) clearTimeout(woltTimerRef.current)
+
+    const addr = addressQuery.trim()
+    if (addr.length < 8) {
+      setWoltEstimate(null)
+      setWoltError(null)
+      return
+    }
+
+    woltTimerRef.current = setTimeout(async () => {
+      setIsFetchingWolt(true)
+      try {
+        const res = await fetch(buildApiUrl('/api/wolt/estimate'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dropoffAddress: addr }),
+        })
+        const data = (await res.json()) as WoltEstimate | WoltError
+        if (data.ok) {
+          setWoltEstimate(data)
+          setWoltError(null)
+        } else {
+          setWoltEstimate(null)
+          setWoltError(data)
+        }
+      } catch {
+        setWoltEstimate(null)
+        setWoltError(null)
+      } finally {
+        setIsFetchingWolt(false)
+      }
+    }, 900)
+
+    return () => {
+      if (woltTimerRef.current) clearTimeout(woltTimerRef.current)
+    }
+  }, [addressQuery])
+
   // Run store match
   useEffect(() => {
     if (!isReady || cartItems.length === 0) return
@@ -273,7 +346,7 @@ export default function CheckoutPage() {
     return () => { cancelled = true }
   }, [isReady, cartItems])
 
-  // GeoNorge address autocomplete (only when manual entry)
+  // GeoNorge address autocomplete (only for manual entry)
   useEffect(() => {
     if (selectedAddressId !== 'manual') return
     if (addressQuery.length < 3) {
@@ -297,7 +370,6 @@ export default function CheckoutPage() {
     return () => clearTimeout(timer)
   }, [addressQuery, selectedAddressId])
 
-  // Close suggestions on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (addressRef.current && !addressRef.current.contains(e.target as Node)) {
@@ -318,6 +390,19 @@ export default function CheckoutPage() {
     return cartItems.filter((ci) => !matchedNames.has(ci.name.toLowerCase()))
   }
 
+  // Effective delivery cost/eta for a store — uses Wolt if available
+  function effectiveDeliveryCost(store: MatchedStore): number {
+    return woltEstimate ? woltEstimate.fee : store.deliveryCost
+  }
+
+  function effectiveEta(store: MatchedStore): string {
+    return woltEstimate ? etaLabel(woltEstimate.etaMinutes) : store.eta
+  }
+
+  function effectiveTotal(store: MatchedStore): number {
+    return Math.round((store.subtotal + effectiveDeliveryCost(store)) * 100) / 100
+  }
+
   function validateCard(): boolean {
     const errors: typeof cardErrors = {}
     if (!cardName.trim()) errors.name = 'Cardholder name is required'
@@ -334,8 +419,6 @@ export default function CheckoutPage() {
       setOrderError('Please enter a delivery address.')
       return
     }
-
-    // Validate card fields if paying by card with a new card
     if (paymentMethod === 'card' && selectedPaymentId === 'new') {
       if (!validateCard()) return
     }
@@ -349,17 +432,20 @@ export default function CheckoutPage() {
         paymentNote = `Payment: Vipps (${vippsPhone})`
       } else if (selectedPaymentId !== 'new') {
         const saved = savedPayments.find((p) => p.id === selectedPaymentId)
-        paymentNote = saved ? `Payment: ${saved.cardType ?? 'Card'} ${saved.maskedNumber}` : `Payment: Saved card`
+        paymentNote = saved ? `Payment: ${saved.cardType ?? 'Card'} ${saved.maskedNumber}` : 'Payment: Saved card'
       } else {
         paymentNote = `Payment: Card ending in ${cardNumber.replace(/\s/g, '').slice(-4)}`
       }
+
+      const deliveryCost = effectiveDeliveryCost(selectedStore)
 
       const response = await fetch(buildApiUrl('/api/orders'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           buyerId: buyer.id,
-          deliveryFee: selectedStore.deliveryCost,
+          deliveryFee: deliveryCost,
+          deliveryAddress: addressQuery.trim(),
           items: selectedStore.items.map((item) => ({
             name: item.name,
             unit: 'unit',
@@ -369,6 +455,7 @@ export default function CheckoutPage() {
           notes: [
             `Store: ${selectedStore.storeName}`,
             `Delivery to: ${addressQuery.trim()}`,
+            woltEstimate ? `Wolt delivery: ${formatCurrency(woltEstimate.fee)}, ~${etaLabel(woltEstimate.etaMinutes)}` : null,
             paymentNote,
             notes ? `Note: ${notes}` : '',
           ]
@@ -377,7 +464,7 @@ export default function CheckoutPage() {
         }),
       })
 
-      const payload = (await response.json().catch(() => ({}))) as { message?: string }
+      const payload = (await response.json().catch(() => ({}))) as { message?: string; woltTrackingUrl?: string }
 
       if (!response.ok) {
         setOrderError(payload.message ?? 'Unable to place order right now.')
@@ -385,7 +472,12 @@ export default function CheckoutPage() {
       }
 
       window.localStorage.removeItem(CART_STORAGE_KEY)
-      window.location.href = '/orders'
+
+      if (payload.woltTrackingUrl) {
+        setPlacedTrackingUrl(payload.woltTrackingUrl)
+      } else {
+        window.location.href = '/orders'
+      }
     } catch {
       setOrderError('Unable to place order right now.')
     } finally {
@@ -394,6 +486,44 @@ export default function CheckoutPage() {
   }
 
   if (!isReady) return null
+
+  // Order placed — show tracking screen
+  if (placedTrackingUrl) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f3f6f1] px-4">
+        <div className="w-full max-w-md rounded-3xl border border-[#dfe5da] bg-white p-8 text-center shadow-[0_20px_50px_rgba(17,24,39,0.08)]">
+          <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-[#dcf5e2]">
+            <svg className="h-7 w-7 text-[#1f7b3a]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#2f9f4f]">Order placed</p>
+          <h1 className="mt-2 text-xl font-bold text-[#1b2a1f]">Your order is confirmed</h1>
+          <p className="mt-2 text-sm text-[#5b665f]">Wolt is arranging your delivery. You can track your courier in real time.</p>
+          <div className="mt-6 flex flex-col gap-3">
+            <a
+              href={placedTrackingUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 rounded-2xl bg-[#2f9f4f] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f]"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" strokeLinecap="round" />
+              </svg>
+              Track my delivery
+            </a>
+            <a
+              href="/orders"
+              className="rounded-2xl border border-[#d4ddcf] bg-white px-5 py-3 text-sm font-semibold text-[#314237] transition hover:border-[#9db5a4] hover:text-[#2f9f4f]"
+            >
+              View my orders
+            </a>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   if (cartItems.length === 0) {
     return (
@@ -410,6 +540,10 @@ export default function CheckoutPage() {
   const stores = matchResult?.stores ?? []
   const savings = matchResult?.savings ?? 0
   const usingNewCard = paymentMethod === 'card' && selectedPaymentId === 'new'
+
+  const woltDeliveryClosed = woltError && WOLT_CLOSED_CODES.has(woltError.errorCode)
+  const woltOutsideArea = woltError && WOLT_OUTSIDE_AREA_CODES.has(woltError.errorCode)
+  const woltUnavailable = woltError && woltError.errorCode === 'WOLT_UNAVAILABLE'
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
@@ -449,8 +583,29 @@ export default function CheckoutPage() {
           <div className="border-b border-[#e5ece2] px-5 py-5">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Checkout — step 1</p>
             <h1 className="mt-2 text-2xl font-bold text-[#1f2b22]">Choose a store</h1>
-            <p className="mt-1 text-sm text-[#617166]">Select where you want to order from. We show which items each store can fulfil.</p>
+            <p className="mt-1 text-sm text-[#617166]">Select where you want to order from. Delivery pricing updates live via Wolt once you enter your address.</p>
           </div>
+
+          {/* Wolt status banner */}
+          {(woltDeliveryClosed || woltOutsideArea) && !isFetchingWolt ? (
+            <div className={`mx-5 mt-4 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm ${woltDeliveryClosed ? 'border-[#f0c070] bg-[#fffbea] text-[#7a5000]' : 'border-[#f0d4d4] bg-[#fff5f5] text-[#9b2c2c]'}`}>
+              <span className="mt-0.5 text-base">{woltDeliveryClosed ? '🕐' : '📍'}</span>
+              <div>
+                <p className="font-semibold">{woltDeliveryClosed ? 'Wolt delivery is currently closed' : 'Outside Wolt delivery area'}</p>
+                <p className="mt-0.5 text-xs opacity-80">{woltError!.message} Showing estimated delivery times instead.</p>
+              </div>
+            </div>
+          ) : woltEstimate && !isFetchingWolt ? (
+            <div className="mx-5 mt-4 flex items-center gap-3 rounded-2xl border border-[#b2d4bc] bg-[#f0faf2] px-4 py-2.5 text-sm text-[#1a5e30]">
+              <span className="shrink-0 text-base">🛵</span>
+              <span><span className="font-semibold">Wolt delivery</span> — {formatCurrency(woltEstimate.fee)} · ~{etaLabel(woltEstimate.etaMinutes)} · Live pricing</span>
+            </div>
+          ) : isFetchingWolt ? (
+            <div className="mx-5 mt-4 flex items-center gap-2 rounded-2xl border border-[#e5ece2] bg-[#f8fbf7] px-4 py-2.5 text-sm text-[#6d7b70]">
+              <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#2f9f4f]/40 border-t-[#2f9f4f]" />
+              Fetching live Wolt delivery price…
+            </div>
+          ) : null}
 
           <div className="px-5 py-5 space-y-3">
             {isMatching ? (
@@ -488,6 +643,9 @@ export default function CheckoutPage() {
                   const unavailable = getUnavailableItems(store)
                   const hasPartial = store.itemsAvailable < store.itemsRequested
                   const isExpanded = expandedStore === store.storeCode
+                  const dispDeliveryCost = effectiveDeliveryCost(store)
+                  const dispEta = effectiveEta(store)
+                  const dispTotal = effectiveTotal(store)
 
                   return (
                     <div key={store.storeCode} className={`rounded-2xl border-2 transition ${isSelected ? 'border-[#2f9f4f]' : 'border-[#e5ece2]'}`}>
@@ -503,20 +661,21 @@ export default function CheckoutPage() {
                           {store.storeName.charAt(0)}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="text-sm font-semibold text-[#1f2b22]">{store.storeName}</p>
                             {isBest ? <span className="rounded-full bg-[#dcf5e2] px-2 py-0.5 text-[10px] font-semibold text-[#1a7a34]">Best price</span> : null}
+                            {woltEstimate ? <span className="rounded-full bg-[#e0f0ff] px-2 py-0.5 text-[10px] font-semibold text-[#1a4a7a]">🛵 Wolt</span> : null}
                           </div>
                           <p className="mt-0.5 text-xs text-[#6d7b70]">
-                            ETA: {store.eta} ·{' '}
+                            ETA: {dispEta} ·{' '}
                             <span className={hasPartial ? 'text-[#c07e00]' : 'text-[#2f9f4f]'}>
                               {store.itemsAvailable}/{store.itemsRequested} items available
                             </span>
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-base font-bold text-[#1f2b22]">{formatCurrency(store.total)}</p>
-                          <p className="text-xs text-[#6d7b70]">incl. {formatCurrency(store.deliveryCost)} delivery</p>
+                          <p className="text-base font-bold text-[#1f2b22]">{formatCurrency(dispTotal)}</p>
+                          <p className="text-xs text-[#6d7b70]">incl. {formatCurrency(dispDeliveryCost)} delivery</p>
                         </div>
                         <div className="flex flex-col items-center gap-1">
                           {isSelected ? (
@@ -675,7 +834,6 @@ export default function CheckoutPage() {
             </div>
 
             <div className="space-y-2 px-5 py-4">
-              {/* Saved payment methods */}
               {savedPayments.map((pm) => (
                 <button
                   key={pm.id}
@@ -694,7 +852,6 @@ export default function CheckoutPage() {
                 </button>
               ))}
 
-              {/* Vipps */}
               <button
                 className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${paymentMethod === 'vipps' ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
                 onClick={() => { setPaymentMethod('vipps'); setSelectedPaymentId('new') }}
@@ -709,7 +866,6 @@ export default function CheckoutPage() {
                 </div>
               </button>
 
-              {/* New card */}
               <button
                 className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${usingNewCard ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
                 onClick={() => { setPaymentMethod('card'); setSelectedPaymentId('new') }}
@@ -724,7 +880,6 @@ export default function CheckoutPage() {
                 </div>
               </button>
 
-              {/* New card fields */}
               {usingNewCard ? (
                 <div className="mt-3 space-y-3 rounded-xl border border-[#e5ece2] bg-[#f8fbf7] p-4">
                   <div>
@@ -789,7 +944,6 @@ export default function CheckoutPage() {
                 </div>
               ) : null}
 
-              {/* Vipps field */}
               {paymentMethod === 'vipps' ? (
                 <div className="mt-3 rounded-xl border border-[#e5ece2] bg-[#f8fbf7] p-4">
                   <label className="block text-xs font-semibold text-[#6b7b70]">Vipps phone number</label>
@@ -817,17 +971,27 @@ export default function CheckoutPage() {
                     <dd className="font-semibold text-[#1f2b22]">{formatCurrency(selectedStore.subtotal)}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt>Delivery · {selectedStore.eta}</dt>
-                    <dd className="font-semibold text-[#1f2b22]">{formatCurrency(selectedStore.deliveryCost)}</dd>
+                    <dt>
+                      Delivery · {effectiveEta(selectedStore)}
+                      {woltEstimate ? <span className="ml-1 text-[10px] text-[#2f9f4f]">🛵 Wolt</span> : null}
+                    </dt>
+                    <dd className="font-semibold text-[#1f2b22]">{formatCurrency(effectiveDeliveryCost(selectedStore))}</dd>
                   </div>
                   <div className="flex justify-between border-t border-[#e5ece2] pt-2 text-base font-bold text-[#1f2b22]">
                     <dt>Total</dt>
-                    <dd>{formatCurrency(selectedStore.total)}</dd>
+                    <dd>{formatCurrency(effectiveTotal(selectedStore))}</dd>
                   </div>
                 </dl>
               ) : (
                 <p className="text-sm text-[#6d7b70]">Select a store to see your total.</p>
               )}
+
+              {/* Wolt not available warning in order summary */}
+              {(woltDeliveryClosed || woltOutsideArea) && !woltUnavailable ? (
+                <div className="mt-3 rounded-xl border border-[#f0c070] bg-[#fffbea] px-3 py-2 text-xs text-[#7a5000]">
+                  {woltError!.message} You can still place an order — delivery will be arranged separately.
+                </div>
+              ) : null}
 
               {orderError ? (
                 <div className="mt-3 rounded-xl border border-[#f0d4d4] bg-[#fff5f5] px-3 py-2 text-xs text-[#9b2c2c]">{orderError}</div>
@@ -842,7 +1006,7 @@ export default function CheckoutPage() {
                 {isPlacing
                   ? 'Placing order…'
                   : selectedStore
-                    ? `Place order · ${formatCurrency(selectedStore.total)}`
+                    ? `Place order · ${formatCurrency(effectiveTotal(selectedStore))}`
                     : 'Select a store to continue'}
               </button>
 
@@ -852,6 +1016,10 @@ export default function CheckoutPage() {
               >
                 ← Back to cart
               </a>
+
+              {woltEstimate ? (
+                <p className="mt-3 text-center text-[10px] text-[#9ca3af]">Delivery powered by Wolt Drive · Live pricing</p>
+              ) : null}
             </div>
           </div>
 

@@ -34,9 +34,26 @@ type OrderSummary = {
   deliveryFee: number
   total: number
   notes: string | null
+  woltTrackingUrl: string | null
+  woltStatus: string | null
   createdAt: string
   supplier: SupplierSummary
   items: OrderItem[]
+}
+
+function woltStatusLabel(status: string): string {
+  switch (status.toUpperCase()) {
+    case 'CREATED': return 'Delivery arranged'
+    case 'PICKUP_STARTED': return 'Courier heading to store'
+    case 'ARRIVED_AT_PICKUP': return 'Courier at store'
+    case 'PICKED_UP': return 'Order picked up'
+    case 'DROPOFF_STARTED': return 'On the way to you'
+    case 'ARRIVED_AT_DROPOFF': return 'Courier nearby'
+    case 'DELIVERED': return 'Delivered'
+    case 'CANCELLED': return 'Delivery cancelled'
+    case 'RETURNED': return 'Order returned'
+    default: return status
+  }
 }
 
 function formatCurrency(value: number | string) {
@@ -245,6 +262,26 @@ export default function BuyerOrdersPage() {
                         </p>
                       </div>
                     </div>
+                    {/* Wolt delivery status + tracking */}
+                    {(order.woltStatus || order.woltTrackingUrl) ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#b2d4bc] bg-[#f0faf2] px-3 py-2">
+                        <span className="text-sm">🛵</span>
+                        {order.woltStatus ? (
+                          <span className="text-xs font-semibold text-[#1a5e30]">{woltStatusLabel(order.woltStatus)}</span>
+                        ) : null}
+                        {order.woltTrackingUrl ? (
+                          <a
+                            href={order.woltTrackingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-auto text-xs font-semibold text-[#2f9f4f] underline hover:text-[#1f7b3a]"
+                          >
+                            Track delivery →
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     <div className="mt-3 border-t border-[#eef2ec] pt-3 text-xs text-[#6d7b70]">
                       <p>
                         Subtotal {formatCurrency(order.subtotal)} · Delivery {formatCurrency(order.deliveryFee)}
