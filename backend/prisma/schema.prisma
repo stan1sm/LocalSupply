@@ -185,16 +185,19 @@ model ProductEmbedding {
 
 
 model Order {
-  id          String      @id @default(cuid())
-  buyerId     String
-  supplierId  String
-  status      OrderStatus @default(PENDING)
-  subtotal    Decimal     @db.Decimal(10, 2)
-  deliveryFee Decimal     @default(0) @db.Decimal(10, 2)
-  total       Decimal     @db.Decimal(10, 2)
-  notes       String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id              String      @id @default(cuid())
+  buyerId         String
+  supplierId      String
+  status          OrderStatus @default(PENDING)
+  subtotal        Decimal     @db.Decimal(10, 2)
+  deliveryFee     Decimal     @default(0) @db.Decimal(10, 2)
+  total           Decimal     @db.Decimal(10, 2)
+  notes           String?
+  woltDeliveryId  String?
+  woltTrackingUrl String?
+  woltStatus      String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   buyer    User        @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade)
   supplier Supplier    @relation("SupplierOrders", fields: [supplierId], references: [id], onDelete: Restrict)

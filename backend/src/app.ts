@@ -7,6 +7,7 @@ import cartRouter from './routes/cart.js'
 import ordersRouter from './routes/orders.js'
 import productsRouter from './routes/products.js'
 import suppliersRouter from './routes/suppliers.js'
+import woltRouter from './routes/wolt.js'
 
 const app = express()
 
@@ -60,6 +61,7 @@ app.use('/api/cart', cartRouter)
 app.use('/api/orders', ordersRouter)
 app.use('/api/products', productsRouter)
 app.use('/api/suppliers', suppliersRouter)
+app.use('/api/wolt', woltRouter)
 
 app.get('/', (_req, res) => {
   res.json({ status: 'ok' })
