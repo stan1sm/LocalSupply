@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 const BUYER_STORAGE_KEY = 'localsupply-user'
 
@@ -81,17 +81,25 @@ const smartCartFeatures = [
 ]
 
 export default function HomePage() {
-  const [loggedInName, setLoggedInName] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null
-    try {
-      const stored = window.localStorage.getItem(BUYER_STORAGE_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored) as { firstName?: string; id?: string }
-        if (parsed?.id && parsed?.firstName) return parsed.firstName
-      }
-    } catch { /* ignore */ }
-    return null
-  })
+  const [loggedInName, setLoggedInName] = useState<string | null>(null)
+
+  useEffect(() => {
+    function readStorage() {
+      try {
+        const stored = window.localStorage.getItem(BUYER_STORAGE_KEY)
+        if (stored) {
+          const parsed = JSON.parse(stored) as { firstName?: string; id?: string }
+          if (parsed?.id && parsed?.firstName) setLoggedInName(parsed.firstName)
+          else setLoggedInName(null)
+        } else {
+          setLoggedInName(null)
+        }
+      } catch { /* ignore */ }
+    }
+    readStorage()
+    window.addEventListener('storage', readStorage)
+    return () => window.removeEventListener('storage', readStorage)
+  }, [])
 
   function handleLogout() {
     window.localStorage.removeItem(BUYER_STORAGE_KEY)

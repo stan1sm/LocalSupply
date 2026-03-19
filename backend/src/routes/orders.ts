@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { getPrismaClient } from '../lib/prisma.js'
+import { createDelivery, parseAddressString } from '../lib/woltDrive.js'
 
 const ordersRouter = Router()
 
@@ -165,14 +166,50 @@ ordersRouter.post('/', async (req, res) => {
         },
       },
       include: {
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        items: { include: { product: true } },
         supplier: true,
+        buyer: true,
       },
     })
+
+    // Attempt Wolt delivery creation (best-effort — order is already saved)
+    let woltDeliveryId: string | null = null
+    let woltTrackingUrl: string | null = null
+    let woltStatus: string | null = null
+
+    const deliveryAddress = typeof body.deliveryAddress === 'string' ? body.deliveryAddress.trim() : ''
+    const pickupAddress = supplier.address ?? (process.env.WOLT_DEFAULT_PICKUP_ADDRESS ?? '')
+
+    if (deliveryAddress && pickupAddress) {
+      const woltResult = await createDelivery({
+        orderId: order.id,
+        pickup: {
+          ...parseAddressString(pickupAddress),
+          contactName: supplier.businessName,
+          contactPhone: supplier.phoneNumber ?? '00000000',
+        },
+        dropoff: {
+          ...parseAddressString(deliveryAddress),
+          contactName: `${order.buyer.firstName} ${order.buyer.lastName}`,
+          contactPhone: order.buyer.phone ?? '00000000',
+        },
+        parcels: [{ description: `Order #${order.id.slice(-6)} — ${orderItemsData.length} items`, count: orderItemsData.length }],
+        orderReference: order.id,
+      })
+
+      if (woltResult.ok) {
+        woltDeliveryId = woltResult.deliveryId
+        woltTrackingUrl = woltResult.trackingUrl
+        woltStatus = woltResult.status
+
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { woltDeliveryId, woltTrackingUrl, woltStatus },
+        })
+      } else {
+        console.warn(`Wolt delivery creation failed for order ${order.id}: ${woltResult.message}`)
+      }
+    }
 
     res.status(201).json({
       id: order.id,
@@ -181,6 +218,8 @@ ordersRouter.post('/', async (req, res) => {
       deliveryFee: order.deliveryFee,
       total: order.total,
       notes: order.notes,
+      woltTrackingUrl,
+      woltStatus,
       createdAt: order.createdAt,
       supplier: {
         id: order.supplier.id,
@@ -233,6 +272,8 @@ ordersRouter.get('/buyer/:buyerId', async (req, res) => {
         deliveryFee: order.deliveryFee,
         total: order.total,
         notes: order.notes,
+        woltTrackingUrl: order.woltTrackingUrl ?? null,
+        woltStatus: order.woltStatus ?? null,
         createdAt: order.createdAt,
         supplier: {
           id: order.supplier.id,
