@@ -15,6 +15,13 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum SupplierVerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 model User {
   id                         String   @id @default(cuid())
   email                      String   @unique
@@ -68,16 +75,19 @@ model UserPaymentMethod {
 }
 
 model Supplier {
-  id                    String   @id @default(cuid())
-  businessName          String
-  contactName           String
-  phoneNumber           String
-  email                 String   @unique
-  passwordHash          String
-  address               String
-  isVerified            Boolean  @default(false)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                         String                     @id @default(cuid())
+  businessName               String
+  contactName                String
+  phoneNumber                String
+  email                      String                     @unique
+  passwordHash               String
+  address                    String
+  orgnr                      String?                    @unique
+  isVerified                 Boolean                    @default(false)
+  verificationStatus         SupplierVerificationStatus @default(UNVERIFIED)
+  verificationRejectedReason String?
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
   // Store profile
   logoUrl               String?
   heroImageUrl          String?
@@ -205,6 +215,15 @@ model Order {
 
   @@index([buyerId])
   @@index([supplierId])
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model OrderItem {
