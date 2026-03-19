@@ -9,6 +9,68 @@ import {
 
 const suppliersRouter = Router()
 
+const BRREG_API = 'https://data.brreg.no/enhetsregisteret/api'
+
+suppliersRouter.get('/verify/:orgnr', async (req, res) => {
+  const orgnr = String(req.params.orgnr ?? '').trim().replace(/\s/g, '')
+
+  if (!/^\d{9}$/.test(orgnr)) {
+    res.status(400).json({ ok: false, message: 'Organisasjonsnummer must be exactly 9 digits.' })
+    return
+  }
+
+  try {
+    const response = await fetch(`${BRREG_API}/enheter/${orgnr}`, {
+      headers: { Accept: 'application/json' },
+    })
+
+    if (response.status === 404) {
+      res.status(404).json({ ok: false, message: 'No company found with that organisation number.' })
+      return
+    }
+
+    if (!response.ok) {
+      res.status(502).json({ ok: false, message: 'Could not reach the company registry right now.' })
+      return
+    }
+
+    const data = (await response.json()) as Record<string, unknown>
+
+    const inBankruptcy = data.konkurs === true
+    const inLiquidation = data.underAvvikling === true
+    const forcedDissolution = data.underTvangsavviklingEllerTvangsopplosning === true
+    const registeredInBusinessRegister = data.registrertIForetaksregisteret === true
+
+    const isActive = !inBankruptcy && !inLiquidation && !forcedDissolution && registeredInBusinessRegister
+
+    const forretningsadresse = data.forretningsadresse as Record<string, unknown> | undefined
+    const adresseLines = Array.isArray(forretningsadresse?.adresse) ? (forretningsadresse.adresse as string[]) : []
+    const postnummer = typeof forretningsadresse?.postnummer === 'string' ? forretningsadresse.postnummer : ''
+    const poststed = typeof forretningsadresse?.poststed === 'string' ? forretningsadresse.poststed : ''
+    const addressString = [
+      adresseLines.join(', '),
+      postnummer && poststed ? `${postnummer} ${poststed}` : poststed || postnummer,
+    ]
+      .filter(Boolean)
+      .join(', ')
+
+    res.json({
+      ok: true,
+      orgnr,
+      name: typeof data.navn === 'string' ? data.navn : '',
+      address: addressString,
+      isActive,
+      inBankruptcy,
+      inLiquidation,
+      forcedDissolution,
+      registeredInBusinessRegister,
+    })
+  } catch (error) {
+    console.error('Brreg lookup failed', error)
+    res.status(502).json({ ok: false, message: 'Could not reach the company registry right now.' })
+  }
+})
+
 suppliersRouter.get('/', async (_req, res) => {
   try {
     const prisma = getPrismaClient()
@@ -244,6 +306,30 @@ suppliersRouter.post('/register', async (req, res) => {
 
   const { businessName, contactName, phoneNumber, email, password, address } = validation.data
 
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const rawOrgnr = typeof body.orgnr === 'string' ? body.orgnr.trim().replace(/\s/g, '') : null
+  const orgnr = rawOrgnr && /^\d{9}$/.test(rawOrgnr) ? rawOrgnr : null
+
+  // If orgnr provided, verify with Brønnøysund and set status
+  let verificationStatus: 'UNVERIFIED' | 'VERIFIED' | 'REJECTED' = 'UNVERIFIED'
+  if (orgnr) {
+    try {
+      const brregRes = await fetch(`${BRREG_API}/enheter/${orgnr}`, { headers: { Accept: 'application/json' } })
+      if (brregRes.ok) {
+        const brregData = (await brregRes.json()) as Record<string, unknown>
+        const inBankruptcy = brregData.konkurs === true
+        const inLiquidation = brregData.underAvvikling === true
+        const forcedDissolution = brregData.underTvangsavviklingEllerTvangsopplosning === true
+        const registeredInBusinessRegister = brregData.registrertIForetaksregisteret === true
+        verificationStatus = (!inBankruptcy && !inLiquidation && !forcedDissolution && registeredInBusinessRegister)
+          ? 'VERIFIED'
+          : 'REJECTED'
+      }
+    } catch {
+      // Brønnøysund unavailable — register as UNVERIFIED, can be verified later
+    }
+  }
+
   try {
     const prisma = getPrismaClient()
     const passwordHash = await hashPassword(password)
@@ -256,6 +342,9 @@ suppliersRouter.post('/register', async (req, res) => {
         email,
         passwordHash,
         address,
+        orgnr,
+        verificationStatus,
+        isVerified: verificationStatus === 'VERIFIED',
       },
     })
 
@@ -267,18 +356,20 @@ suppliersRouter.post('/register', async (req, res) => {
         contactName: supplier.contactName,
         email: supplier.email,
         address: supplier.address,
+        orgnr: supplier.orgnr,
         isVerified: supplier.isVerified,
+        verificationStatus: supplier.verificationStatus,
       },
     })
   } catch (error) {
     const code = typeof error === 'object' && error && 'code' in error ? String((error as any).code) : ''
 
     if (code === 'P2002') {
+      const meta = (error as any).meta as { target?: string[] } | undefined
+      const field = meta?.target?.includes('orgnr') ? 'orgnr' : 'email'
       res.status(409).json({
-        message: 'A supplier with this email already exists.',
-        errors: {
-          email: 'A supplier with this email already exists.',
-        },
+        message: field === 'orgnr' ? 'A supplier with this organisation number already exists.' : 'A supplier with this email already exists.',
+        errors: { [field]: field === 'orgnr' ? 'Organisation number already registered.' : 'A supplier with this email already exists.' },
       })
       return
     }

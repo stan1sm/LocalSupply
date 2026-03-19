@@ -17,7 +17,18 @@ import {
 import { buildApiUrl } from '../../../lib/api'
 import { type GeonorgeAdresse, searchAddresses } from '../../../lib/geonorgeAdresser'
 
+type BrregResult = {
+  ok: boolean
+  name?: string
+  address?: string
+  isActive?: boolean
+  inBankruptcy?: boolean
+  inLiquidation?: boolean
+  message?: string
+}
+
 type SupplierFormData = {
+  orgnr: string
   businessName: string
   contactName: string
   phoneNumber: string
@@ -32,6 +43,7 @@ type SupplierFormData = {
 type SupplierFormErrors = Partial<Record<keyof SupplierFormData, string>>
 
 const initialFormData: SupplierFormData = {
+  orgnr: '',
   businessName: '',
   contactName: '',
   phoneNumber: '',
@@ -56,6 +68,10 @@ export default function SupplierRegistrationPage() {
   const [loadingAddresses, setLoadingAddresses] = useState(false)
   const addressSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const addressDropdownRef = useRef<HTMLDivElement | null>(null)
+
+  const [brregStatus, setBrregStatus] = useState<'idle' | 'loading' | 'verified' | 'rejected' | 'not_found' | 'error'>('idle')
+  const [brregResult, setBrregResult] = useState<BrregResult | null>(null)
+  const orgnrTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const hasLivePasswordMismatch =
     (formData.password.length > 0 || formData.confirmPassword.length > 0) && formData.confirmPassword !== formData.password
@@ -87,6 +103,7 @@ export default function SupplierRegistrationPage() {
   useEffect(() => {
     return () => {
       if (addressSearchTimeoutRef.current) clearTimeout(addressSearchTimeoutRef.current)
+      if (orgnrTimeoutRef.current) clearTimeout(orgnrTimeoutRef.current)
     }
   }, [])
 
@@ -101,6 +118,55 @@ export default function SupplierRegistrationPage() {
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [addressDropdownVisible])
+
+  function handleOrgnrChange(value: string) {
+    const digits = value.replace(/[^0-9]/g, '').slice(0, 9)
+    setFormData((prev) => ({ ...prev, orgnr: digits }))
+    setErrors((prev) => ({ ...prev, orgnr: undefined }))
+    setBrregResult(null)
+    setBrregStatus('idle')
+
+    if (digits.length === 9) {
+      if (orgnrTimeoutRef.current) clearTimeout(orgnrTimeoutRef.current)
+      orgnrTimeoutRef.current = setTimeout(() => {
+        setBrregStatus('loading')
+        fetch(buildApiUrl(`/api/suppliers/verify/${digits}`))
+          .then((r) => r.json())
+          .then((data: BrregResult) => {
+            setBrregResult(data)
+            if (!data.ok) {
+              setBrregStatus('not_found')
+              return
+            }
+            if (!data.isActive) {
+              setBrregStatus('rejected')
+              return
+            }
+            setBrregStatus('verified')
+            // Auto-fill name and address
+            if (data.name) {
+              setFormData((prev) => ({ ...prev, businessName: data.name! }))
+              setErrors((prev) => ({ ...prev, businessName: undefined }))
+            }
+            if (data.address) {
+              const parts = data.address.split(',').map((p) => p.trim())
+              const street = parts[0] ?? ''
+              const rest = parts.slice(1).join(' ').trim()
+              const postalMatch = rest.match(/^(\d{4})\s+(.+)$/)
+              if (postalMatch) {
+                setFormData((prev) => ({ ...prev, streetAddress: street, postalCode: postalMatch[1], city: postalMatch[2] }))
+              } else {
+                setFormData((prev) => ({ ...prev, streetAddress: street }))
+              }
+              setErrors((prev) => ({ ...prev, streetAddress: undefined, postalCode: undefined, city: undefined }))
+            }
+          })
+          .catch(() => {
+            setBrregStatus('error')
+          })
+      }, 600)
+    }
+  }
 
   function handleTextChange(field: 'businessName' | 'contactName' | 'streetAddress' | 'city', value: string) {
     const maxLength = field === 'streetAddress' ? 120 : 80
@@ -267,6 +333,7 @@ export default function SupplierRegistrationPage() {
             password: normalizedData.password,
             confirmPassword: normalizedData.confirmPassword,
             address: combinedAddress,
+            orgnr: normalizedData.orgnr || undefined,
           }),
         })
         const payload = (await response.json().catch(() => ({}))) as {
@@ -356,6 +423,41 @@ export default function SupplierRegistrationPage() {
           </p>
 
           <form className="mt-3 space-y-2" noValidate onSubmit={handleSubmit}>
+            <label className="block space-y-1 text-xs font-medium text-white">
+              Organisasjonsnummer
+              <div className="relative">
+                <input
+                  autoComplete="off"
+                  className="w-full rounded-lg border border-white/25 bg-white/95 px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#667085] focus:border-white focus:ring-2 focus:ring-white/40"
+                  inputMode="numeric"
+                  maxLength={9}
+                  onChange={(e) => handleOrgnrChange(e.target.value)}
+                  placeholder="9 digits (e.g. 123456789)"
+                  type="text"
+                  value={formData.orgnr}
+                />
+                {brregStatus === 'loading' && (
+                  <span className="absolute right-3 top-2.5 text-xs text-white/70">Looking up…</span>
+                )}
+                {brregStatus === 'verified' && (
+                  <span className="absolute right-3 top-2.5 text-xs font-semibold text-[#d1fae5]">✓ Verified</span>
+                )}
+                {(brregStatus === 'rejected' || brregStatus === 'not_found') && (
+                  <span className="absolute right-3 top-2.5 text-xs font-semibold text-[#ffdfdf]">✗ Not valid</span>
+                )}
+              </div>
+              {brregStatus === 'verified' && brregResult?.name && (
+                <p className="text-[10px] text-[#d1fae5]">{brregResult.name} — found in Brønnøysundregistrene</p>
+              )}
+              {brregStatus === 'rejected' && (
+                <p className="text-[10px] text-[#ffdfdf]">Company is registered but inactive (bankruptcy/liquidation).</p>
+              )}
+              {brregStatus === 'not_found' && (
+                <p className="text-[10px] text-[#ffdfdf]">No company found with that org number. You can still register without verification.</p>
+              )}
+              {errors.orgnr ? <p className="text-[10px] text-[#ffdfdf]">{errors.orgnr}</p> : null}
+            </label>
+
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <label className="space-y-1 text-xs font-medium text-white">
                 Business Name
