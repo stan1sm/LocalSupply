@@ -1,7 +1,7 @@
 import path from 'path'
 import cors, { type CorsOptions } from 'cors'
 import express from 'express'
-import rateLimit from 'express-rate-limit'
+import { rateLimit } from 'express-rate-limit'
 import addressesRouter from './routes/addresses.js'
 import adminRouter from './routes/admin.js'
 import authRouter from './routes/auth.js'
