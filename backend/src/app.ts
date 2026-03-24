@@ -1,6 +1,7 @@
 import path from 'path'
 import cors, { type CorsOptions } from 'cors'
 import express from 'express'
+import rateLimit from 'express-rate-limit'
 import addressesRouter from './routes/addresses.js'
 import adminRouter from './routes/admin.js'
 import authRouter from './routes/auth.js'
@@ -54,8 +55,19 @@ const corsOptions: CorsOptions = {
   },
 }
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests, please try again later.' },
+})
+
 app.use(cors(corsOptions))
 app.use(express.json())
+app.use('/api/auth/login', authLimiter)
+app.use('/api/auth/register', authLimiter)
+app.use('/api/auth/resend-verification', authLimiter)
 app.use('/api/addresses', addressesRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/auth', authRouter)
