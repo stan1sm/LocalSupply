@@ -324,9 +324,10 @@ productsRouter.get('/', async (req, res) => {
   try {
     const prisma = getPrismaClient()
     const productFilters = [buildSearchFilter(q), buildCategoryFilter(category)].filter(Boolean)
+    const imageFilter = { imageUrl: { gt: '', notIn: PLACEHOLDER_IMAGE_URLS } }
     const where: any = {
       storeCode: selectedStore ?? undefined,
-      catalogProduct: productFilters.length > 0 ? { AND: productFilters } : undefined,
+      catalogProduct: productFilters.length > 0 ? { AND: [...productFilters, imageFilter] } : imageFilter,
     }
 
     const useRelevanceRanking = sort === 'relevance' && hasSearch
@@ -346,7 +347,9 @@ productsRouter.get('/', async (req, res) => {
       prisma.catalogProductPrice.count({ where }),
     ])
 
-    let items = (rows as any[]).map((row) => toMarketplaceProduct(row as Parameters<typeof toMarketplaceProduct>[0]))
+    let items = (rows as any[])
+      .map((row) => toMarketplaceProduct(row as Parameters<typeof toMarketplaceProduct>[0]))
+      .filter((item) => item.imageUrl !== null)
 
     if (useRelevanceRanking) {
       items = rankByRelevance(items, q)
