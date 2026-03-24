@@ -32,8 +32,6 @@ model User {
   emailVerificationTokenHash String?  @unique
   vippsSub                   String?  @unique
   vippsPhoneNumber           String?
-  address                    String?
-  phone                      String?
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
@@ -52,7 +50,8 @@ model UserAddress {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
 
   @@index([userId])
 }
@@ -195,23 +194,25 @@ model ProductEmbedding {
 
 
 model Order {
-  id              String      @id @default(cuid())
-  buyerId         String
-  supplierId      String
-  status          OrderStatus @default(PENDING)
-  subtotal        Decimal     @db.Decimal(10, 2)
-  deliveryFee     Decimal     @default(0) @db.Decimal(10, 2)
-  total           Decimal     @db.Decimal(10, 2)
-  notes           String?
-  woltDeliveryId  String?
-  woltTrackingUrl String?
-  woltStatus      String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                String      @id @default(cuid())
+  buyerId           String
+  supplierId        String
+  status            OrderStatus @default(PENDING)
+  subtotal          Decimal     @db.Decimal(10, 2)
+  deliveryFee       Decimal     @default(0) @db.Decimal(10, 2)
+  total             Decimal     @db.Decimal(10, 2)
+  notes             String?
+  deliveryAddressId String?
+  woltDeliveryId    String?
+  woltTrackingUrl   String?
+  woltStatus        String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
-  buyer    User        @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade)
-  supplier Supplier    @relation("SupplierOrders", fields: [supplierId], references: [id], onDelete: Restrict)
-  items    OrderItem[]
+  buyer           User         @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade)
+  supplier        Supplier     @relation("SupplierOrders", fields: [supplierId], references: [id], onDelete: Restrict)
+  deliveryAddress UserAddress? @relation(fields: [deliveryAddressId], references: [id], onDelete: SetNull)
+  items           OrderItem[]
 
   @@index([buyerId])
   @@index([supplierId])

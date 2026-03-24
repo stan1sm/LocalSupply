@@ -10,8 +10,6 @@ type BuyerSession = {
   firstName: string
   lastName: string
   email: string
-  address: string | null
-  phone: string | null
 }
 
 type GeoNorgeAddress = {
@@ -121,6 +119,14 @@ export default function BuyerSettingsPage() {
     setIsReady(true)
   }, [])
 
+  function getAuthHeader(): Record<string, string> {
+    try {
+      const token = window.localStorage.getItem('localsupply-token')
+      if (token) return { Authorization: `Bearer ${token}` }
+    } catch { /* ignore */ }
+    return {}
+  }
+
   useEffect(() => {
     if (isReady && !buyer) {
       window.location.href = '/login?redirect=/settings'
@@ -130,13 +136,14 @@ export default function BuyerSettingsPage() {
   // Load saved addresses + payment methods
   useEffect(() => {
     if (!buyer) return
-    const uid = encodeURIComponent(buyer.id)
-    fetch(buildApiUrl(`/api/auth/addresses?userId=${uid}`))
+    const headers = getAuthHeader()
+
+    fetch(buildApiUrl('/api/auth/addresses'), { headers })
       .then((r) => r.json())
       .then((data: SavedAddress[]) => { if (Array.isArray(data)) setAddresses(data) })
       .catch(() => { /* ignore */ })
 
-    fetch(buildApiUrl(`/api/auth/payment-methods?userId=${uid}`))
+    fetch(buildApiUrl('/api/auth/payment-methods'), { headers })
       .then((r) => r.json())
       .then((data: SavedPaymentMethod[]) => { if (Array.isArray(data)) setPayments(data) })
       .catch(() => { /* ignore */ })
@@ -190,9 +197,8 @@ export default function BuyerSettingsPage() {
     try {
       const res = await fetch(buildApiUrl('/api/auth/addresses'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
-          userId: buyer.id,
           address: trimmed,
           label: newAddrLabel.trim() || null,
           phone: newAddrPhone.trim() || null,
@@ -223,8 +229,8 @@ export default function BuyerSettingsPage() {
     if (!buyer) return
     const res = await fetch(buildApiUrl(`/api/auth/addresses/${id}`), {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: buyer.id, isDefault: true }),
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ isDefault: true }),
     })
     if (res.ok) {
       setAddresses((prev) => prev.map((a) => ({ ...a, isDefault: a.id === id })))
@@ -233,8 +239,9 @@ export default function BuyerSettingsPage() {
 
   async function handleDeleteAddress(id: string) {
     if (!buyer) return
-    const res = await fetch(buildApiUrl(`/api/auth/addresses/${id}?userId=${encodeURIComponent(buyer.id)}`), {
+    const res = await fetch(buildApiUrl(`/api/auth/addresses/${id}`), {
       method: 'DELETE',
+      headers: getAuthHeader(),
     })
     if (res.ok || res.status === 204) {
       setAddresses((prev) => {
@@ -270,9 +277,8 @@ export default function BuyerSettingsPage() {
 
       const res = await fetch(buildApiUrl('/api/auth/payment-methods'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
-          userId: buyer.id,
           cardholderName: newCardName.trim(),
           lastFour,
           maskedNumber: `•••• •••• •••• ${lastFour}`,
@@ -307,8 +313,8 @@ export default function BuyerSettingsPage() {
     if (!buyer) return
     const res = await fetch(buildApiUrl(`/api/auth/payment-methods/${id}`), {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: buyer.id, isDefault: true }),
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ isDefault: true }),
     })
     if (res.ok) {
       setPayments((prev) => prev.map((p) => ({ ...p, isDefault: p.id === id })))
@@ -317,8 +323,9 @@ export default function BuyerSettingsPage() {
 
   async function handleDeletePayment(id: string) {
     if (!buyer) return
-    const res = await fetch(buildApiUrl(`/api/auth/payment-methods/${id}?userId=${encodeURIComponent(buyer.id)}`), {
+    const res = await fetch(buildApiUrl(`/api/auth/payment-methods/${id}`), {
       method: 'DELETE',
+      headers: getAuthHeader(),
     })
     if (res.ok || res.status === 204) {
       setPayments((prev) => {

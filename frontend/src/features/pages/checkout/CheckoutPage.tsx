@@ -21,8 +21,6 @@ type BuyerSession = {
   firstName: string
   lastName: string
   email: string
-  address: string | null
-  phone: string | null
 }
 
 type MatchedStoreItem = {
@@ -202,11 +200,7 @@ export default function CheckoutPage() {
       const stored = window.localStorage.getItem(BUYER_STORAGE_KEY)
       if (stored) {
         const parsed = JSON.parse(stored) as BuyerSession
-        if (parsed?.id) {
-          setBuyer(parsed)
-          if (parsed.address) setAddressQuery(parsed.address)
-          if (parsed.phone) setVippsPhone(parsed.phone)
-        }
+        if (parsed?.id) setBuyer(parsed)
       }
     } catch { /* ignore */ }
 
@@ -229,12 +223,20 @@ export default function CheckoutPage() {
     }
   }, [isReady, buyer])
 
+  function getAuthHeader(): Record<string, string> {
+    try {
+      const token = window.localStorage.getItem('localsupply-token')
+      if (token) return { Authorization: `Bearer ${token}` }
+    } catch { /* ignore */ }
+    return {}
+  }
+
   // Load saved addresses and payment methods
   useEffect(() => {
     if (!buyer) return
-    const uid = encodeURIComponent(buyer.id)
+    const headers = getAuthHeader()
 
-    fetch(buildApiUrl(`/api/auth/addresses?userId=${uid}`))
+    fetch(buildApiUrl('/api/auth/addresses'), { headers })
       .then((r) => r.json())
       .then((data: SavedAddress[]) => {
         if (Array.isArray(data)) {
@@ -243,12 +245,13 @@ export default function CheckoutPage() {
           if (def) {
             setSelectedAddressId(def.id)
             setAddressQuery(def.address)
+            if (def.phone) setVippsPhone(def.phone)
           }
         }
       })
       .catch(() => { /* ignore */ })
 
-    fetch(buildApiUrl(`/api/auth/payment-methods?userId=${uid}`))
+    fetch(buildApiUrl('/api/auth/payment-methods'), { headers })
       .then((r) => r.json())
       .then((data: SavedPaymentMethod[]) => {
         if (Array.isArray(data)) {
@@ -260,11 +263,14 @@ export default function CheckoutPage() {
       .catch(() => { /* ignore */ })
   }, [buyer])
 
-  // When saved address selection changes, update addressQuery
+  // When saved address selection changes, update addressQuery + Vipps phone
   useEffect(() => {
     if (selectedAddressId === 'manual') return
     const found = savedAddresses.find((a) => a.id === selectedAddressId)
-    if (found) setAddressQuery(found.address)
+    if (found) {
+      setAddressQuery(found.address)
+      if (found.phone) setVippsPhone(found.phone)
+    }
   }, [selectedAddressId, savedAddresses])
 
   // Debounced Wolt estimate fetch whenever address changes
@@ -446,6 +452,7 @@ export default function CheckoutPage() {
           buyerId: buyer.id,
           deliveryFee: deliveryCost,
           deliveryAddress: addressQuery.trim(),
+          ...(selectedAddressId !== 'manual' ? { deliveryAddressId: selectedAddressId } : {}),
           items: selectedStore.items.map((item) => ({
             name: item.name,
             unit: 'unit',

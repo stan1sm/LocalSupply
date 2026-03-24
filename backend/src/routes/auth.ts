@@ -1,7 +1,9 @@
 import { Router } from 'express'
 import { buildEmailVerifiedRedirectUrl, sendUserVerificationEmail } from '../lib/email.js'
+import { signBuyerToken } from '../lib/jwt.js'
 import { getPrismaClient } from '../lib/prisma.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
+import { requireBuyerAuth } from '../middleware/requireBuyerAuth.js'
 import { validateUserEmailPayload, validateUserLoginPayload, validateUserRegistrationPayload } from '../lib/validation.js'
 import { generateEmailVerificationToken, hashEmailVerificationToken, isValidEmailVerificationToken } from '../lib/verification.js'
 
@@ -20,6 +22,14 @@ function getRequestBaseUrl(req: { protocol: string; get(name: string): string | 
   }
 
   return `${protocol}://${host}`
+}
+
+function isValidNorwegianPhone(phone: string): boolean {
+  // 8 digits starting with 2-9
+  if (/^[2-9]\d{7}$/.test(phone)) return true
+  // With country code +47 or 0047
+  if (/^(\+47|0047)[2-9]\d{7}$/.test(phone)) return true
+  return false
 }
 
 authRouter.post('/register', async (req, res) => {
@@ -148,15 +158,16 @@ authRouter.post('/login', async (req, res) => {
       return
     }
 
+    const token = signBuyerToken(user.id)
+
     res.status(200).json({
       message: 'Signed in successfully.',
+      token,
       user: {
         id: user.id,
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        address: user.address ?? null,
-        phone: user.phone ?? null,
       },
     })
   } catch (error) {
@@ -255,99 +266,62 @@ authRouter.get('/verify-email', async (req, res) => {
   }
 })
 
-authRouter.patch('/profile', async (req, res) => {
-  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
-  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
-
-  if (!userId) {
-    res.status(400).json({ message: 'userId is required.' })
-    return
-  }
-
-  const address = typeof body.address === 'string' ? body.address.trim() : undefined
-  const phone = typeof body.phone === 'string' ? body.phone.trim() : undefined
-
-  if (address === undefined && phone === undefined) {
-    res.status(400).json({ message: 'Provide at least one field to update.' })
-    return
-  }
-
-  try {
-    const prisma = getPrismaClient()
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(address !== undefined ? { address: address || null } : {}),
-        ...(phone !== undefined ? { phone: phone || null } : {}),
-      },
-    })
-
-    res.status(200).json({
-      user: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        address: user.address ?? null,
-        phone: user.phone ?? null,
-      },
-    })
-  } catch (error) {
-    const code = typeof error === 'object' && error && 'code' in error ? String((error as any).code) : ''
-    if (code === 'P2025') {
-      res.status(404).json({ message: 'User not found.' })
-      return
-    }
-    console.error('Profile update failed', error)
-    res.status(500).json({ message: 'Unable to update profile right now.' })
-  }
-})
-
 // ── Addresses ────────────────────────────────────────────────────────────────
 
-authRouter.get('/addresses', async (req, res) => {
-  const userId = typeof req.query.userId === 'string' ? req.query.userId.trim() : ''
-  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
+authRouter.get('/addresses', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
   const prisma = getPrismaClient()
-  const addresses = await prisma.userAddress.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } })
+  const addresses = await prisma.userAddress.findMany({ where: { userId: buyerId }, orderBy: { createdAt: 'asc' } })
   res.json(addresses)
 })
 
-authRouter.post('/addresses', async (req, res) => {
+authRouter.post('/addresses', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
-  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
   const address = typeof body.address === 'string' ? body.address.trim() : ''
   const label = typeof body.label === 'string' ? body.label.trim() : null
-  const phone = typeof body.phone === 'string' ? body.phone.trim() : null
+  const rawPhone = typeof body.phone === 'string' ? body.phone.trim() : null
   const makeDefault = body.isDefault === true
 
-  if (!userId || !address) { res.status(400).json({ message: 'userId and address are required.' }); return }
+  if (!address) { res.status(400).json({ message: 'address is required.' }); return }
+
+  if (rawPhone && !isValidNorwegianPhone(rawPhone)) {
+    res.status(400).json({ message: 'Invalid phone number. Use a Norwegian number (e.g. 40012345 or +4740012345).' })
+    return
+  }
 
   const prisma = getPrismaClient()
-  const existing = await prisma.userAddress.count({ where: { userId } })
+  const existing = await prisma.userAddress.count({ where: { userId: buyerId } })
 
   if (makeDefault || existing === 0) {
-    await prisma.userAddress.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } })
+    await prisma.userAddress.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
   }
 
   const created = await prisma.userAddress.create({
-    data: { userId, address, label: label || null, phone: phone || null, isDefault: makeDefault || existing === 0 },
+    data: { userId: buyerId, address, label: label || null, phone: rawPhone || null, isDefault: makeDefault || existing === 0 },
   })
   res.status(201).json(created)
 })
 
-authRouter.patch('/addresses/:id', async (req, res) => {
-  const { id } = req.params
+authRouter.patch('/addresses/:id', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
+  const id = typeof req.params.id === 'string' ? req.params.id : ''
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
-  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
-  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
 
   const prisma = getPrismaClient()
   const existing = await prisma.userAddress.findUnique({ where: { id } })
-  if (!existing || existing.userId !== userId) { res.status(404).json({ message: 'Address not found.' }); return }
+  if (!existing || existing.userId !== buyerId) { res.status(404).json({ message: 'Address not found.' }); return }
+
+  if (typeof body.phone === 'string') {
+    const rawPhone = body.phone.trim()
+    if (rawPhone && !isValidNorwegianPhone(rawPhone)) {
+      res.status(400).json({ message: 'Invalid phone number. Use a Norwegian number (e.g. 40012345 or +4740012345).' })
+      return
+    }
+  }
 
   if (body.isDefault === true) {
-    await prisma.userAddress.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } })
+    await prisma.userAddress.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
   }
 
   const updated = await prisma.userAddress.update({
@@ -362,20 +336,18 @@ authRouter.patch('/addresses/:id', async (req, res) => {
   res.json(updated)
 })
 
-authRouter.delete('/addresses/:id', async (req, res) => {
-  const userId = typeof req.query.userId === 'string' ? req.query.userId.trim() : ''
-  const { id } = req.params
-  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
+authRouter.delete('/addresses/:id', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
+  const id = typeof req.params.id === 'string' ? req.params.id : ''
 
   const prisma = getPrismaClient()
   const existing = await prisma.userAddress.findUnique({ where: { id } })
-  if (!existing || existing.userId !== userId) { res.status(404).json({ message: 'Address not found.' }); return }
+  if (!existing || existing.userId !== buyerId) { res.status(404).json({ message: 'Address not found.' }); return }
 
   await prisma.userAddress.delete({ where: { id } })
 
-  // if deleted was default, promote next
   if (existing.isDefault) {
-    const next = await prisma.userAddress.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } })
+    const next = await prisma.userAddress.findFirst({ where: { userId: buyerId }, orderBy: { createdAt: 'asc' } })
     if (next) await prisma.userAddress.update({ where: { id: next.id }, data: { isDefault: true } })
   }
 
@@ -384,17 +356,16 @@ authRouter.delete('/addresses/:id', async (req, res) => {
 
 // ── Payment methods ───────────────────────────────────────────────────────────
 
-authRouter.get('/payment-methods', async (req, res) => {
-  const userId = typeof req.query.userId === 'string' ? req.query.userId.trim() : ''
-  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
+authRouter.get('/payment-methods', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
   const prisma = getPrismaClient()
-  const methods = await prisma.userPaymentMethod.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } })
+  const methods = await prisma.userPaymentMethod.findMany({ where: { userId: buyerId }, orderBy: { createdAt: 'asc' } })
   res.json(methods)
 })
 
-authRouter.post('/payment-methods', async (req, res) => {
+authRouter.post('/payment-methods', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
-  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
   const cardholderName = typeof body.cardholderName === 'string' ? body.cardholderName.trim() : ''
   const lastFour = typeof body.lastFour === 'string' ? body.lastFour.trim() : ''
   const maskedNumber = typeof body.maskedNumber === 'string' ? body.maskedNumber.trim() : ''
@@ -402,21 +373,21 @@ authRouter.post('/payment-methods', async (req, res) => {
   const cardType = typeof body.cardType === 'string' ? body.cardType.trim() : null
   const makeDefault = body.isDefault === true
 
-  if (!userId || !cardholderName || !lastFour || !expiry) {
-    res.status(400).json({ message: 'userId, cardholderName, lastFour, and expiry are required.' })
+  if (!cardholderName || !lastFour || !expiry) {
+    res.status(400).json({ message: 'cardholderName, lastFour, and expiry are required.' })
     return
   }
 
   const prisma = getPrismaClient()
-  const existing = await prisma.userPaymentMethod.count({ where: { userId } })
+  const existing = await prisma.userPaymentMethod.count({ where: { userId: buyerId } })
 
   if (makeDefault || existing === 0) {
-    await prisma.userPaymentMethod.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } })
+    await prisma.userPaymentMethod.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
   }
 
   const created = await prisma.userPaymentMethod.create({
     data: {
-      userId,
+      userId: buyerId,
       cardholderName,
       lastFour,
       maskedNumber: maskedNumber || `•••• •••• •••• ${lastFour}`,
@@ -428,18 +399,17 @@ authRouter.post('/payment-methods', async (req, res) => {
   res.status(201).json(created)
 })
 
-authRouter.patch('/payment-methods/:id', async (req, res) => {
-  const { id } = req.params
+authRouter.patch('/payment-methods/:id', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
+  const id = typeof req.params.id === 'string' ? req.params.id : ''
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
-  const userId = typeof body.userId === 'string' ? body.userId.trim() : ''
-  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
 
   const prisma = getPrismaClient()
   const existing = await prisma.userPaymentMethod.findUnique({ where: { id } })
-  if (!existing || existing.userId !== userId) { res.status(404).json({ message: 'Payment method not found.' }); return }
+  if (!existing || existing.userId !== buyerId) { res.status(404).json({ message: 'Payment method not found.' }); return }
 
   if (body.isDefault === true) {
-    await prisma.userPaymentMethod.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } })
+    await prisma.userPaymentMethod.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
   }
 
   const updated = await prisma.userPaymentMethod.update({
@@ -449,19 +419,18 @@ authRouter.patch('/payment-methods/:id', async (req, res) => {
   res.json(updated)
 })
 
-authRouter.delete('/payment-methods/:id', async (req, res) => {
-  const userId = typeof req.query.userId === 'string' ? req.query.userId.trim() : ''
-  const { id } = req.params
-  if (!userId) { res.status(400).json({ message: 'userId is required.' }); return }
+authRouter.delete('/payment-methods/:id', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
+  const id = typeof req.params.id === 'string' ? req.params.id : ''
 
   const prisma = getPrismaClient()
   const existing = await prisma.userPaymentMethod.findUnique({ where: { id } })
-  if (!existing || existing.userId !== userId) { res.status(404).json({ message: 'Payment method not found.' }); return }
+  if (!existing || existing.userId !== buyerId) { res.status(404).json({ message: 'Payment method not found.' }); return }
 
   await prisma.userPaymentMethod.delete({ where: { id } })
 
   if (existing.isDefault) {
-    const next = await prisma.userPaymentMethod.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } })
+    const next = await prisma.userPaymentMethod.findFirst({ where: { userId: buyerId }, orderBy: { createdAt: 'asc' } })
     if (next) await prisma.userPaymentMethod.update({ where: { id: next.id }, data: { isDefault: true } })
   }
 

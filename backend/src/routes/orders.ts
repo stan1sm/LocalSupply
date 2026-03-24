@@ -151,6 +151,21 @@ ordersRouter.post('/', async (req, res) => {
     const roundedDeliveryFee = Math.max(0, Math.round(deliveryFee * 100) / 100)
     const total = Math.round((roundedSubtotal + roundedDeliveryFee) * 100) / 100
 
+    const deliveryAddressId = typeof body.deliveryAddressId === 'string' && body.deliveryAddressId.trim().length > 0
+      ? body.deliveryAddressId.trim()
+      : null
+
+    // Verify the deliveryAddressId belongs to this buyer if provided
+    let resolvedAddressPhone: string | null = null
+    if (deliveryAddressId) {
+      const addr = await prisma.userAddress.findUnique({ where: { id: deliveryAddressId } })
+      if (!addr || addr.userId !== buyerId) {
+        res.status(400).json({ message: 'Invalid deliveryAddressId.' })
+        return
+      }
+      resolvedAddressPhone = addr.phone
+    }
+
     const order = await prisma.order.create({
       data: {
         buyerId,
@@ -159,6 +174,7 @@ ordersRouter.post('/', async (req, res) => {
         deliveryFee: roundedDeliveryFee,
         total,
         notes: notes || null,
+        ...(deliveryAddressId ? { deliveryAddressId } : {}),
         items: {
           createMany: {
             data: orderItemsData,
@@ -191,7 +207,7 @@ ordersRouter.post('/', async (req, res) => {
         dropoff: {
           ...parseAddressString(deliveryAddress),
           contactName: `${order.buyer.firstName} ${order.buyer.lastName}`,
-          contactPhone: order.buyer.phone ?? '00000000',
+          contactPhone: resolvedAddressPhone ?? '00000000',
         },
         parcels: [{ description: `Order #${order.id.slice(-6)} — ${orderItemsData.length} items`, count: orderItemsData.length }],
         orderReference: order.id,
