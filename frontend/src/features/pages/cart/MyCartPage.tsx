@@ -362,6 +362,19 @@ export default function MyCartPage() {
               )
             })}
           </nav>
+          <div className="mt-4 border-t border-[#e5ece2] pt-4">
+            <button
+              onClick={() => {
+                try { window.localStorage.removeItem('localsupply-user'); window.localStorage.removeItem('localsupply-token') } catch { /* ignore */ }
+                window.location.href = '/login'
+              }}
+              className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-semibold text-[#7a3a3a] transition hover:bg-[#fff5f5] hover:text-[#9b2c2c]"
+              type="button"
+            >
+              <span className="grid h-7 w-7 place-items-center rounded-lg border border-[#f0d4d4] bg-white text-xs font-bold text-[#9b2c2c]">↩</span>
+              Sign out
+            </button>
+          </div>
         </aside>
 
         <section className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">

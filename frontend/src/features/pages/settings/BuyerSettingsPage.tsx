@@ -363,6 +363,16 @@ export default function BuyerSettingsPage() {
                 {item.label}
               </a>
             ))}
+            <button
+              onClick={() => {
+                try { window.localStorage.removeItem('localsupply-user'); window.localStorage.removeItem('localsupply-token') } catch { /* ignore */ }
+                window.location.href = '/login'
+              }}
+              className="text-sm font-medium text-red-500 hover:text-red-700"
+              type="button"
+            >
+              Sign out
+            </button>
           </nav>
         </div>
       </header>

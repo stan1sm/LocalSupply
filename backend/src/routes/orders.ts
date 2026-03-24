@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { sendSupplierOrderEmail } from '../lib/email.js'
 import { getPrismaClient } from '../lib/prisma.js'
 import { createDelivery, parseAddressString } from '../lib/woltDrive.js'
 
@@ -251,6 +252,24 @@ ordersRouter.post('/', async (req, res) => {
         unitPrice: item.unitPrice,
       })),
     })
+
+    // Fire-and-forget — doesn't affect the order response
+    sendSupplierOrderEmail({
+      supplierEmail: order.supplier.email,
+      supplierName: order.supplier.businessName,
+      orderId: order.id,
+      buyerName: `${order.buyer.firstName} ${order.buyer.lastName}`,
+      deliveryAddress: deliveryAddress || 'Not specified',
+      items: order.items.map((item) => ({
+        name: item.product.name,
+        quantity: item.quantity,
+        unitPrice: Number(item.unitPrice),
+      })),
+      subtotal: Number(order.subtotal),
+      deliveryFee: Number(order.deliveryFee),
+      total: Number(order.total),
+      notes: order.notes,
+    }).catch(() => { /* already logged inside sendSupplierOrderEmail */ })
   } catch (error) {
     console.error('Failed to create order', error)
     res.status(503).json({ message: 'Unable to create order right now.' })

@@ -84,6 +84,86 @@ function getMailFromAddress() {
   throw new Error('SMTP_FROM or SMTP_USER must be configured to send verification emails.')
 }
 
+type OrderNotificationInput = {
+  supplierEmail: string
+  supplierName: string
+  orderId: string
+  buyerName: string
+  deliveryAddress: string
+  items: { name: string; quantity: number; unitPrice: number }[]
+  subtotal: number
+  deliveryFee: number
+  total: number
+  notes: string | null
+}
+
+export async function sendSupplierOrderEmail({
+  supplierEmail,
+  supplierName,
+  orderId,
+  buyerName,
+  deliveryAddress,
+  items,
+  subtotal,
+  deliveryFee,
+  total,
+  notes,
+}: OrderNotificationInput): Promise<void> {
+  const transport = getMailTransport()
+  if (!transport) return // silently skip if SMTP not configured
+
+  const dashboardUrl = new URL('/supplier/orders', getFrontendBaseUrl()).toString()
+  const shortId = orderId.slice(-6).toUpperCase()
+
+  const itemLines = items.map((i) => `  • ${i.name} ×${i.quantity} — ${(i.unitPrice * i.quantity).toFixed(2)} kr`).join('\n')
+  const itemHtml = items
+    .map((i) => `<tr><td>${i.name}</td><td>×${i.quantity}</td><td>${(i.unitPrice * i.quantity).toFixed(2)} kr</td></tr>`)
+    .join('')
+
+  const textBody = [
+    `Hi ${supplierName},`,
+    '',
+    `You have a new order (#${shortId}) from ${buyerName}.`,
+    '',
+    'Items:',
+    itemLines,
+    '',
+    `Subtotal: ${subtotal.toFixed(2)} kr`,
+    `Delivery fee: ${deliveryFee.toFixed(2)} kr`,
+    `Total: ${total.toFixed(2)} kr`,
+    '',
+    `Delivery to: ${deliveryAddress}`,
+    ...(notes ? [`Notes: ${notes}`] : []),
+    '',
+    `View in dashboard: ${dashboardUrl}`,
+  ].join('\n')
+
+  const htmlBody = [
+    `<p>Hi ${supplierName},</p>`,
+    `<p>You have a new order <strong>#${shortId}</strong> from <strong>${buyerName}</strong>.</p>`,
+    '<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse">',
+    '<thead><tr><th>Item</th><th>Qty</th><th>Total</th></tr></thead>',
+    `<tbody>${itemHtml}</tbody>`,
+    '</table>',
+    `<p>Subtotal: ${subtotal.toFixed(2)} kr<br>Delivery: ${deliveryFee.toFixed(2)} kr<br><strong>Total: ${total.toFixed(2)} kr</strong></p>`,
+    `<p>Deliver to: ${deliveryAddress}</p>`,
+    ...(notes ? [`<p>Notes: ${notes}</p>`] : []),
+    `<p><a href="${dashboardUrl}">View order in your dashboard →</a></p>`,
+  ].join('')
+
+  try {
+    await transport.sendMail({
+      from: getMailFromAddress(),
+      to: supplierEmail,
+      subject: `New order #${shortId} — LocalSupply`,
+      text: textBody,
+      html: htmlBody,
+    })
+  } catch (error) {
+    console.warn(`Failed to send order notification to ${supplierEmail}`, error)
+  }
+}
+
 export async function sendUserVerificationEmail({
   email,
   firstName,
