@@ -43,9 +43,7 @@ const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
 
 function formatCurrency(value: number | string) {
   const n = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(n)) {
-    return `${value} kr`
-  }
+  if (!Number.isFinite(n)) return `${value} kr`
   return `${n.toFixed(2)} kr`
 }
 
@@ -61,25 +59,32 @@ function formatDate(value: string) {
   })
 }
 
+function statusStyle(status: string): { badge: string; label: string } {
+  switch (status) {
+    case 'CONFIRMED': return { badge: 'bg-[#dcf5e2] text-[#1a5e30]', label: 'Confirmed' }
+    case 'CANCELLED': return { badge: 'bg-[#fde8e8] text-[#9b2c2c]', label: 'Cancelled' }
+    case 'IN_TRANSIT': return { badge: 'bg-[#e0f0ff] text-[#1a4a7a]', label: 'In transit' }
+    case 'DELIVERED': return { badge: 'bg-[#eef7ef] text-[#256c3a]', label: 'Delivered' }
+    default: return { badge: 'bg-[#fef9ec] text-[#7a5500]', label: 'Pending' }
+  }
+}
+
 export default function SupplierOrdersPage() {
   const [supplier, setSupplier] = useState<SupplierSession | null>(null)
   const [orders, setOrders] = useState<OrderSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
 
   useEffect(() => {
     try {
       const stored = typeof window !== 'undefined' ? window.localStorage.getItem(SUPPLIER_STORAGE_KEY) : null
       if (stored) {
         const parsed = JSON.parse(stored) as SupplierSession
-        if (parsed && parsed.id) {
-          setSupplier(parsed)
-        }
+        if (parsed && parsed.id) setSupplier(parsed)
       }
     } catch {
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem(SUPPLIER_STORAGE_KEY)
-      }
+      if (typeof window !== 'undefined') window.localStorage.removeItem(SUPPLIER_STORAGE_KEY)
     } finally {
       setIsLoading(false)
     }
@@ -96,14 +101,8 @@ export default function SupplierOrdersPage() {
       try {
         const response = await fetch(buildApiUrl(`/api/orders/supplier/${encodeURIComponent(supplierId)}`))
         const payload = (await response.json().catch(() => ({}))) as OrderSummary[] | { message?: string }
-
-        if (!response.ok) {
-          throw new Error((payload as { message?: string }).message ?? 'Unable to load orders right now.')
-        }
-
-        if (!cancelled && Array.isArray(payload)) {
-          setOrders(payload)
-        }
+        if (!response.ok) throw new Error((payload as { message?: string }).message ?? 'Unable to load orders right now.')
+        if (!cancelled && Array.isArray(payload)) setOrders(payload)
       } catch (error) {
         if (!cancelled) {
           setOrders([])
@@ -113,11 +112,30 @@ export default function SupplierOrdersPage() {
     }
 
     loadOrders()
-
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [supplier])
+
+  async function handleUpdateStatus(orderId: string, status: 'CONFIRMED' | 'CANCELLED') {
+    if (!supplier || updatingId) return
+    setUpdatingId(orderId)
+    try {
+      const res = await fetch(buildApiUrl(`/api/orders/${orderId}/status`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ supplierId: supplier.id, status }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { id?: string; status?: string; message?: string }
+      if (res.ok && data.status) {
+        setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status: data.status! } : o))
+      } else {
+        setErrorMessage(data.message ?? 'Unable to update order.')
+      }
+    } catch {
+      setErrorMessage('Unable to reach the server.')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -137,16 +155,10 @@ export default function SupplierOrdersPage() {
             To view and manage orders, first create a supplier account or sign in from this device.
           </p>
           <div className="mt-4 flex flex-col gap-2 text-sm">
-            <a
-              className="rounded-2xl bg-[#2f9f4f] px-4 py-2.5 font-semibold text-white transition hover:bg-[#25813f]"
-              href="/supplier/register"
-            >
+            <a className="rounded-2xl bg-[#2f9f4f] px-4 py-2.5 font-semibold text-white transition hover:bg-[#25813f]" href="/supplier/register">
               Create Supplier Account
             </a>
-            <a
-              className="rounded-2xl border border-[#d4ddcf] bg-white px-4 py-2.5 font-semibold text-[#314237] transition hover:border-[#9db5a4] hover:text-[#2f9f4f]"
-              href="/supplier/login"
-            >
+            <a className="rounded-2xl border border-[#d4ddcf] bg-white px-4 py-2.5 font-semibold text-[#314237] transition hover:border-[#9db5a4] hover:text-[#2f9f4f]" href="/supplier/login">
               Supplier Sign in
             </a>
           </div>
@@ -155,15 +167,14 @@ export default function SupplierOrdersPage() {
     )
   }
 
+  const pendingCount = orders.filter((o) => o.status === 'PENDING').length
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto grid w-full max-w-[1400px] gap-6 lg:grid-cols-[260px_minmax(0,1.2fr)]">
         <aside className="rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
           <div className="px-2 pb-4">
-            <a
-              className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#2f9f4f] hover:text-[#1f2937]"
-              href="/"
-            >
+            <a className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#2f9f4f] hover:text-[#1f2937]" href="/">
               <span aria-hidden="true">←</span>
               <span>LocalSupply</span>
             </a>
@@ -199,11 +210,20 @@ export default function SupplierOrdersPage() {
 
         <section className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
           <div className="border-b border-[#e5ece2] px-5 py-5">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Supplier Orders</p>
-            <h1 className="mt-2 text-2xl font-bold text-[#1f2b22]">Incoming orders</h1>
-            <p className="mt-1 text-sm text-[#617166]">
-              See recent orders placed with your business, including buyer details and basic status.
-            </p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Supplier Orders</p>
+                <h1 className="mt-2 text-2xl font-bold text-[#1f2b22]">Incoming orders</h1>
+                <p className="mt-1 text-sm text-[#617166]">
+                  Confirm or cancel pending orders. Wolt handles delivery once confirmed.
+                </p>
+              </div>
+              {pendingCount > 0 ? (
+                <span className="shrink-0 rounded-full bg-[#fef9ec] px-3 py-1 text-sm font-semibold text-[#7a5500]">
+                  {pendingCount} pending
+                </span>
+              ) : null}
+            </div>
           </div>
 
           <div className="px-5 py-5">
@@ -222,55 +242,83 @@ export default function SupplierOrdersPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {orders.map((order) => (
-                  <article
-                    className="rounded-3xl border border-[#e5ece2] bg-white p-4 shadow-[0_12px_24px_rgba(18,38,24,0.06)]"
-                    key={order.id}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8a7f]">Buyer</p>
-                        <p className="mt-1 text-sm font-semibold text-[#1f2b22]">
-                          {order.buyer.firstName} {order.buyer.lastName}
-                        </p>
-                        <p className="mt-1 text-xs text-[#6d7b70]">{order.buyer.email}</p>
-                        <p className="mt-1 text-xs text-[#6d7b70]">Placed {formatDate(order.createdAt)}</p>
+                {orders.map((order) => {
+                  const { badge, label } = statusStyle(order.status)
+                  const isPending = order.status === 'PENDING'
+                  const isUpdating = updatingId === order.id
+
+                  return (
+                    <article
+                      className="rounded-3xl border border-[#e5ece2] bg-white p-4 shadow-[0_12px_24px_rgba(18,38,24,0.06)]"
+                      key={order.id}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8a7f]">Buyer</p>
+                          <p className="mt-1 text-sm font-semibold text-[#1f2b22]">
+                            {order.buyer.firstName} {order.buyer.lastName}
+                          </p>
+                          <p className="mt-1 text-xs text-[#6d7b70]">{order.buyer.email}</p>
+                          <p className="mt-1 text-xs text-[#6d7b70]">Placed {formatDate(order.createdAt)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-[#1f2b22]">{formatCurrency(order.total)}</p>
+                          <span className={`mt-1 inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${badge}`}>
+                            {label}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-[#1f2b22]">{formatCurrency(order.total)}</p>
-                        <p className="mt-1 inline-flex items-center rounded-full bg-[#edf7f0] px-2.5 py-0.5 text-[11px] font-semibold text-[#256c3a]">
-                          {order.status}
+
+                      <div className="mt-3 border-t border-[#eef2ec] pt-3 text-xs text-[#6d7b70]">
+                        <p>
+                          Subtotal {formatCurrency(order.subtotal)} · Delivery {formatCurrency(order.deliveryFee)}
+                          {order.notes ? <> · {order.notes}</> : null}
                         </p>
                       </div>
-                    </div>
-                    <div className="mt-3 border-t border-[#eef2ec] pt-3 text-xs text-[#6d7b70]">
-                      <p>
-                        Subtotal {formatCurrency(order.subtotal)} · Delivery {formatCurrency(order.deliveryFee)}
-                        {order.notes ? <> · Note: {order.notes}</> : null}
-                      </p>
-                    </div>
-                    {order.items.length > 0 ? (
-                      <div className="mt-3 divide-y divide-[#eef2ec] border-t border-[#eef2ec] pt-2">
-                        {order.items.map((item) => (
-                          <div className="flex items-center justify-between gap-3 py-2" key={item.id}>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-[#1f2b22]">{item.name}</p>
-                              <p className="text-xs text-[#6d7b70]">
-                                {item.unit} · {item.quantity} × {formatCurrency(item.unitPrice)}
+
+                      {order.items.length > 0 ? (
+                        <div className="mt-3 divide-y divide-[#eef2ec] border-t border-[#eef2ec] pt-2">
+                          {order.items.map((item) => (
+                            <div className="flex items-center justify-between gap-3 py-2" key={item.id}>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-[#1f2b22]">{item.name}</p>
+                                <p className="text-xs text-[#6d7b70]">
+                                  {item.unit} · {item.quantity} × {formatCurrency(item.unitPrice)}
+                                </p>
+                              </div>
+                              <p className="text-sm font-semibold text-[#1f2b22]">
+                                {formatCurrency(
+                                  (typeof item.unitPrice === 'number' ? item.unitPrice : Number(item.unitPrice)) * item.quantity,
+                                )}
                               </p>
                             </div>
-                            <p className="text-sm font-semibold text-[#1f2b22]">
-                              {formatCurrency(
-                                (typeof item.unitPrice === 'number' ? item.unitPrice : Number(item.unitPrice)) *
-                                  item.quantity,
-                              )}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </article>
-                ))}
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {isPending ? (
+                        <div className="mt-4 flex gap-2 border-t border-[#eef2ec] pt-4">
+                          <button
+                            className="flex-1 rounded-2xl bg-[#2f9f4f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateStatus(order.id, 'CONFIRMED')}
+                            type="button"
+                          >
+                            {isUpdating ? 'Updating…' : 'Confirm order'}
+                          </button>
+                          <button
+                            className="flex-1 rounded-2xl border border-[#f0d4d4] bg-white px-4 py-2.5 text-sm font-semibold text-[#9b2c2c] transition hover:bg-[#fff5f5] disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateStatus(order.id, 'CANCELLED')}
+                            type="button"
+                          >
+                            {isUpdating ? 'Updating…' : 'Cancel order'}
+                          </button>
+                        </div>
+                      ) : null}
+                    </article>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -279,4 +327,3 @@ export default function SupplierOrdersPage() {
     </main>
   )
 }
-
