@@ -13,13 +13,12 @@ type LoginFormData = {
 
 type LoginFormErrors = Partial<Record<keyof LoginFormData, string>>
 type LoginApiResponse = {
+  token?: string
   user?: {
     id: string
     firstName: string
     lastName: string
     email: string
-    address: string | null
-    phone: string | null
   }
   email?: string
   message?: string
@@ -134,10 +133,11 @@ export default function LoginPage() {
               firstName: payload.user.firstName,
               lastName: payload.user.lastName,
               email: payload.user.email,
-              address: payload.user.address ?? null,
-              phone: payload.user.phone ?? null,
             }),
           )
+          if (payload.token) {
+            window.localStorage.setItem('localsupply-token', payload.token)
+          }
         } catch {
           // Ignore storage errors and continue.
         }
