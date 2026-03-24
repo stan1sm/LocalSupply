@@ -385,5 +385,44 @@ ordersRouter.get('/supplier/:supplierId', async (req, res) => {
   }
 })
 
+ordersRouter.patch('/:id/status', async (req, res) => {
+  const id = typeof req.params.id === 'string' ? req.params.id : ''
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const supplierId = typeof body.supplierId === 'string' ? body.supplierId.trim() : ''
+  const status = typeof body.status === 'string' ? body.status.trim().toUpperCase() : ''
+
+  const ALLOWED_TRANSITIONS = ['CONFIRMED', 'CANCELLED']
+
+  if (!supplierId || !ALLOWED_TRANSITIONS.includes(status)) {
+    res.status(400).json({ message: 'supplierId and status (CONFIRMED or CANCELLED) are required.' })
+    return
+  }
+
+  try {
+    const prisma = getPrismaClient()
+    const order = await prisma.order.findUnique({ where: { id } })
+
+    if (!order || order.supplierId !== supplierId) {
+      res.status(404).json({ message: 'Order not found.' })
+      return
+    }
+
+    if (order.status !== 'PENDING') {
+      res.status(409).json({ message: `Order is already ${order.status.toLowerCase()} and cannot be updated.` })
+      return
+    }
+
+    const updated = await prisma.order.update({
+      where: { id },
+      data: { status: status as 'CONFIRMED' | 'CANCELLED' },
+    })
+
+    res.json({ id: updated.id, status: updated.status })
+  } catch (error) {
+    console.error('Order status update failed', error)
+    res.status(503).json({ message: 'Unable to update order right now.' })
+  }
+})
+
 export default ordersRouter
 
