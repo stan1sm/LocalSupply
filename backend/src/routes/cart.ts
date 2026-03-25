@@ -32,6 +32,34 @@ const defaultDeliveryEstimate: StoreDeliveryEstimate = {
 
 const DEFAULT_EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
 
+// When text search finds nothing for a slot, try these catalog categories based on slot role keywords.
+const SLOT_ROLE_CATEGORY_FALLBACK: Array<{ keywords: string[]; categories: string[] }> = [
+  { keywords: ['protein', 'meat', 'kjøtt'], categories: ['Kjøtt', 'Kylling', 'Saltpølser', 'Spekepølser', 'Bacon', 'Fisk og sjømat'] },
+  { keywords: ['fish', 'seafood', 'fisk', 'sjømat'], categories: ['Fisk og sjømat', 'Sild/ansjos'] },
+  { keywords: ['vegetable', 'grønnsak', 'salad', 'salat'], categories: ['Grønnsaker', 'Salater', 'Rotgrønnsaker', 'Frukt'] },
+  { keywords: ['cheese', 'ost'], categories: ['Gulost', 'Hvitmuggost', 'Blåmuggost', 'Smøreost', 'Brunost'] },
+  { keywords: ['dairy', 'milk', 'melk'], categories: ['Melk', 'Fløte', 'Yoghurt', 'Rømme', 'Smør', 'Egg'] },
+  { keywords: ['pasta', 'noodle', 'nudler'], categories: ['Pasta og nudler'] },
+  { keywords: ['rice', 'ris'], categories: ['Ris og gryn'] },
+  { keywords: ['bread', 'brød', 'tortilla', 'wrap', 'lefse'], categories: ['Brød', 'Tortilla og wrap', 'Lefser og flatbrød', 'Rundstykker'] },
+  { keywords: ['sauce', 'saus', 'salsa', 'pastasaus'], categories: ['Pastasaus', 'Sauser og marinader', 'Ketchup'] },
+  { keywords: ['spice', 'krydder', 'herb', 'urte', 'seasoning'], categories: ['Krydder', 'Krydderblandinger', 'Salt og pepper'] },
+  { keywords: ['oil', 'olje', 'vinegar', 'eddik'], categories: ['Olje og eddik'] },
+  { keywords: ['egg'], categories: ['Egg'] },
+  { keywords: ['butter', 'smør'], categories: ['Smør', 'Margarin'] },
+  { keywords: ['cream', 'fløte', 'rømme'], categories: ['Fløte', 'Rømme'] },
+  { keywords: ['drink', 'drikke', 'juice', 'water', 'vann'], categories: ['Juice', 'Vann', 'Brus'] },
+  { keywords: ['frozen', 'frossen'], categories: ['Grønnsaker, frosne', 'Fisk, frossen', 'Kjøtt, frossen'] },
+]
+
+function getRoleCategoryFallback(slotRole: string, tags: string[]): string[] {
+  const needle = `${slotRole} ${tags.join(' ')}`.toLowerCase()
+  for (const entry of SLOT_ROLE_CATEGORY_FALLBACK) {
+    if (entry.keywords.some((kw) => needle.includes(kw))) return entry.categories
+  }
+  return []
+}
+
 function cosineSimilarity(a: number[], b: number[]): number {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) return 0
 
@@ -233,8 +261,20 @@ cartRouter.post('/intent', async (req, res) => {
   }
 
   try {
-    const mealPlan = await planMealFromText(text, language)
     const prisma = getPrismaClient()
+
+    // Fetch real catalog categories to ground the LLM in what's actually available.
+    const categoryRows = await (prisma as any).catalogProduct.findMany({
+      select: { category: true },
+      where: { category: { not: null } },
+      distinct: ['category'],
+    })
+    const catalogCategories: string[] = categoryRows
+      .map((r: { category: string | null }) => r.category)
+      .filter((c: string | null): c is string => Boolean(c))
+      .sort()
+
+    const mealPlan = await planMealFromText(text, language, catalogCategories)
 
     const slots = mealPlan.slots
     if (slots.length === 0) {
@@ -342,43 +382,61 @@ cartRouter.post('/intent', async (req, res) => {
             quantity: number
             lineTotal: number
           }[] = []
-          let subtotal = 0
-          let requiredFulfilled = 0
-          let pickedProteinLike = false
+          // Process all slots for this store in parallel.
+          type SlotResult = {
+            priceId: string
+            imageUrl: string | null
+            catalogProductId: string
+            name: string
+            unitPrice: number
+            unitInfo: string | null
+            quantity: number
+            lineTotal: number
+            required: boolean
+            isProtein: boolean
+          }
 
-          for (let slotIdx = 0; slotIdx < slotData.length; slotIdx++) {
-            const { slot, effectiveTags, slotLooksProtein } = slotData[slotIdx]!
-            const slotEmbedding = slotEmbeddings[slotIdx] ?? null
+          const slotResults = await Promise.all(
+            slotData.map(async ({ slot, effectiveTags, slotLooksProtein }, slotIdx) => {
+              const slotEmbedding = slotEmbeddings[slotIdx] ?? null
+              if (effectiveTags.length === 0) return null
 
-            if (effectiveTags.length === 0) continue
+              const orClauses = effectiveTags.flatMap((tag) => [
+                { name: { contains: tag, mode: 'insensitive' as const } },
+                { brand: { contains: tag, mode: 'insensitive' as const } },
+                { category: { contains: tag, mode: 'insensitive' as const } },
+              ])
 
-            const orClauses = effectiveTags.flatMap((tag) => [
-              { name: { contains: tag, mode: 'insensitive' as const } },
-              { brand: { contains: tag, mode: 'insensitive' as const } },
-              { category: { contains: tag, mode: 'insensitive' as const } },
-            ])
+              let candidates = await prisma.catalogProductPrice.findMany({
+                where: {
+                  storeCode,
+                  currentPrice: { not: null },
+                  catalogProduct: { OR: orClauses },
+                },
+                include: { catalogProduct: true },
+                orderBy: [{ currentPrice: 'asc' }],
+                take: 40,
+              })
 
-            const candidates = await prisma.catalogProductPrice.findMany({
-              where: {
-                storeCode,
-                currentPrice: { not: null },
-                catalogProduct: { OR: orClauses },
-              },
-              include: { catalogProduct: true },
-              orderBy: [{ currentPrice: 'asc' }],
-              take: 40,
-            })
+              // If text search found nothing, fall back to category-based search using the slot role.
+              if (candidates.length === 0) {
+                const fallbackCategories = getRoleCategoryFallback(slot.role, effectiveTags)
+                if (fallbackCategories.length > 0) {
+                  candidates = await prisma.catalogProductPrice.findMany({
+                    where: {
+                      storeCode,
+                      currentPrice: { not: null },
+                      catalogProduct: { category: { in: fallbackCategories } },
+                    },
+                    include: { catalogProduct: true },
+                    orderBy: [{ currentPrice: 'asc' }],
+                    take: 40,
+                  })
+                }
+              }
 
-            let bestMatch: {
-              priceId: string
-              imageUrl: string | null
-              catalogProductId: string
-              name: string
-              unitPrice: number
-              unitInfo: string | null
-            } | null = null
+              if (candidates.length === 0) return null
 
-            if (candidates.length > 0) {
               const candidateProductIds = [...new Set(candidates.map((c) => c.catalogProductId))]
               const embeddingRows =
                 slotEmbedding && candidateProductIds.length > 0
@@ -398,6 +456,15 @@ cartRouter.post('/intent', async (req, res) => {
                   if (Array.isArray(vec) && vec.length > 0) embeddingByProductId.set(row.productId, vec)
                 }
               }
+
+              let bestMatch: {
+                priceId: string
+                imageUrl: string | null
+                catalogProductId: string
+                name: string
+                unitPrice: number
+                unitInfo: string | null
+              } | null = null
 
               // Default to cheapest candidate.
               for (const row of candidates) {
@@ -421,7 +488,6 @@ cartRouter.post('/intent', async (req, res) => {
               if (slotEmbedding) {
                 let bestSimilarity = -Infinity
                 const similarityThreshold = 0.12
-
                 for (const row of candidates) {
                   const unitPrice = asNumber(row.currentPrice)
                   if (unitPrice === null || unitPrice <= 0) continue
@@ -449,28 +515,41 @@ cartRouter.post('/intent', async (req, res) => {
                   }
                 }
               }
-            }
 
-            if (!bestMatch) continue
+              if (!bestMatch) return null
 
-            if (forceProteinForTaco && slotLooksProtein) pickedProteinLike = true
+              const baseQuantity = slot.required ? 1 : 0.5
+              const quantity = Math.max(1, Math.round(baseQuantity * quantityMultiplier * 0.5))
+              return {
+                ...bestMatch,
+                imageUrl: bestMatch.imageUrl ?? null,
+                quantity,
+                lineTotal: bestMatch.unitPrice * quantity,
+                required: slot.required,
+                isProtein: forceProteinForTaco && slotLooksProtein,
+              } satisfies SlotResult
+            }),
+          )
 
-            const baseQuantity = slot.required ? 1 : 0.5
-            const quantity = Math.max(1, Math.round(baseQuantity * quantityMultiplier * 0.5))
-            const lineTotal = bestMatch.unitPrice * quantity
+          let subtotal = 0
+          let requiredFulfilled = 0
+          let pickedProteinLike = false
 
+          for (const result of slotResults) {
+            if (!result) continue
             items.push({
-              priceId: bestMatch.priceId,
-              imageUrl: bestMatch.imageUrl ?? null,
-              catalogProductId: bestMatch.catalogProductId,
-              name: bestMatch.name,
-              unitPrice: bestMatch.unitPrice,
-              unitInfo: bestMatch.unitInfo,
-              quantity,
-              lineTotal,
+              priceId: result.priceId,
+              imageUrl: result.imageUrl,
+              catalogProductId: result.catalogProductId,
+              name: result.name,
+              unitPrice: result.unitPrice,
+              unitInfo: result.unitInfo,
+              quantity: result.quantity,
+              lineTotal: result.lineTotal,
             })
-            subtotal += lineTotal
-            if (slot.required) requiredFulfilled += 1
+            subtotal += result.lineTotal
+            if (result.required) requiredFulfilled += 1
+            if (result.isProtein) pickedProteinLike = true
           }
 
           // Fallback: if taco request and no protein matched, find cheapest meat in one query.
