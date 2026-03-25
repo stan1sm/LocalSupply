@@ -18,24 +18,43 @@ function getConfig(): AiProviderConfig {
   return { baseUrl, apiKey, embeddingModel, chatModel }
 }
 
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, baseDelayMs = 400): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastError = err
+      if (attempt < maxAttempts) await sleep(baseDelayMs * attempt)
+    }
+  }
+  throw lastError
+}
+
 async function callJsonApi<T>(path: string, body: unknown): Promise<T> {
   const { baseUrl, apiKey } = getConfig()
 
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
+  return withRetry(async () => {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '')
+      throw new Error(`AI API request failed (${response.status}): ${text || response.statusText}`)
+    }
+
+    return (await response.json()) as T
   })
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new Error(`AI API request failed (${response.status}): ${text || response.statusText}`)
-  }
-
-  return (await response.json()) as T
 }
 
 export async function getEmbedding(text: string): Promise<number[]> {
