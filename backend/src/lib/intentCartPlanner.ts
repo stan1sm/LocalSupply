@@ -13,7 +13,16 @@ export type MealPlanSpec = {
   slots: MealPlanSlot[]
 }
 
-export async function planMealFromText(text: string, language: 'en' | 'no' = 'en'): Promise<MealPlanSpec> {
+export async function planMealFromText(
+  text: string,
+  language: 'en' | 'no' = 'en',
+  catalogCategories: string[] = [],
+): Promise<MealPlanSpec> {
+  const categoryHint =
+    catalogCategories.length > 0
+      ? `\n\nThe grocery catalog uses these Norwegian category names — prefer exact matches from this list when generating tags:\n${catalogCategories.join(', ')}`
+      : ''
+
   const systemPrompt = `
 You are a grocery meal planner for Norwegian households.
 Given a short free-text request, you must return a strict JSON object that describes what ingredients are needed.
@@ -25,9 +34,11 @@ Supported languages: English (en) and Norwegian (no).
 Do NOT include any explanations, only JSON.
 
 Hard rules:
+- For each slot, tags MUST include the exact Norwegian grocery catalog category name that best matches the ingredient (e.g. "Kjøtt", "Pasta og nudler", "Gulost"). These category names are the most reliable way to find products.
+- Always include both Norwegian and English product name keywords alongside the category name.
 - If the user request is taco/tacos/taco night (or mealType indicates taco), you MUST include a "protein" slot with meat keywords (minced meat / ground beef) and mark it as required=true.
   - The slot tags MUST contain at least one Norwegian meat keyword, preferably "kjøttdeig" (and optionally "karbonadedeig", "biff" or "storfe").
-  - The slot tags MUST also contain at least one English keyword: "ground beef" or "minced meat" (for cross-language matching).
+  - The slot tags MUST also contain at least one English keyword: "ground beef" or "minced meat" (for cross-language matching).${categoryHint}
 `.trim()
 
   const userPrompt = `
@@ -43,8 +54,8 @@ Return a JSON object with:
 - "slots": array of ingredient slots, each with:
   - "role": e.g. "protein", "tortillas", "cheese", "salsa", "vegetables"
   - "tags": array of short keywords useful for searching the grocery catalog.
-    IMPORTANT: always include both Norwegian and English grocery terms here, with Norwegian first.
-    Example: ["smør", "butter"], ["kjøttdeig", "ground beef"].
+    IMPORTANT: Include the Norwegian catalog category name first, then Norwegian product name keywords, then English equivalents.
+    Example: ["Kjøtt", "kjøttdeig", "karbonadedeig", "ground beef", "minced meat"], ["Pasta og nudler", "spaghetti", "pasta"], ["Gulost", "ost", "cheese"].
   - "required": boolean, true if the meal does not make sense without this slot
 
 Example (for taco night for 4 people):
@@ -53,11 +64,11 @@ Example (for taco night for 4 people):
   "people": 4,
   "notes": "Norwegian style tacos, beef, with cheese and vegetables",
   "slots": [
-    { "role": "protein", "tags": ["kjøttdeig", "karbonadedeig", "taco", "ground beef", "minced meat", "biff", "storfe"], "required": true },
-    { "role": "tortillas", "tags": ["tortillalefser", "taco shells"], "required": true },
-    { "role": "cheese", "tags": ["revet ost", "taco cheese"], "required": true },
-    { "role": "salsa", "tags": ["salsa", "taco sauce"], "required": true },
-    { "role": "vegetables", "tags": ["salat", "tomat", "agurk", "mais"], "required": false }
+    { "role": "protein", "tags": ["Kjøtt", "kjøttdeig", "karbonadedeig", "taco", "ground beef", "minced meat", "biff", "storfe"], "required": true },
+    { "role": "tortillas", "tags": ["Tortilla og wrap", "tortillalefser", "lefse", "taco shells"], "required": true },
+    { "role": "cheese", "tags": ["Gulost", "revet ost", "taco cheese", "cheese"], "required": true },
+    { "role": "salsa", "tags": ["Sauser og marinader", "salsa", "taco sauce"], "required": true },
+    { "role": "vegetables", "tags": ["Grønnsaker", "salat", "tomat", "agurk", "mais"], "required": false }
   ]
 }
 `.trim()
