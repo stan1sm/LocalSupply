@@ -11,6 +11,15 @@ const PLACEHOLDER_IMAGE_URLS = [
   'https://res.cloudinary.com/norgesgruppen/image/upload/Product/404.jpg',
 ]
 
+function isPlaceholderImage(url: string | null | undefined): boolean {
+  if (!url || url.trim() === '') return true
+  if (PLACEHOLDER_IMAGE_URLS.includes(url)) return true
+  const lower = url.toLowerCase()
+  // Catch CDN variants: Norgesgruppen 404 with any transformation params, Bunnpris noimage variants
+  if (lower.includes('/product/404') || lower.includes('noimage') || lower.includes('no_image') || lower.includes('no-image')) return true
+  return false
+}
+
 type NormalizedProduct = {
   brand: string | null
   category: string | null
@@ -217,7 +226,7 @@ function toMarketplaceProduct(row: {
     description: null,
     ean: row.catalogProduct.gtin,
     id: row.id,
-    imageUrl: row.catalogProduct.imageUrl && !PLACEHOLDER_IMAGE_URLS.includes(row.catalogProduct.imageUrl) ? row.catalogProduct.imageUrl : null,
+    imageUrl: isPlaceholderImage(row.catalogProduct.imageUrl) ? null : row.catalogProduct.imageUrl,
     name: row.catalogProduct.name,
     price,
     priceText: formatPrice(price),
@@ -313,7 +322,9 @@ productsRouter.get('/', async (req, res) => {
       ])
 
       res.status(200).json({
-        items: (rows as any[]).map((row) => toMarketplaceProduct(row as Parameters<typeof toMarketplaceProduct>[0])),
+        items: (rows as any[])
+          .map((row) => toMarketplaceProduct(row as Parameters<typeof toMarketplaceProduct>[0]))
+          .filter((item) => item.imageUrl !== null),
         page,
         pageSize,
         total,
