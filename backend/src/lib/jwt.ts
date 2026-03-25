@@ -15,3 +15,17 @@ export function verifyBuyerToken(token: string): { userId: string } | null {
     return null
   }
 }
+
+export function signSupplierToken(supplierId: string): string {
+  return jwt.sign({ supplierId, type: 'supplier' }, SECRET, { expiresIn: '30d' })
+}
+
+export function verifySupplierToken(token: string): { supplierId: string } | null {
+  try {
+    const payload = jwt.verify(token, SECRET) as { supplierId: string; type: string }
+    if (payload.type !== 'supplier') return null
+    return { supplierId: payload.supplierId }
+  } catch {
+    return null
+  }
+}

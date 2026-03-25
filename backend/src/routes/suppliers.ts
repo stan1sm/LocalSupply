@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { signSupplierToken } from '../lib/jwt.js'
 import { getPrismaClient } from '../lib/prisma.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
 import { productImageUrl, uploadProductImage } from '../lib/uploadProductImage.js'
@@ -6,6 +7,7 @@ import {
   validateSupplierLoginPayload,
   validateSupplierRegistrationPayload,
 } from '../lib/validation.js'
+import { requireSupplierAuth } from '../middleware/requireSupplierAuth.js'
 
 const suppliersRouter = Router()
 
@@ -202,7 +204,7 @@ suppliersRouter.get('/:supplierId/products', async (req, res) => {
   }
 })
 
-suppliersRouter.post('/:supplierId/products', (req, res, next) => {
+suppliersRouter.post('/:supplierId/products', requireSupplierAuth, (req, res, next) => {
   uploadProductImage.single('image')(req, res, (err: unknown) => {
     if (err) {
       const message = err instanceof Error ? err.message : 'Invalid file upload.'
@@ -215,6 +217,11 @@ suppliersRouter.post('/:supplierId/products', (req, res, next) => {
 
   if (!supplierId) {
     res.status(400).json({ message: 'Supplier id is required.' })
+    return
+  }
+
+  if (res.locals.supplierId !== supplierId) {
+    res.status(403).json({ message: 'Forbidden.' })
     return
   }
 
@@ -379,11 +386,16 @@ suppliersRouter.post('/register', async (req, res) => {
   }
 })
 
-suppliersRouter.put('/:supplierId/profile', async (req, res) => {
+suppliersRouter.put('/:supplierId/profile', requireSupplierAuth, async (req, res) => {
   const supplierId = String(req.params.supplierId ?? '').trim()
 
   if (!supplierId) {
     res.status(400).json({ message: 'Supplier id is required.' })
+    return
+  }
+
+  if (res.locals.supplierId !== supplierId) {
+    res.status(403).json({ message: 'Forbidden.' })
     return
   }
 
@@ -503,6 +515,7 @@ suppliersRouter.post('/login', async (req, res) => {
 
     res.status(200).json({
       message: 'Signed in successfully.',
+      token: signSupplierToken(supplier.id),
       supplier: {
         id: supplier.id,
         businessName: supplier.businessName,

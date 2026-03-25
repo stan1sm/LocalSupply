@@ -34,6 +34,7 @@ type SupplierProfile = SupplierSession & {
 }
 
 const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
+const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 
 export default function SupplierSettingsPage() {
   const [session, setSession] = useState<SupplierSession | null>(null)
@@ -107,9 +108,13 @@ export default function SupplierSettingsPage() {
     setSuccessMessage('')
 
     try {
+      const token = typeof window !== 'undefined' ? window.localStorage.getItem(SUPPLIER_TOKEN_KEY) : null
       const response = await fetch(buildApiUrl(`/api/suppliers/${encodeURIComponent(session.id)}/profile`), {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           logoUrl: profile.logoUrl,
           heroImageUrl: profile.heroImageUrl,

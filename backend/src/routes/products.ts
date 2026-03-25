@@ -34,11 +34,16 @@ type CategoryDefinition = {
 }
 
 const categoryDefinitions: CategoryDefinition[] = [
-  { id: 'produce', kassalCategories: ['Salater', 'Grønnsaker, frosne'] },
-  { id: 'dairy', kassalCategories: ['Gulost', 'Yoghurt', 'Hvitmuggost', 'Blåmuggost', 'Smøreost', 'Brunost'] },
-  { id: 'pantry', kassalCategories: ['Knekkebrød', 'Brød', 'Frokostblanding', 'Barnegrøt', 'Pastasaus', 'Ferdigmåltid', 'Pizza'] },
-  { id: 'protein', kassalCategories: ['Saltpølser', 'Påleggskinker', 'Spekepølser', 'Spekeskinker', 'Kjøttpålegg', 'Bacon', 'Sild/ansjos', 'Leverpostei'] },
-  { id: 'drinks', kassalCategories: ['Brus', 'Juice', 'Vann med kullsyre', 'Energidrikk', 'Te', 'Smoothie', 'Saft', 'Ferdigdrink', 'Kaffekapsler', 'Hele kaffebønner', 'Vann', 'Alkoholfritt øl'] },
+  { id: 'produce', kassalCategories: ['Salater', 'Grønnsaker, frosne', 'Grønnsaker', 'Frukt', 'Bær', 'Urter', 'Rotgrønnsaker'] },
+  { id: 'dairy', kassalCategories: ['Gulost', 'Yoghurt', 'Hvitmuggost', 'Blåmuggost', 'Smøreost', 'Brunost', 'Rømme', 'Fløte', 'Melk', 'Smør', 'Margarin', 'Egg'] },
+  { id: 'bakery', kassalCategories: ['Brød', 'Knekkebrød', 'Rundstykker', 'Croissanter', 'Kaker', 'Boller', 'Lefser og flatbrød', 'Tortilla og wrap'] },
+  { id: 'pantry', kassalCategories: ['Frokostblanding', 'Barnegrøt', 'Pastasaus', 'Ferdigmåltid', 'Pizza', 'Pasta og nudler', 'Ris og gryn', 'Hermetikk', 'Supper', 'Sauser og marinader', 'Mel og stivelse', 'Sukker og søtning'] },
+  { id: 'protein', kassalCategories: ['Saltpølser', 'Påleggskinker', 'Spekepølser', 'Spekeskinker', 'Kjøttpålegg', 'Bacon', 'Sild/ansjos', 'Leverpostei', 'Fisk og sjømat', 'Kylling', 'Kjøtt', 'Vegetarpålegg'] },
+  { id: 'snacks', kassalCategories: ['Chips', 'Popcorn', 'Kjeks og kjeksblanding', 'Nøtter og tørket frukt', 'Sjokolade', 'Godteri', 'Tyggegummi og pastiller', 'Iskrembarer', 'Is og dessert'] },
+  { id: 'condiments', kassalCategories: ['Dressinger', 'Majones', 'Ketchup', 'Sennep', 'Rémoulade', 'Olje og eddik', 'Krydder', 'Krydderblandinger', 'Salt og pepper', 'Pålegg og syltetøy', 'Honning'] },
+  { id: 'frozen', kassalCategories: ['Grønnsaker, frosne', 'Fisk, frossen', 'Kjøtt, frossen', 'Ferdigmat, frossen', 'Pizza, frossen', 'Is og dessert'] },
+  { id: 'drinks', kassalCategories: ['Brus', 'Juice', 'Vann med kullsyre', 'Energidrikk', 'Te', 'Smoothie', 'Saft', 'Ferdigdrink', 'Kaffekapsler', 'Hele kaffebønner', 'Vann', 'Alkoholfritt øl', 'Kaffe', 'Kakao'] },
+  { id: 'cleaning', kassalCategories: ['Rengjøringsmidler', 'Oppvask', 'Klesvask', 'Tørkepapir og servietter', 'Søppelposer', 'Toalettpapir'] },
 ]
 
 function asString(value: unknown): string | null {

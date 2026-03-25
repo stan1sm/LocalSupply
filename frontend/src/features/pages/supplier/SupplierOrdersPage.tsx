@@ -40,6 +40,7 @@ type OrderSummary = {
 }
 
 const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
+const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 
 function formatCurrency(value: number | string) {
   const n = typeof value === 'number' ? value : Number(value)
@@ -119,10 +120,14 @@ export default function SupplierOrdersPage() {
     if (!supplier || updatingId) return
     setUpdatingId(orderId)
     try {
+      const token = typeof window !== 'undefined' ? window.localStorage.getItem(SUPPLIER_TOKEN_KEY) : null
       const res = await fetch(buildApiUrl(`/api/orders/${orderId}/status`), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ supplierId: supplier.id, status }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ status }),
       })
       const data = (await res.json().catch(() => ({}))) as { id?: string; status?: string; message?: string }
       if (res.ok && data.status) {
