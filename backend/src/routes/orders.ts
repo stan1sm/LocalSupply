@@ -1,7 +1,8 @@
 import { Router } from 'express'
-import { sendSupplierOrderEmail } from '../lib/email.js'
+import { sendBuyerOrderStatusEmail, sendSupplierOrderEmail } from '../lib/email.js'
 import { getPrismaClient } from '../lib/prisma.js'
 import { createDelivery, parseAddressString } from '../lib/woltDrive.js'
+import { requireSupplierAuth } from '../middleware/requireSupplierAuth.js'
 
 const ordersRouter = Router()
 
@@ -385,22 +386,25 @@ ordersRouter.get('/supplier/:supplierId', async (req, res) => {
   }
 })
 
-ordersRouter.patch('/:id/status', async (req, res) => {
+ordersRouter.patch('/:id/status', requireSupplierAuth, async (req, res) => {
   const id = typeof req.params.id === 'string' ? req.params.id : ''
+  const supplierId = res.locals.supplierId as string
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
-  const supplierId = typeof body.supplierId === 'string' ? body.supplierId.trim() : ''
   const status = typeof body.status === 'string' ? body.status.trim().toUpperCase() : ''
 
   const ALLOWED_TRANSITIONS = ['CONFIRMED', 'CANCELLED']
 
-  if (!supplierId || !ALLOWED_TRANSITIONS.includes(status)) {
-    res.status(400).json({ message: 'supplierId and status (CONFIRMED or CANCELLED) are required.' })
+  if (!ALLOWED_TRANSITIONS.includes(status)) {
+    res.status(400).json({ message: 'status (CONFIRMED or CANCELLED) is required.' })
     return
   }
 
   try {
     const prisma = getPrismaClient()
-    const order = await prisma.order.findUnique({ where: { id } })
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: { buyer: true, supplier: true },
+    })
 
     if (!order || order.supplierId !== supplierId) {
       res.status(404).json({ message: 'Order not found.' })
@@ -418,6 +422,15 @@ ordersRouter.patch('/:id/status', async (req, res) => {
     })
 
     res.json({ id: updated.id, status: updated.status })
+
+    sendBuyerOrderStatusEmail({
+      buyerEmail: order.buyer.email,
+      buyerName: `${order.buyer.firstName} ${order.buyer.lastName}`,
+      orderId: order.id,
+      status: status as 'CONFIRMED' | 'CANCELLED',
+      supplierName: order.supplier.businessName,
+      total: Number(order.total),
+    }).catch(() => { /* already logged inside sendBuyerOrderStatusEmail */ })
   } catch (error) {
     console.error('Order status update failed', error)
     res.status(503).json({ message: 'Unable to update order right now.' })

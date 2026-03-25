@@ -164,6 +164,67 @@ export async function sendSupplierOrderEmail({
   }
 }
 
+type BuyerOrderStatusInput = {
+  buyerEmail: string
+  buyerName: string
+  orderId: string
+  status: 'CONFIRMED' | 'CANCELLED'
+  supplierName: string
+  total: number
+}
+
+export async function sendBuyerOrderStatusEmail({
+  buyerEmail,
+  buyerName,
+  orderId,
+  status,
+  supplierName,
+  total,
+}: BuyerOrderStatusInput): Promise<void> {
+  const transport = getMailTransport()
+  if (!transport) return
+
+  const shortId = orderId.slice(-6).toUpperCase()
+  const ordersUrl = new URL('/orders', getFrontendBaseUrl()).toString()
+  const statusLabel = status === 'CONFIRMED' ? 'confirmed' : 'cancelled'
+
+  const textBody = [
+    `Hi ${buyerName},`,
+    '',
+    `Your order #${shortId} from ${supplierName} has been ${statusLabel}.`,
+    '',
+    status === 'CONFIRMED'
+      ? 'Your order is being prepared and will be delivered by Wolt.'
+      : 'If you have questions, please contact the supplier directly.',
+    '',
+    `Total: ${total.toFixed(2)} kr`,
+    '',
+    `View your orders: ${ordersUrl}`,
+  ].join('\n')
+
+  const htmlBody = [
+    `<p>Hi ${buyerName},</p>`,
+    `<p>Your order <strong>#${shortId}</strong> from <strong>${supplierName}</strong> has been <strong>${statusLabel}</strong>.</p>`,
+    status === 'CONFIRMED'
+      ? '<p>Your order is being prepared and will be delivered by Wolt.</p>'
+      : '<p>If you have questions, please contact the supplier directly.</p>',
+    `<p>Total: ${total.toFixed(2)} kr</p>`,
+    `<p><a href="${ordersUrl}">View your orders →</a></p>`,
+  ].join('')
+
+  try {
+    await transport.sendMail({
+      from: getMailFromAddress(),
+      to: buyerEmail,
+      subject: `Order #${shortId} ${statusLabel} — LocalSupply`,
+      text: textBody,
+      html: htmlBody,
+    })
+  } catch (error) {
+    console.warn(`Failed to send order status email to ${buyerEmail}`, error)
+  }
+}
+
 export async function sendUserVerificationEmail({
   email,
   firstName,

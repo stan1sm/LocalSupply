@@ -15,6 +15,7 @@ type LoginFormErrors = Partial<Record<keyof LoginFormData, string>>
 
 type SupplierLoginResponse = {
   message?: string
+  token?: string
   supplier?: {
     id: string
     businessName: string
@@ -111,6 +112,9 @@ export default function SupplierLoginPage() {
       if (payload.supplier) {
         try {
           window.localStorage.setItem('localsupply-supplier', JSON.stringify(payload.supplier))
+          if (payload.token) {
+            window.localStorage.setItem('localsupply-supplier-token', payload.token)
+          }
         } catch {
           // ignore storage issues
         }

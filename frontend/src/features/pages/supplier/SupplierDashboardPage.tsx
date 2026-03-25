@@ -23,6 +23,7 @@ type Product = {
 }
 
 const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
+const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 const ACCEPT_IMAGES = 'image/jpeg,image/png,image/webp,image/gif'
 const MAX_IMAGE_MB = 5
 
@@ -174,8 +175,10 @@ export default function SupplierDashboardPage() {
       formData.append('stockQty', String(stockQty))
       if (imageFile) formData.append('image', imageFile)
 
+      const token = typeof window !== 'undefined' ? window.localStorage.getItem(SUPPLIER_TOKEN_KEY) : null
       const response = await fetch(buildApiUrl(`/api/suppliers/${encodeURIComponent(supplier.id)}/products`), {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       })
       const payload = (await response.json().catch(() => ({}))) as Product | { message?: string; errors?: Record<string, string> }
