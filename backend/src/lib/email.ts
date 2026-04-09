@@ -225,6 +225,49 @@ export async function sendBuyerOrderStatusEmail({
   }
 }
 
+export async function sendPasswordResetEmail({
+  email,
+  firstName,
+  resetToken,
+}: {
+  email: string
+  firstName: string
+  resetToken: string
+}): Promise<void> {
+  const transport = getMailTransport()
+  if (!transport) return
+
+  const resetUrl = new URL('/reset-password', getFrontendBaseUrl())
+  resetUrl.searchParams.set('token', resetToken)
+
+  try {
+    await transport.sendMail({
+      from: getMailFromAddress(),
+      to: email,
+      subject: 'Reset your LocalSupply password',
+      text: [
+        `Hi ${firstName},`,
+        '',
+        'We received a request to reset your password.',
+        'Click the link below to set a new password:',
+        resetUrl.toString(),
+        '',
+        'This link expires in 1 hour.',
+        'If you did not request a password reset, you can ignore this email.',
+      ].join('\n'),
+      html: [
+        `<p>Hi ${firstName},</p>`,
+        '<p>We received a request to reset your password.</p>',
+        `<p><a href="${resetUrl.toString()}">Reset your password</a></p>`,
+        '<p>This link expires in 1 hour.</p>',
+        '<p>If you did not request a password reset, you can ignore this email.</p>',
+      ].join(''),
+    })
+  } catch (error) {
+    console.warn(`Failed to send password reset email to ${email}`, error)
+  }
+}
+
 export async function sendUserVerificationEmail({
   email,
   firstName,

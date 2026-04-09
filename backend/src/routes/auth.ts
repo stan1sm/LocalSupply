@@ -1,11 +1,11 @@
 import { Router } from 'express'
-import { buildEmailVerifiedRedirectUrl, sendUserVerificationEmail } from '../lib/email.js'
+import { buildEmailVerifiedRedirectUrl, sendPasswordResetEmail, sendUserVerificationEmail } from '../lib/email.js'
 import { signBuyerToken } from '../lib/jwt.js'
 import { getPrismaClient } from '../lib/prisma.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
 import { requireBuyerAuth } from '../middleware/requireBuyerAuth.js'
 import { validateUserEmailPayload, validateUserLoginPayload, validateUserRegistrationPayload } from '../lib/validation.js'
-import { generateEmailVerificationToken, hashEmailVerificationToken, isValidEmailVerificationToken } from '../lib/verification.js'
+import { generateEmailVerificationToken, generatePasswordResetToken, hashEmailVerificationToken, hashPasswordResetToken, isValidEmailVerificationToken, isValidPasswordResetToken } from '../lib/verification.js'
 
 const authRouter = Router()
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
@@ -435,6 +435,75 @@ authRouter.delete('/payment-methods/:id', requireBuyerAuth, async (req, res) => 
   }
 
   res.status(204).end()
+})
+
+// POST /api/auth/forgot-password
+authRouter.post('/forgot-password', async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+
+  // Always return success to prevent email enumeration
+  res.json({ message: 'If an account exists for this email, a password reset link has been sent.' })
+
+  if (!email) return
+
+  try {
+    const prisma = getPrismaClient()
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user || !user.emailVerified) return
+
+    const { token, tokenHash } = generatePasswordResetToken()
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordResetTokenHash: tokenHash, passwordResetTokenExpiresAt: expiresAt },
+    })
+
+    await sendPasswordResetEmail({ email: user.email, firstName: user.firstName, resetToken: token })
+  } catch (error) {
+    console.error('Forgot password error', error)
+  }
+})
+
+// POST /api/auth/reset-password
+authRouter.post('/reset-password', async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const token = typeof body.token === 'string' ? body.token.trim() : ''
+  const password = typeof body.password === 'string' ? body.password : ''
+
+  if (!isValidPasswordResetToken(token)) {
+    res.status(400).json({ message: 'Invalid or expired reset link.' })
+    return
+  }
+
+  const passwordError = password.length < 8 ? 'Password must be at least 8 characters.' : null
+  if (passwordError) {
+    res.status(400).json({ message: passwordError })
+    return
+  }
+
+  try {
+    const prisma = getPrismaClient()
+    const tokenHash = hashPasswordResetToken(token)
+    const user = await prisma.user.findUnique({ where: { passwordResetTokenHash: tokenHash } })
+
+    if (!user || !user.passwordResetTokenExpiresAt || user.passwordResetTokenExpiresAt < new Date()) {
+      res.status(400).json({ message: 'Invalid or expired reset link.' })
+      return
+    }
+
+    const newHash = await hashPassword(password)
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: newHash, passwordResetTokenHash: null, passwordResetTokenExpiresAt: null },
+    })
+
+    res.json({ message: 'Password updated successfully. You can now sign in.' })
+  } catch (error) {
+    console.error('Reset password error', error)
+    res.status(503).json({ message: 'Unable to reset password right now.' })
+  }
 })
 
 export default authRouter
