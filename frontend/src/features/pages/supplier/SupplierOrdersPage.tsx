@@ -118,7 +118,7 @@ export default function SupplierOrdersPage() {
     return () => { cancelled = true }
   }, [supplier])
 
-  async function handleUpdateStatus(orderId: string, status: 'CONFIRMED' | 'CANCELLED') {
+  async function handleUpdateStatus(orderId: string, status: string) {
     if (!supplier || updatingId) return
     setUpdatingId(orderId)
     try {
@@ -134,7 +134,13 @@ export default function SupplierOrdersPage() {
       const data = (await res.json().catch(() => ({}))) as { id?: string; status?: string; message?: string }
       if (res.ok && data.status) {
         setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status: data.status! } : o))
-        addToast(status === 'CONFIRMED' ? 'Order confirmed' : 'Order cancelled', status === 'CONFIRMED' ? 'success' : 'info')
+        const toastMsg: Record<string, string> = {
+          CONFIRMED: 'Order confirmed',
+          CANCELLED: 'Order cancelled',
+          IN_TRANSIT: 'Order marked as in transit',
+          DELIVERED: 'Order marked as delivered',
+        }
+        addToast(toastMsg[status] ?? 'Order updated', status === 'CANCELLED' ? 'info' : 'success')
       } else {
         addToast(data.message ?? 'Unable to update order.', 'error')
       }
@@ -176,6 +182,27 @@ export default function SupplierOrdersPage() {
   }
 
   const pendingCount = orders.filter((o) => o.status === 'PENDING').length
+
+  function orderActions(order: OrderSummary): { label: string; status: string; variant: 'primary' | 'secondary' | 'danger' }[] {
+    switch (order.status) {
+      case 'PENDING':
+        return [
+          { label: 'Confirm order', status: 'CONFIRMED', variant: 'primary' },
+          { label: 'Cancel order', status: 'CANCELLED', variant: 'danger' },
+        ]
+      case 'CONFIRMED':
+        return [
+          { label: 'Mark as in transit', status: 'IN_TRANSIT', variant: 'primary' },
+          { label: 'Cancel order', status: 'CANCELLED', variant: 'danger' },
+        ]
+      case 'IN_TRANSIT':
+        return [
+          { label: 'Mark as delivered', status: 'DELIVERED', variant: 'primary' },
+        ]
+      default:
+        return []
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
@@ -253,8 +280,8 @@ export default function SupplierOrdersPage() {
               <div className="space-y-4">
                 {orders.map((order) => {
                   const { badge, label } = statusStyle(order.status)
-                  const isPending = order.status === 'PENDING'
                   const isUpdating = updatingId === order.id
+                  const actions = orderActions(order)
 
                   return (
                     <article
@@ -305,24 +332,25 @@ export default function SupplierOrdersPage() {
                         </div>
                       ) : null}
 
-                      {isPending ? (
+                      {actions.length > 0 ? (
                         <div className="mt-4 flex gap-2 border-t border-[#eef2ec] pt-4">
-                          <button
-                            className="flex-1 rounded-2xl bg-[#2f9f4f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:opacity-50"
-                            disabled={isUpdating}
-                            onClick={() => handleUpdateStatus(order.id, 'CONFIRMED')}
-                            type="button"
-                          >
-                            {isUpdating ? 'Updating…' : 'Confirm order'}
-                          </button>
-                          <button
-                            className="flex-1 rounded-2xl border border-[#f0d4d4] bg-white px-4 py-2.5 text-sm font-semibold text-[#9b2c2c] transition hover:bg-[#fff5f5] disabled:cursor-not-allowed disabled:opacity-50"
-                            disabled={isUpdating}
-                            onClick={() => handleUpdateStatus(order.id, 'CANCELLED')}
-                            type="button"
-                          >
-                            {isUpdating ? 'Updating…' : 'Cancel order'}
-                          </button>
+                          {actions.map((action) => (
+                            <button
+                              key={action.status}
+                              className={`flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                action.variant === 'primary'
+                                  ? 'bg-[#2f9f4f] text-white hover:bg-[#25813f]'
+                                  : action.variant === 'danger'
+                                    ? 'border border-[#f0d4d4] bg-white text-[#9b2c2c] hover:bg-[#fff5f5]'
+                                    : 'border border-[#d4ddd0] bg-white text-[#314237] hover:border-[#9db5a4]'
+                              }`}
+                              disabled={isUpdating}
+                              onClick={() => handleUpdateStatus(order.id, action.status)}
+                              type="button"
+                            >
+                              {isUpdating ? 'Updating…' : action.label}
+                            </button>
+                          ))}
                         </div>
                       ) : null}
                     </article>
