@@ -383,296 +383,181 @@ export default function SupplierRegistrationPage() {
     void submit()
   }
 
+  const inputClass = 'w-full rounded-lg border border-[#d6ddd2] bg-[#f9fbf8] px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/20'
+  const labelClass = 'space-y-1 text-xs font-medium text-[#2e3b31]'
+  const errorClass = 'text-[10px] text-[#c53030]'
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f3f4f6] px-4 py-6 sm:px-6 lg:py-8">
-      <section className="grid w-full max-w-4xl overflow-hidden rounded-2xl border border-[#dfe5da] bg-white shadow-[0_20px_50px_rgba(17,24,39,0.08)] lg:max-h-[88vh] lg:grid-cols-[1fr_1.05fr] lg:grid-rows-[minmax(0,1fr)]">
-        <div className="order-2 min-h-0 overflow-y-auto border-t border-[#e6ece2] bg-[#f7faf5] p-4 sm:p-5 lg:order-1 lg:border-r lg:border-t-0 lg:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2f9f4f]">Supplier Portal</p>
-          <h1 className="mt-2 text-xl font-extrabold leading-tight text-[#1b2a1f] sm:text-2xl">Grow with LocalSupply</h1>
-          <p className="mt-2 text-xs text-[#5b665f]">
-            Join our marketplace to reach customers looking for fresh, local inventory every day.
-          </p>
-          <div className="mt-3 text-xs text-[#465448]">
-            <p>Fast onboarding · Inventory · Order visibility</p>
-          </div>
-          <div className="mt-3 rounded-lg border border-[#d4ddcf] bg-white p-2 text-xs text-[#4f5d53]">
-            Personal account? <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/register">User registration</Link>
-          </div>
+    <main className="flex min-h-screen items-center justify-center bg-[#f3f4f6] px-4 py-8">
+      <div className="w-full max-w-lg rounded-2xl border border-[#dfe5da] bg-white p-8 shadow-[0_20px_50px_rgba(17,24,39,0.08)]">
+        <div className="mb-6 flex items-center justify-between">
+          <button
+            className="flex items-center gap-1 rounded-full border-2 border-[#c7d2c2] bg-white px-3 py-1.5 text-xs font-medium text-[#1f2937] shadow-sm transition hover:border-[#2f9f4f] hover:text-[#1f7b3a]"
+            onClick={() => router.push('/')}
+            type="button"
+          >
+            <span aria-hidden="true">←</span>
+            <span>Back to homepage</span>
+          </button>
+          <Link className="text-xs font-semibold text-[#1f7b3a] underline underline-offset-2 hover:no-underline" href="/supplier/login">
+            Supplier login
+          </Link>
         </div>
 
-        <div className="order-1 flex min-h-0 flex-col overflow-y-auto bg-gradient-to-br from-[#2fa04f] via-[#2a9448] to-[#1f7b3a] p-4 text-white sm:p-5 lg:order-2 lg:p-6">
-          <div className="mb-2 flex items-center justify-between text-xs">
-            <button
-              className="flex items-center gap-1 rounded-full border-2 border-white bg-white px-3 py-1.5 font-medium text-[#1f7b3a] shadow-sm transition hover:bg-[#eff6eb] hover:border-white"
-              onClick={() => router.push('/')}
-              type="button"
-            >
-              <span aria-hidden="true">←</span>
-              <span>Back to homepage</span>
-            </button>
-            <Link
-              className="hidden text-xs font-semibold text-white underline underline-offset-2 hover:no-underline sm:inline"
-              href="/supplier/login"
-            >
-              Supplier login
-            </Link>
-          </div>
-          <h2 className="text-lg font-bold text-white">Supplier registration</h2>
-          <p className="mt-1 text-xs text-white">
-            Already have an account? <Link className="font-semibold underline underline-offset-1 hover:no-underline" href="/supplier/login">Sign in</Link>
-          </p>
+        <h2 className="text-xl font-bold text-[#1b2a1f]">Supplier registration</h2>
+        <p className="mt-1.5 text-sm text-[#5b665f]">
+          Already have an account?{' '}
+          <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/supplier/login">Sign in</Link>
+        </p>
 
-          <form className="mt-3 space-y-2" noValidate onSubmit={handleSubmit}>
-            <label className="block space-y-1 text-xs font-medium text-white">
-              Organisasjonsnummer
-              <div className="relative">
-                <input
-                  autoComplete="off"
-                  className="w-full rounded-lg border border-white/25 bg-white/95 px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#667085] focus:border-white focus:ring-2 focus:ring-white/40"
-                  inputMode="numeric"
-                  maxLength={9}
-                  onChange={(e) => handleOrgnrChange(e.target.value)}
-                  placeholder="9 digits (e.g. 123456789)"
-                  type="text"
-                  value={formData.orgnr}
-                />
-                {brregStatus === 'loading' && (
-                  <span className="absolute right-3 top-2.5 text-xs text-white/70">Looking up…</span>
-                )}
-                {brregStatus === 'verified' && (
-                  <span className="absolute right-3 top-2.5 text-xs font-semibold text-[#d1fae5]">✓ Verified</span>
-                )}
-                {(brregStatus === 'rejected' || brregStatus === 'not_found') && (
-                  <span className="absolute right-3 top-2.5 text-xs font-semibold text-[#ffdfdf]">✗ Not valid</span>
-                )}
-              </div>
-              {brregStatus === 'verified' && brregResult?.name && (
-                <p className="text-[10px] text-[#d1fae5]">{brregResult.name} — found in Brønnøysundregistrene</p>
+        <form className="mt-6 space-y-3" noValidate onSubmit={handleSubmit}>
+          <label className={`block ${labelClass}`}>
+            Organisation number
+            <div className="relative">
+              <input
+                autoComplete="off"
+                className={inputClass}
+                inputMode="numeric"
+                maxLength={9}
+                onChange={(e) => handleOrgnrChange(e.target.value)}
+                placeholder="9 digits (e.g. 123456789)"
+                type="text"
+                value={formData.orgnr}
+              />
+              {brregStatus === 'loading' && (
+                <span className="absolute right-3 top-2.5 text-xs text-[#5b665f]">Looking up…</span>
               )}
-              {brregStatus === 'rejected' && (
-                <p className="text-[10px] text-[#ffdfdf]">Company is registered but inactive (bankruptcy/liquidation).</p>
+              {brregStatus === 'verified' && (
+                <span className="absolute right-3 top-2.5 text-xs font-semibold text-[#2f9f4f]">✓ Verified</span>
               )}
-              {brregStatus === 'not_found' && (
-                <p className="text-[10px] text-[#ffdfdf]">No company found with that org number. You can still register without verification.</p>
+              {(brregStatus === 'rejected' || brregStatus === 'not_found') && (
+                <span className="absolute right-3 top-2.5 text-xs font-semibold text-[#c53030]">✗ Not valid</span>
               )}
-              {errors.orgnr ? <p className="text-[10px] text-[#ffdfdf]">{errors.orgnr}</p> : null}
+            </div>
+            {brregStatus === 'verified' && brregResult?.name && (
+              <p className="text-[10px] text-[#2f9f4f]">{brregResult.name} — found in Brønnøysundregistrene</p>
+            )}
+            {brregStatus === 'rejected' && (
+              <p className={errorClass}>Company is registered but inactive (bankruptcy/liquidation).</p>
+            )}
+            {brregStatus === 'not_found' && (
+              <p className="text-[10px] text-[#5b665f]">No company found. You can still register without verification.</p>
+            )}
+            {errors.orgnr ? <p className={errorClass}>{errors.orgnr}</p> : null}
+          </label>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className={labelClass}>
+              Business Name
+              <input aria-invalid={Boolean(errors.businessName)} autoComplete="organization" className={inputClass} maxLength={80} name="businessName" onChange={(event) => handleTextChange('businessName', event.target.value)} placeholder="Green Valley Farms" required type="text" value={formData.businessName} />
+              {errors.businessName ? <p className={errorClass}>{errors.businessName}</p> : null}
             </label>
+            <label className={labelClass}>
+              Contact Name
+              <input aria-invalid={Boolean(errors.contactName)} autoComplete="name" className={inputClass} maxLength={50} name="contactName" onChange={(event) => handleTextChange('contactName', event.target.value)} placeholder="Jordan Lee" required type="text" value={formData.contactName} />
+              {errors.contactName ? <p className={errorClass}>{errors.contactName}</p> : null}
+            </label>
+          </div>
 
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label className="space-y-1 text-xs font-medium text-white">
-                Business Name
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className={labelClass}>
+              Phone (+47)
+              <input aria-invalid={Boolean(errors.phoneNumber)} autoComplete="tel" className={inputClass} inputMode="tel" maxLength={16} name="phoneNumber" onChange={(event) => handlePhoneChange(event.target.value)} placeholder="+47 41234567" required type="tel" value={formData.phoneNumber} />
+              {errors.phoneNumber ? <p className={errorClass}>{errors.phoneNumber}</p> : null}
+            </label>
+            <label className={labelClass}>
+              Business Email
+              <input aria-invalid={Boolean(errors.email)} autoComplete="email" className={inputClass} maxLength={254} name="email" onChange={(event) => handleEmailChange(event.target.value)} placeholder="orders@yourbusiness.com" required spellCheck={false} type="email" value={formData.email} />
+              {errors.email ? <p className={errorClass}>{errors.email}</p> : null}
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className={labelClass}>
+              Password
+              <input aria-invalid={Boolean(errors.password)} autoComplete="new-password" className={inputClass} maxLength={128} name="password" onChange={(event) => handlePasswordChange('password', event.target.value)} placeholder="Password" required type="password" value={formData.password} />
+              <ul className="mt-1 space-y-0.5 text-[11px] text-[#5b665f]">
+                <li className={passwordRequirements.hasMinLength ? 'text-[#2f9f4f]' : ''}>At least 8 characters</li>
+                <li className={passwordRequirements.hasUppercase ? 'text-[#2f9f4f]' : ''}>Uppercase letter</li>
+                <li className={passwordRequirements.hasLowercase ? 'text-[#2f9f4f]' : ''}>Lowercase letter</li>
+                <li className={passwordRequirements.hasNumber ? 'text-[#2f9f4f]' : ''}>Number</li>
+                <li className={passwordRequirements.hasSpecial ? 'text-[#2f9f4f]' : ''}>Special character</li>
+              </ul>
+              {errors.password ? <p className={errorClass}>{errors.password}</p> : null}
+            </label>
+            <label className={labelClass}>
+              Confirm Password
+              <input aria-invalid={Boolean(errors.confirmPassword) || hasLivePasswordMismatch} autoComplete="new-password" className={inputClass} maxLength={128} name="confirmPassword" onChange={(event) => handlePasswordChange('confirmPassword', event.target.value)} placeholder="Repeat" required type="password" value={formData.confirmPassword} />
+              {hasLivePasswordMismatch ? <p className={errorClass}>Passwords don't match.</p> : null}
+              {!hasLivePasswordMismatch && errors.confirmPassword ? <p className={errorClass}>{errors.confirmPassword}</p> : null}
+            </label>
+          </div>
+
+          <div className="space-y-2 rounded-lg border border-[#dfe5da] bg-[#f9fbf8] p-3" ref={addressDropdownRef}>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#5b665f]">Address</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_80px_1fr]">
+              <label className={`relative ${labelClass}`}>
+                Street
                 <input
-                  aria-invalid={Boolean(errors.businessName)}
-                  autoComplete="organization"
-                  className="w-full rounded-lg border border-white/25 bg-white/95 px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#667085] focus:border-white focus:ring-2 focus:ring-white/40"
-                  maxLength={80}
-                  name="businessName"
-                  onChange={(event) => handleTextChange('businessName', event.target.value)}
-                  placeholder="Green Valley Farms"
+                  aria-autocomplete="list"
+                  aria-expanded={addressDropdownVisible && addressSuggestions.length > 0}
+                  aria-invalid={Boolean(errors.streetAddress)}
+                  autoComplete="address-line1"
+                  className={inputClass}
+                  maxLength={120}
+                  name="streetAddress"
+                  onChange={(event) => handleTextChange('streetAddress', event.target.value)}
+                  placeholder="Storgata 1"
                   required
                   type="text"
-                  value={formData.businessName}
+                  value={formData.streetAddress}
                 />
-                {errors.businessName ? <p className="text-[10px] text-[#ffdfdf]">{errors.businessName}</p> : null}
-              </label>
-              <label className="space-y-1 text-xs font-medium text-white">
-                Contact Name
-                <input
-                  aria-invalid={Boolean(errors.contactName)}
-                  autoComplete="name"
-                  className="w-full rounded-lg border border-white/25 bg-white/95 px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#667085] focus:border-white focus:ring-2 focus:ring-white/40"
-                  maxLength={50}
-                  name="contactName"
-                  onChange={(event) => handleTextChange('contactName', event.target.value)}
-                  placeholder="Jordan Lee"
-                  required
-                  type="text"
-                  value={formData.contactName}
-                />
-                {errors.contactName ? <p className="text-[10px] text-[#ffdfdf]">{errors.contactName}</p> : null}
-              </label>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label className="space-y-1 text-xs font-medium text-white">
-                Phone (+47)
-                <input
-                  aria-invalid={Boolean(errors.phoneNumber)}
-                  autoComplete="tel"
-                  className="w-full rounded-lg border border-white/25 bg-white/95 px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#667085] focus:border-white focus:ring-2 focus:ring-white/40"
-                  inputMode="tel"
-                  maxLength={16}
-                  name="phoneNumber"
-                  onChange={(event) => handlePhoneChange(event.target.value)}
-                  placeholder="+47 41234567"
-                  required
-                  type="tel"
-                  value={formData.phoneNumber}
-                />
-                {errors.phoneNumber ? <p className="text-[10px] text-[#ffdfdf]">{errors.phoneNumber}</p> : null}
-              </label>
-              <label className="space-y-1 text-xs font-medium text-white">
-                Business Email
-                <input
-                  aria-invalid={Boolean(errors.email)}
-                  autoComplete="email"
-                  className="w-full rounded-lg border border-white/25 bg-white/95 px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#667085] focus:border-white focus:ring-2 focus:ring-white/40"
-                  maxLength={254}
-                  name="email"
-                  onChange={(event) => handleEmailChange(event.target.value)}
-                  placeholder="orders@yourbusiness.com"
-                  required
-                  spellCheck={false}
-                  type="email"
-                  value={formData.email}
-                />
-                {errors.email ? <p className="text-[10px] text-[#ffdfdf]">{errors.email}</p> : null}
-              </label>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label className="space-y-1 text-xs font-medium text-white">
-                Password
-                <input
-                  aria-invalid={Boolean(errors.password)}
-                  autoComplete="new-password"
-                  className="w-full rounded-lg border border-white/25 bg-white/95 px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#667085] focus:border-white focus:ring-2 focus:ring-white/40"
-                  maxLength={128}
-                  name="password"
-                  onChange={(event) => handlePasswordChange('password', event.target.value)}
-                  placeholder="Password"
-                  required
-                  type="password"
-                  value={formData.password}
-                />
-                <ul className="mt-1 space-y-0.5 text-[11px]">
-                  <li className={passwordRequirements.hasMinLength ? 'text-white' : 'text-white/85'}>
-                    At least 8 characters
-                  </li>
-                  <li className={passwordRequirements.hasUppercase ? 'text-white' : 'text-white/85'}>
-                    Uppercase letter
-                  </li>
-                  <li className={passwordRequirements.hasLowercase ? 'text-white' : 'text-white/85'}>
-                    Lowercase letter
-                  </li>
-                  <li className={passwordRequirements.hasNumber ? 'text-white' : 'text-white/85'}>
-                    Number
-                  </li>
-                  <li className={passwordRequirements.hasSpecial ? 'text-white' : 'text-white/85'}>
-                    Special character
-                  </li>
-                </ul>
-                {errors.password ? <p className="text-[10px] text-[#ffdfdf]">{errors.password}</p> : null}
-              </label>
-              <label className="space-y-1 text-xs font-medium text-white">
-                Confirm Password
-                <input
-                  aria-invalid={Boolean(errors.confirmPassword) || hasLivePasswordMismatch}
-                  autoComplete="new-password"
-                  className="w-full rounded-lg border border-white/25 bg-white/95 px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#667085] focus:border-white focus:ring-2 focus:ring-white/40"
-                  maxLength={128}
-                  name="confirmPassword"
-                  onChange={(event) => handlePasswordChange('confirmPassword', event.target.value)}
-                  placeholder="Repeat"
-                  required
-                  type="password"
-                  value={formData.confirmPassword}
-                />
-                {hasLivePasswordMismatch ? <p className="text-[10px] text-[#ffdfdf]">Passwords don't match.</p> : null}
-                {!hasLivePasswordMismatch && errors.confirmPassword ? (
-                  <p className="text-[10px] text-[#ffdfdf]">{errors.confirmPassword}</p>
+                {addressDropdownVisible && (loadingAddresses || addressSuggestions.length > 0) ? (
+                  <div className="absolute z-10 mt-0.5 max-h-44 w-full min-w-[200px] overflow-auto rounded-lg border border-[#dfe5da] bg-white shadow-lg">
+                    {loadingAddresses ? (
+                      <p className="px-3 py-2 text-xs text-[#5b665f]">Søker…</p>
+                    ) : (
+                      <ul className="py-0.5" role="listbox">
+                        {addressSuggestions.map((addr, i) => (
+                          <li key={`${addr.adressetekst}-${addr.postnummer}-${i}`} role="option">
+                            <button className="w-full px-3 py-1.5 text-left text-xs text-[#1f2937] hover:bg-[#f0f4ee] focus:bg-[#f0f4ee] focus:outline-none" type="button" onClick={() => handleSelectAddress(addr)}>
+                              {addr.adressetekst} · {addr.postnummer} {addr.poststed}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 ) : null}
+                {errors.streetAddress ? <p className={errorClass}>{errors.streetAddress}</p> : null}
+              </label>
+              <label className={labelClass}>
+                Postal code
+                <input aria-invalid={Boolean(errors.postalCode)} autoComplete="postal-code" className={inputClass} inputMode="numeric" maxLength={4} name="postalCode" onChange={(event) => handlePostalCodeChange(event.target.value)} placeholder="0550" required type="text" value={formData.postalCode ?? ''} />
+                {errors.postalCode ? <p className={errorClass}>{errors.postalCode}</p> : null}
+              </label>
+              <label className={labelClass}>
+                City
+                <input aria-invalid={Boolean(errors.city)} autoComplete="address-level2" className={inputClass} maxLength={80} name="city" onChange={(event) => handleTextChange('city', event.target.value)} placeholder="Oslo" required type="text" value={formData.city ?? ''} />
+                {errors.city ? <p className={errorClass}>{errors.city}</p> : null}
               </label>
             </div>
+          </div>
 
-            <div className="space-y-1.5 rounded-lg border border-white/30 bg-white/10 p-2" ref={addressDropdownRef}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-white">Address</p>
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[1fr_80px_1fr]">
-                <label className="relative space-y-1 text-xs font-medium text-white">
-                  Street
-                  <input
-                    aria-autocomplete="list"
-                    aria-expanded={addressDropdownVisible && addressSuggestions.length > 0}
-                    aria-invalid={Boolean(errors.streetAddress)}
-                    autoComplete="address-line1"
-                    className="w-full rounded-lg border border-white/25 bg-white/95 px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#667085] focus:border-white focus:ring-2 focus:ring-white/40"
-                    maxLength={120}
-                    name="streetAddress"
-                    onChange={(event) => handleTextChange('streetAddress', event.target.value)}
-                    placeholder="Storgata 1"
-                    required
-                    type="text"
-                    value={formData.streetAddress}
-                  />
-                  {addressDropdownVisible && (loadingAddresses || addressSuggestions.length > 0) ? (
-                    <div className="absolute z-10 mt-0.5 max-h-44 w-full min-w-[200px] overflow-auto rounded-lg border border-[#dfe5da] bg-white shadow-lg">
-                      {loadingAddresses ? (
-                        <p className="px-3 py-2 text-xs text-[#5b665f]">Søker…</p>
-                      ) : addressSuggestions.length > 0 ? (
-                        <ul className="py-0.5" role="listbox">
-                          {addressSuggestions.map((addr, i) => (
-                            <li key={`${addr.adressetekst}-${addr.postnummer}-${i}`} role="option">
-                              <button
-                                className="w-full px-3 py-1.5 text-left text-xs text-[#1f2937] hover:bg-[#f0f4ee] focus:bg-[#f0f4ee] focus:outline-none"
-                                type="button"
-                                onClick={() => handleSelectAddress(addr)}
-                              >
-                                {addr.adressetekst} · {addr.postnummer} {addr.poststed}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {errors.streetAddress ? <p className="text-[10px] text-[#ffdfdf]">{errors.streetAddress}</p> : null}
-                </label>
-                <label className="space-y-1 text-xs font-medium text-white">
-                  Postnr
-                  <input
-                    aria-invalid={Boolean(errors.postalCode)}
-                    autoComplete="postal-code"
-                    className="w-full rounded-lg border border-white/25 bg-white/95 px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#667085] focus:border-white focus:ring-2 focus:ring-white/40"
-                    inputMode="numeric"
-                    maxLength={4}
-                    name="postalCode"
-                    onChange={(event) => handlePostalCodeChange(event.target.value)}
-                    placeholder="0550"
-                    required
-                    type="text"
-                    value={formData.postalCode ?? ''}
-                  />
-                  {errors.postalCode ? <p className="text-[10px] text-[#ffdfdf]">{errors.postalCode}</p> : null}
-                </label>
-                <label className="space-y-1 text-xs font-medium text-white">
-                  Poststed
-                  <input
-                    aria-invalid={Boolean(errors.city)}
-                    autoComplete="address-level2"
-                    className="w-full rounded-lg border border-white/25 bg-white/95 px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#667085] focus:border-white focus:ring-2 focus:ring-white/40"
-                    maxLength={80}
-                    name="city"
-                    onChange={(event) => handleTextChange('city', event.target.value)}
-                    placeholder="Oslo"
-                    required
-                    type="text"
-                    value={formData.city ?? ''}
-                  />
-                  {errors.city ? <p className="text-[10px] text-[#ffdfdf]">{errors.city}</p> : null}
-                </label>
-              </div>
-            </div>
+          <button
+            className="w-full rounded-xl bg-[#2f9f4f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f9f4f]/35 disabled:cursor-not-allowed disabled:opacity-70"
+            type="submit"
+          >
+            Create Supplier Account
+          </button>
+          {submitMessage ? <p className="text-center text-xs text-[#5b665f]">{submitMessage}</p> : null}
+        </form>
 
-            <button
-              className="mt-1 w-full rounded-lg border-2 border-white bg-white px-3 py-2.5 text-sm font-semibold text-[#1f7b3a] shadow transition hover:bg-[#eff6eb] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#1f7b3a]"
-              type="submit"
-            >
-              Create Supplier Account
-            </button>
-            {submitMessage ? <p className="text-center text-[10px] text-white">{submitMessage}</p> : null}
-          </form>
-        </div>
-      </section>
+        <p className="mt-6 text-center text-sm text-[#5b665f]">
+          Personal account?{' '}
+          <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/register">Register here</Link>
+        </p>
+      </div>
     </main>
   )
 }
