@@ -395,11 +395,11 @@ ordersRouter.patch('/:id/status', requireSupplierAuth, async (req, res) => {
 
   // State machine for order progression.
   // IN_TRANSIT and DELIVERED will eventually be driven by Wolt webhook events;
-  // until Wolt keys are active they remain manually advanceable by the supplier.
+  // until Wolt keys are active all transitions remain manually advanceable by the supplier.
   const VALID_TRANSITIONS: Record<string, string[]> = {
-    PENDING:    ['CONFIRMED', 'CANCELLED'],
-    CONFIRMED:  ['IN_TRANSIT', 'CANCELLED'],
-    IN_TRANSIT: ['DELIVERED'],
+    PENDING:    ['CONFIRMED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'],
+    CONFIRMED:  ['IN_TRANSIT', 'DELIVERED', 'CANCELLED'],
+    IN_TRANSIT: ['DELIVERED', 'CANCELLED'],
   }
 
   const ALL_ALLOWED = new Set(Object.values(VALID_TRANSITIONS).flat())
