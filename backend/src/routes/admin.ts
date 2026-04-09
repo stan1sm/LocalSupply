@@ -1,6 +1,8 @@
 import { Router } from 'express'
 import { getPrismaClient } from '../lib/prisma.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
+import { signAdminToken } from '../lib/jwt.js'
+import { requireAdminAuth } from '../middleware/requireAdminAuth.js'
 
 const adminRouter = Router()
 
@@ -24,7 +26,8 @@ adminRouter.post('/login', async (req, res) => {
       return
     }
 
-    res.json({ admin: { id: admin.id, email: admin.email, name: admin.name } })
+    const token = signAdminToken(admin.id)
+    res.json({ token, admin: { id: admin.id, email: admin.email, name: admin.name } })
   } catch (error) {
     console.error('Admin login failed', error)
     res.status(503).json({ message: 'Unable to sign in right now.' })
@@ -61,7 +64,7 @@ adminRouter.post('/seed', async (req, res) => {
 })
 
 // GET /api/admin/suppliers
-adminRouter.get('/suppliers', async (_req, res) => {
+adminRouter.get('/suppliers', requireAdminAuth, async (_req, res) => {
   try {
     const prisma = getPrismaClient()
     const suppliers = await prisma.supplier.findMany({
@@ -91,7 +94,7 @@ adminRouter.get('/suppliers', async (_req, res) => {
 })
 
 // PATCH /api/admin/suppliers/:id — update verification status
-adminRouter.patch('/suppliers/:id', async (req, res) => {
+adminRouter.patch('/suppliers/:id', requireAdminAuth, async (req, res) => {
   const supplierId = String(req.params.id ?? '').trim()
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
 
@@ -129,7 +132,7 @@ adminRouter.patch('/suppliers/:id', async (req, res) => {
 })
 
 // DELETE /api/admin/suppliers/:id
-adminRouter.delete('/suppliers/:id', async (req, res) => {
+adminRouter.delete('/suppliers/:id', requireAdminAuth, async (req, res) => {
   const supplierId = String(req.params.id ?? '').trim()
   if (!supplierId) {
     res.status(400).json({ message: 'Supplier id is required.' })
@@ -146,7 +149,7 @@ adminRouter.delete('/suppliers/:id', async (req, res) => {
 })
 
 // GET /api/admin/users
-adminRouter.get('/users', async (_req, res) => {
+adminRouter.get('/users', requireAdminAuth, async (_req, res) => {
   try {
     const prisma = getPrismaClient()
     const users = await prisma.user.findMany({
@@ -170,7 +173,7 @@ adminRouter.get('/users', async (_req, res) => {
 })
 
 // DELETE /api/admin/users/:id
-adminRouter.delete('/users/:id', async (req, res) => {
+adminRouter.delete('/users/:id', requireAdminAuth, async (req, res) => {
   const userId = String(req.params.id ?? '').trim()
   if (!userId) {
     res.status(400).json({ message: 'User id is required.' })
@@ -187,7 +190,7 @@ adminRouter.delete('/users/:id', async (req, res) => {
 })
 
 // GET /api/admin/orders
-adminRouter.get('/orders', async (_req, res) => {
+adminRouter.get('/orders', requireAdminAuth, async (_req, res) => {
   try {
     const prisma = getPrismaClient()
     const orders = await prisma.order.findMany({

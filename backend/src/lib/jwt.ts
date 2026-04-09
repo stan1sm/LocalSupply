@@ -29,3 +29,17 @@ export function verifySupplierToken(token: string): { supplierId: string } | nul
     return null
   }
 }
+
+export function signAdminToken(adminId: string): string {
+  return jwt.sign({ adminId, type: 'admin' }, SECRET, { expiresIn: '8h' })
+}
+
+export function verifyAdminToken(token: string): { adminId: string } | null {
+  try {
+    const payload = jwt.verify(token, SECRET) as { adminId: string; type: string }
+    if (payload.type !== 'admin') return null
+    return { adminId: payload.adminId }
+  } catch {
+    return null
+  }
+}
