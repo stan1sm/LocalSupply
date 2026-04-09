@@ -43,7 +43,7 @@ describe('LoginPage', () => {
     render(<LoginPage />)
 
     fireEvent.change(screen.getByPlaceholderText('you@email.com'), { target: { value: ' AVA@EXAMPLE.COM ' } })
-    fireEvent.change(screen.getByPlaceholderText('Enter your secure password'), { target: { value: 'Abcd!123' } })
+    fireEvent.change(screen.getByPlaceholderText('Enter your password'), { target: { value: 'Abcd!123' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign In' }))
 
     await waitFor(() => {
@@ -77,7 +77,7 @@ describe('LoginPage', () => {
     render(<LoginPage />)
 
     fireEvent.change(screen.getByPlaceholderText('you@email.com'), { target: { value: 'ava@example.com' } })
-    fireEvent.change(screen.getByPlaceholderText('Enter your secure password'), { target: { value: 'Abcd!123' } })
+    fireEvent.change(screen.getByPlaceholderText('Enter your password'), { target: { value: 'Abcd!123' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign In' }))
 
     await waitFor(() => {
