@@ -62,6 +62,24 @@ jobs:
     runs-on: ubuntu-latest
     environment: development
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run database migrations
+        working-directory: backend
+        run: npm run prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Trigger frontend development deploy hook
         run: |
           if [ -n "${{ secrets.FRONTEND_DEPLOY_HOOK_URL_DEV }}" ]; then
@@ -101,6 +119,24 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run database migrations
+        working-directory: backend
+        run: npm run prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Trigger frontend production deploy hook
         run: |
           if [ -n "${{ secrets.FRONTEND_DEPLOY_HOOK_URL_PROD }}" ]; then
