@@ -64,12 +64,16 @@ const authLimiter = rateLimit({
 })
 
 app.use(cors(corsOptions))
+
+// Capture raw body for Wolt webhook signature verification before JSON parsing
+app.use('/api/wolt/webhook', express.raw({ type: 'application/json' }))
 app.use(express.json())
 app.use('/api/auth/login', authLimiter)
 app.use('/api/auth/register', authLimiter)
 app.use('/api/auth/resend-verification', authLimiter)
 app.use('/api/suppliers/login', authLimiter)
 app.use('/api/suppliers/register', authLimiter)
+app.use('/api/admin/login', authLimiter)
 app.use('/api/addresses', addressesRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/auth', authRouter)

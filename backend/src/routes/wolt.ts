@@ -1,8 +1,22 @@
+import crypto from 'crypto'
 import { Router } from 'express'
 import { getDeliveryEstimate, parseAddressString, woltStatusToOrderStatus } from '../lib/woltDrive.js'
 import { getPrismaClient } from '../lib/prisma.js'
 
 const woltRouter = Router()
+
+function verifyWoltSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean {
+  const secret = process.env.WOLT_WEBHOOK_SECRET
+  if (!secret) {
+    // In dev, allow unauthenticated webhooks if no secret is configured
+    if (process.env.NODE_ENV !== 'production') return true
+    console.warn('WOLT_WEBHOOK_SECRET not set — rejecting webhook in production')
+    return false
+  }
+  if (!signatureHeader) return false
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
+  return crypto.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expected))
+}
 
 // POST /api/wolt/estimate — real-time delivery fee + ETA from Wolt
 woltRouter.post('/estimate', async (req, res) => {
@@ -25,12 +39,21 @@ woltRouter.post('/estimate', async (req, res) => {
 })
 
 // POST /api/wolt/webhook — delivery status updates pushed by Wolt
+// Raw body is captured in app.ts before express.json() for HMAC verification
 woltRouter.post('/webhook', async (req, res) => {
+  const signature = req.headers['x-wolt-signature'] as string | undefined
+  const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body))
+
+  if (!verifyWoltSignature(rawBody, signature)) {
+    res.status(401).json({ ok: false, message: 'Invalid signature.' })
+    return
+  }
+
   // Acknowledge immediately so Wolt doesn't time out
   res.status(200).json({ ok: true })
 
   try {
-    const body = req.body as Record<string, unknown>
+    const body = JSON.parse(rawBody.toString()) as Record<string, unknown>
     const deliveryId = typeof body.id === 'string' ? body.id : null
     const status = typeof body.status === 'string' ? body.status : null
 
