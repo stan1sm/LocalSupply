@@ -7,6 +7,11 @@ datasource db {
   provider = "postgresql"
 }
 
+enum AccountType {
+  INDIVIDUAL
+  BUSINESS
+}
+
 enum OrderStatus {
   PENDING
   CONFIRMED
@@ -32,6 +37,8 @@ model User {
   emailVerificationTokenHash String?  @unique
   vippsSub                   String?  @unique
   vippsPhoneNumber           String?
+  accountType                AccountType @default(INDIVIDUAL)
+  orgNumber                  String?
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
@@ -202,6 +209,7 @@ model Order {
   deliveryFee       Decimal     @default(0) @db.Decimal(10, 2)
   total             Decimal     @db.Decimal(10, 2)
   notes             String?
+  paymentMethod     String?
   deliveryAddressId String?
   woltDeliveryId    String?
   woltTrackingUrl   String?

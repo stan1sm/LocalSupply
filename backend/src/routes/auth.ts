@@ -44,6 +44,9 @@ authRouter.post('/register', async (req, res) => {
   }
 
   const { firstName, lastName, email, password } = validation.data
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const accountType = body.accountType === 'BUSINESS' ? 'BUSINESS' as const : 'INDIVIDUAL' as const
+  const orgNumber = accountType === 'BUSINESS' && typeof body.orgNumber === 'string' ? body.orgNumber.trim() || null : null
 
   try {
     const prisma = getPrismaClient()
@@ -59,6 +62,8 @@ authRouter.post('/register', async (req, res) => {
         emailVerified: false,
         passwordHash,
         emailVerificationTokenHash: emailVerification.tokenHash,
+        accountType,
+        ...(orgNumber ? { orgNumber } : {}),
       },
     })
 
@@ -173,6 +178,24 @@ authRouter.post('/login', async (req, res) => {
   } catch (error) {
     console.error('User login failed', error)
     res.status(500).json({ message: 'Unable to sign in right now.' })
+  }
+})
+
+authRouter.get('/me', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
+  try {
+    const user = await getPrismaClient().user.findUnique({ where: { id: buyerId } })
+    if (!user) { res.status(404).json({ message: 'User not found.' }); return }
+    res.json({
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      accountType: user.accountType,
+    })
+  } catch (error) {
+    console.error('Failed to load user profile', error)
+    res.status(500).json({ message: 'Unable to load profile right now.' })
   }
 })
 

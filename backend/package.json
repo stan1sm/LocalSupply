@@ -4,7 +4,7 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
-    "postinstall": "npm run prisma -- generate",
+    "postinstall": "npm run prisma -- generate && npm run prisma -- migrate deploy",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "test": "vitest run",
