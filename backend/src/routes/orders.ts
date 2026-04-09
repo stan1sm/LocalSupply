@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { sendBuyerOrderStatusEmail, sendSupplierOrderEmail } from '../lib/email.js'
 import { getPrismaClient } from '../lib/prisma.js'
+import type { OrderStatus } from '../generated/prisma/enums.js'
 import { createDelivery, parseAddressString } from '../lib/woltDrive.js'
 import { requireSupplierAuth } from '../middleware/requireSupplierAuth.js'
 
@@ -392,10 +393,18 @@ ordersRouter.patch('/:id/status', requireSupplierAuth, async (req, res) => {
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
   const status = typeof body.status === 'string' ? body.status.trim().toUpperCase() : ''
 
-  const ALLOWED_TRANSITIONS = ['CONFIRMED', 'CANCELLED']
+  // State machine for order progression.
+  // IN_TRANSIT and DELIVERED will eventually be driven by Wolt webhook events;
+  // until Wolt keys are active they remain manually advanceable by the supplier.
+  const VALID_TRANSITIONS: Record<string, string[]> = {
+    PENDING:    ['CONFIRMED', 'CANCELLED'],
+    CONFIRMED:  ['IN_TRANSIT', 'CANCELLED'],
+    IN_TRANSIT: ['DELIVERED'],
+  }
 
-  if (!ALLOWED_TRANSITIONS.includes(status)) {
-    res.status(400).json({ message: 'status (CONFIRMED or CANCELLED) is required.' })
+  const ALL_ALLOWED = new Set(Object.values(VALID_TRANSITIONS).flat())
+  if (!ALL_ALLOWED.has(status)) {
+    res.status(400).json({ message: 'Invalid status value.' })
     return
   }
 
@@ -411,26 +420,31 @@ ordersRouter.patch('/:id/status', requireSupplierAuth, async (req, res) => {
       return
     }
 
-    if (order.status !== 'PENDING') {
-      res.status(409).json({ message: `Order is already ${order.status.toLowerCase()} and cannot be updated.` })
+    const allowed = VALID_TRANSITIONS[order.status] ?? []
+    if (!allowed.includes(status)) {
+      res.status(409).json({
+        message: `Cannot move order from ${order.status} to ${status}.`,
+      })
       return
     }
 
     const updated = await prisma.order.update({
       where: { id },
-      data: { status: status as 'CONFIRMED' | 'CANCELLED' },
+      data: { status: status as OrderStatus },
     })
 
     res.json({ id: updated.id, status: updated.status })
 
-    sendBuyerOrderStatusEmail({
-      buyerEmail: order.buyer.email,
-      buyerName: `${order.buyer.firstName} ${order.buyer.lastName}`,
-      orderId: order.id,
-      status: status as 'CONFIRMED' | 'CANCELLED',
-      supplierName: order.supplier.businessName,
-      total: Number(order.total),
-    }).catch(() => { /* already logged inside sendBuyerOrderStatusEmail */ })
+    if (status === 'CONFIRMED' || status === 'CANCELLED') {
+      sendBuyerOrderStatusEmail({
+        buyerEmail: order.buyer.email,
+        buyerName: `${order.buyer.firstName} ${order.buyer.lastName}`,
+        orderId: order.id,
+        status: status as 'CONFIRMED' | 'CANCELLED',
+        supplierName: order.supplier.businessName,
+        total: Number(order.total),
+      }).catch(() => { /* already logged inside sendBuyerOrderStatusEmail */ })
+    }
   } catch (error) {
     console.error('Order status update failed', error)
     res.status(503).json({ message: 'Unable to update order right now.' })
