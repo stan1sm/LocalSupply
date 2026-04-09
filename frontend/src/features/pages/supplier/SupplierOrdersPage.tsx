@@ -183,25 +183,22 @@ export default function SupplierOrdersPage() {
 
   const pendingCount = orders.filter((o) => o.status === 'PENDING').length
 
-  function orderActions(order: OrderSummary): { label: string; status: string; variant: 'primary' | 'secondary' | 'danger' }[] {
-    switch (order.status) {
-      case 'PENDING':
-        return [
-          { label: 'Confirm order', status: 'CONFIRMED', variant: 'primary' },
-          { label: 'Cancel order', status: 'CANCELLED', variant: 'danger' },
-        ]
-      case 'CONFIRMED':
-        return [
-          { label: 'Mark as in transit', status: 'IN_TRANSIT', variant: 'primary' },
-          { label: 'Cancel order', status: 'CANCELLED', variant: 'danger' },
-        ]
-      case 'IN_TRANSIT':
-        return [
-          { label: 'Mark as delivered', status: 'DELIVERED', variant: 'primary' },
-        ]
-      default:
-        return []
-    }
+  const NEXT_STATUSES: Record<string, { value: string; label: string }[]> = {
+    PENDING:    [
+      { value: 'CONFIRMED',  label: 'Confirmed — accepted by supplier' },
+      { value: 'IN_TRANSIT', label: 'In transit — courier on the way' },
+      { value: 'DELIVERED',  label: 'Delivered — order complete' },
+      { value: 'CANCELLED',  label: 'Cancelled' },
+    ],
+    CONFIRMED:  [
+      { value: 'IN_TRANSIT', label: 'In transit — courier on the way' },
+      { value: 'DELIVERED',  label: 'Delivered — order complete' },
+      { value: 'CANCELLED',  label: 'Cancelled' },
+    ],
+    IN_TRANSIT: [
+      { value: 'DELIVERED',  label: 'Delivered — order complete' },
+      { value: 'CANCELLED',  label: 'Cancelled' },
+    ],
   }
 
   return (
@@ -281,7 +278,7 @@ export default function SupplierOrdersPage() {
                 {orders.map((order) => {
                   const { badge, label } = statusStyle(order.status)
                   const isUpdating = updatingId === order.id
-                  const actions = orderActions(order)
+                  const nextOptions = NEXT_STATUSES[order.status] ?? []
 
                   return (
                     <article
@@ -332,25 +329,28 @@ export default function SupplierOrdersPage() {
                         </div>
                       ) : null}
 
-                      {actions.length > 0 ? (
-                        <div className="mt-4 flex gap-2 border-t border-[#eef2ec] pt-4">
-                          {actions.map((action) => (
-                            <button
-                              key={action.status}
-                              className={`flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                                action.variant === 'primary'
-                                  ? 'bg-[#2f9f4f] text-white hover:bg-[#25813f]'
-                                  : action.variant === 'danger'
-                                    ? 'border border-[#f0d4d4] bg-white text-[#9b2c2c] hover:bg-[#fff5f5]'
-                                    : 'border border-[#d4ddd0] bg-white text-[#314237] hover:border-[#9db5a4]'
-                              }`}
-                              disabled={isUpdating}
-                              onClick={() => handleUpdateStatus(order.id, action.status)}
-                              type="button"
-                            >
-                              {isUpdating ? 'Updating…' : action.label}
-                            </button>
-                          ))}
+                      {nextOptions.length > 0 ? (
+                        <div className="mt-4 flex items-center gap-2 border-t border-[#eef2ec] pt-4">
+                          <label className="shrink-0 text-xs font-semibold text-[#6b7b70]">Set status:</label>
+                          <select
+                            className="flex-1 rounded-xl border border-[#d4ddd0] bg-white px-3 py-2 text-sm text-[#1f2b22] outline-none focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/30 disabled:opacity-50"
+                            defaultValue=""
+                            disabled={isUpdating}
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleUpdateStatus(order.id, e.target.value)
+                                e.target.value = ''
+                              }
+                            }}
+                          >
+                            <option value="" disabled>Select new status…</option>
+                            {nextOptions.map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                          {isUpdating ? (
+                            <span className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[#2f9f4f]/30 border-t-[#2f9f4f]" />
+                          ) : null}
                         </div>
                       ) : null}
                     </article>
