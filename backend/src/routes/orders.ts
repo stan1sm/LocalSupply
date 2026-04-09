@@ -21,6 +21,12 @@ ordersRouter.post('/', async (req, res) => {
   const supplierIdInput = typeof body.supplierId === 'string' ? body.supplierId.trim() : ''
   const notes = typeof body.notes === 'string' ? body.notes.trim() : ''
   const deliveryFee = typeof body.deliveryFee === 'number' && Number.isFinite(body.deliveryFee) ? body.deliveryFee : 0
+  const VALID_PAYMENT_METHODS = ['vipps', 'card', 'invoice'] as const
+  type PaymentMethodValue = typeof VALID_PAYMENT_METHODS[number]
+  const rawPaymentMethod = typeof body.paymentMethod === 'string' ? body.paymentMethod.trim() : ''
+  const paymentMethod: PaymentMethodValue | null = (VALID_PAYMENT_METHODS as readonly string[]).includes(rawPaymentMethod)
+    ? rawPaymentMethod as PaymentMethodValue
+    : null
 
   const rawItems: unknown[] = Array.isArray(body.items) ? body.items : []
   const items: CreateOrderItemInput[] = rawItems
@@ -176,6 +182,7 @@ ordersRouter.post('/', async (req, res) => {
         deliveryFee: roundedDeliveryFee,
         total,
         notes: notes || null,
+        paymentMethod: paymentMethod || null,
         ...(deliveryAddressId ? { deliveryAddressId } : {}),
         items: {
           createMany: {
@@ -403,7 +410,7 @@ ordersRouter.patch('/:id/status', requireSupplierAuth, async (req, res) => {
     const prisma = getPrismaClient()
     const order = await prisma.order.findUnique({
       where: { id },
-      include: { buyer: true, supplier: true },
+      include: { buyer: true, supplier: true, items: { include: { product: true } } },
     })
 
     if (!order || order.supplierId !== supplierId) {
@@ -430,6 +437,7 @@ ordersRouter.patch('/:id/status', requireSupplierAuth, async (req, res) => {
       status: status as 'CONFIRMED' | 'CANCELLED',
       supplierName: order.supplier.businessName,
       total: Number(order.total),
+      paymentMethod: order.paymentMethod ?? undefined,
     }).catch(() => { /* already logged inside sendBuyerOrderStatusEmail */ })
   } catch (error) {
     console.error('Order status update failed', error)
