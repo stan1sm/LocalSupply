@@ -557,7 +557,7 @@ export default function CheckoutPage() {
       <div className="mx-auto grid w-full max-w-[1300px] gap-6 lg:grid-cols-[220px_minmax(0,1fr)_360px]">
 
         {/* Sidebar */}
-        <aside className="rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+        <aside className="hidden lg:block rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
           <div className="px-2 pb-4">
             <a className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#2f9f4f] hover:text-[#1f2937]" href="/">
               <span aria-hidden="true">←</span>

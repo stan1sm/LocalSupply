@@ -1,7 +1,8 @@
- 'use client'
+'use client'
 
 import { useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
+import { ToastContainer, useToast } from '../../components/Toast'
 
 type Supplier = {
   id: string
@@ -54,6 +55,7 @@ export default function SupplierDashboardPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const { toasts, addToast } = useToast()
 
   useEffect(() => {
     try {
@@ -185,6 +187,7 @@ export default function SupplierDashboardPage() {
       if (!response.ok) {
         const message = (payload as { message?: string }).message ?? 'Unable to create product right now.'
         setErrorMessage(message)
+        addToast(message, 'error')
         return
       }
 
@@ -192,8 +195,10 @@ export default function SupplierDashboardPage() {
       setForm(initialProductForm)
       setFormErrors({})
       clearImage()
+      addToast('Product added', 'success')
     } catch {
       setErrorMessage('Unable to create product right now.')
+      addToast('Unable to create product right now.', 'error')
     } finally {
       setIsSaving(false)
     }
@@ -238,6 +243,7 @@ export default function SupplierDashboardPage() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
+      <ToastContainer toasts={toasts} />
       <div className="mx-auto grid w-full max-w-[1400px] gap-6 lg:grid-cols-[260px_minmax(0,1.2fr)]">
         <aside className="rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
           <div className="px-2 pb-4">

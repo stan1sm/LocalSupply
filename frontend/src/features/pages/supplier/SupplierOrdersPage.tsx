@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
+import { ToastContainer, useToast } from '../../components/Toast'
 
 type SupplierSession = {
   id: string
@@ -76,6 +77,7 @@ export default function SupplierOrdersPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const { toasts, addToast } = useToast()
 
   useEffect(() => {
     try {
@@ -132,11 +134,12 @@ export default function SupplierOrdersPage() {
       const data = (await res.json().catch(() => ({}))) as { id?: string; status?: string; message?: string }
       if (res.ok && data.status) {
         setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status: data.status! } : o))
+        addToast(status === 'CONFIRMED' ? 'Order confirmed' : 'Order cancelled', status === 'CONFIRMED' ? 'success' : 'info')
       } else {
-        setErrorMessage(data.message ?? 'Unable to update order.')
+        addToast(data.message ?? 'Unable to update order.', 'error')
       }
     } catch {
-      setErrorMessage('Unable to reach the server.')
+      addToast('Unable to reach the server.', 'error')
     } finally {
       setUpdatingId(null)
     }
@@ -237,6 +240,7 @@ export default function SupplierOrdersPage() {
                 {errorMessage}
               </div>
             ) : null}
+            <ToastContainer toasts={toasts} />
 
             {orders.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-[#d2dcd0] bg-[#f8fbf7] px-5 py-16 text-center">

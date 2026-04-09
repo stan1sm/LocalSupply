@@ -339,8 +339,8 @@ export default function BuyerSettingsPage() {
 
   if (!isReady || !buyer) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f3f4f6]">
-        <p className="text-sm text-gray-500">Loading...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[#f3f6f1]">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#d5ded1] border-t-[#2f9f4f]" />
       </main>
     )
   }
@@ -437,7 +437,17 @@ export default function BuyerSettingsPage() {
           </div>
 
           {addresses.length === 0 && !showAddAddress ? (
-            <p className="text-sm text-gray-400">No saved addresses yet.</p>
+            <div className="rounded-2xl border border-dashed border-[#d2dcd0] bg-[#f8fbf7] px-5 py-8 text-center">
+              <p className="text-sm font-semibold text-[#304136]">No saved addresses yet</p>
+              <p className="mt-1 text-xs text-[#728176]">Add an address and it will autofill at checkout.</p>
+              <button
+                type="button"
+                onClick={() => setShowAddAddress(true)}
+                className="mt-3 rounded-lg bg-[#1f7b3a] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#176330]"
+              >
+                Add your first address
+              </button>
+            </div>
           ) : null}
 
           <div className="space-y-3">
@@ -564,7 +574,17 @@ export default function BuyerSettingsPage() {
           </div>
 
           {payments.length === 0 && !showAddPayment ? (
-            <p className="text-sm text-gray-400">No saved cards yet.</p>
+            <div className="rounded-2xl border border-dashed border-[#d2dcd0] bg-[#f8fbf7] px-5 py-8 text-center">
+              <p className="text-sm font-semibold text-[#304136]">No saved cards yet</p>
+              <p className="mt-1 text-xs text-[#728176]">Save a card to speed up checkout.</p>
+              <button
+                type="button"
+                onClick={() => setShowAddPayment(true)}
+                className="mt-3 rounded-lg bg-[#1f7b3a] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#176330]"
+              >
+                Add a card
+              </button>
+            </div>
           ) : null}
 
           <div className="space-y-3">
