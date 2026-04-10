@@ -2,7 +2,8 @@
 
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
-import { ToastContainer, useToast } from '../../components/Toast'
+import { ToastContainer } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 
 function productImageSrc(url: string | null): string | null {
   if (!url) return null

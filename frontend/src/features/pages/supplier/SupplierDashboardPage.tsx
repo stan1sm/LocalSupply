@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
-import { ToastContainer, useToast } from '../../components/Toast'
+import { ToastContainer } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
 
 type Supplier = {
   id: string
