@@ -183,6 +183,8 @@ export default function BuyerSettingsPage() {
   const [confirmPw, setConfirmPw] = useState('')
   const [isSavingPw, setIsSavingPw] = useState(false)
   const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
 
   useEffect(() => {
     try {
@@ -865,10 +867,48 @@ export default function BuyerSettingsPage() {
 
             <div className="rounded-xl border border-[#dfe5da] bg-white p-6">
               <h2 className="mb-1 text-base font-semibold text-gray-900">Account</h2>
-              <p className="mb-4 text-xs text-gray-500">Permanently delete your account and all associated data.</p>
-              <a href="mailto:support@localsupply.no?subject=Account deletion request" className="inline-block rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">
-                Request account deletion
-              </a>
+              <p className="mb-4 text-xs text-gray-500">Permanently delete your account and all associated data. This cannot be undone.</p>
+              {!showDeleteConfirm ? (
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                >
+                  Delete account
+                </button>
+              ) : (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
+                  <p className="text-sm font-semibold text-red-700">Are you sure? This will permanently delete your account, orders, and saved data.</p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setIsDeletingAccount(true)
+                        try {
+                          const res = await fetch(buildApiUrl('/api/auth/account'), { method: 'DELETE', headers: getAuthHeader() })
+                          if (res.ok || res.status === 204) {
+                            try { window.localStorage.removeItem(BUYER_STORAGE_KEY); window.localStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ }
+                            window.location.href = '/login'
+                          }
+                        } catch { /* ignore */ } finally {
+                          setIsDeletingAccount(false)
+                        }
+                      }}
+                      disabled={isDeletingAccount}
+                      className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                    >
+                      {isDeletingAccount ? 'Deleting...' : 'Yes, delete my account'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         )}

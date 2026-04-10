@@ -590,4 +590,15 @@ authRouter.post('/reset-password', async (req, res) => {
   }
 })
 
+authRouter.delete('/account', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
+  try {
+    await getPrismaClient().user.delete({ where: { id: buyerId } })
+    res.status(204).end()
+  } catch (error) {
+    console.error('Account deletion failed', error)
+    res.status(503).json({ message: 'Unable to delete account right now.' })
+  }
+})
+
 export default authRouter
