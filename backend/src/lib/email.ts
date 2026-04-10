@@ -239,6 +239,86 @@ export async function sendBuyerOrderStatusEmail({
   }
 }
 
+export async function sendSupplierVerificationApprovedEmail({
+  email,
+  businessName,
+}: {
+  email: string
+  businessName: string
+}): Promise<void> {
+  const transport = getMailTransport()
+  if (!transport) return
+
+  const loginUrl = new URL('/supplier/login', getFrontendBaseUrl()).toString()
+
+  try {
+    await transport.sendMail({
+      from: getMailFromAddress(),
+      to: email,
+      subject: 'Your LocalSupply supplier account has been approved',
+      text: [
+        `Hi ${businessName},`,
+        '',
+        'Great news — your LocalSupply supplier account has been approved.',
+        'You can now log in and start listing your products.',
+        '',
+        `Sign in here: ${loginUrl}`,
+        '',
+        'Welcome aboard!',
+        'The LocalSupply Team',
+      ].join('\n'),
+      html: [
+        `<p>Hi <strong>${businessName}</strong>,</p>`,
+        '<p>Great news — your LocalSupply supplier account has been <strong>approved</strong>.</p>',
+        '<p>You can now log in and start listing your products.</p>',
+        `<p><a href="${loginUrl}">Sign in to your dashboard →</a></p>`,
+        '<p>Welcome aboard!<br>The LocalSupply Team</p>',
+      ].join(''),
+    })
+  } catch (error) {
+    console.warn(`Failed to send approval email to ${email}`, error)
+  }
+}
+
+export async function sendSupplierVerificationRejectedEmail({
+  email,
+  businessName,
+  reason,
+}: {
+  email: string
+  businessName: string
+  reason: string | null
+}): Promise<void> {
+  const transport = getMailTransport()
+  if (!transport) return
+
+  try {
+    await transport.sendMail({
+      from: getMailFromAddress(),
+      to: email,
+      subject: 'Update on your LocalSupply supplier application',
+      text: [
+        `Hi ${businessName},`,
+        '',
+        'After reviewing your application, we are unable to approve your LocalSupply supplier account at this time.',
+        ...(reason ? [`Reason: ${reason}`, ''] : ['']),
+        'If you believe this is a mistake or have questions, please reply to this email.',
+        '',
+        'The LocalSupply Team',
+      ].join('\n'),
+      html: [
+        `<p>Hi <strong>${businessName}</strong>,</p>`,
+        '<p>After reviewing your application, we are unable to approve your LocalSupply supplier account at this time.</p>',
+        reason ? `<p><strong>Reason:</strong> ${reason}</p>` : '',
+        '<p>If you believe this is a mistake or have questions, please reply to this email.</p>',
+        '<p>The LocalSupply Team</p>',
+      ].join(''),
+    })
+  } catch (error) {
+    console.warn(`Failed to send rejection email to ${email}`, error)
+  }
+}
+
 export async function sendPasswordResetEmail({
   email,
   firstName,

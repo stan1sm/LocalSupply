@@ -88,14 +88,23 @@ export default function AdminDashboardPage() {
     checkAuth()
   }, [router])
 
+  function getAuthHeader(): Record<string, string> {
+    try {
+      const token = window.localStorage.getItem('localsupply-admin-token')
+      if (token) return { Authorization: `Bearer ${token}` }
+    } catch { /* ignore */ }
+    return {}
+  }
+
   useEffect(() => {
     if (!admin) return
     function loadData() {
       setLoading(true)
+      const headers = getAuthHeader()
       Promise.all([
-        fetch(buildApiUrl('/api/admin/suppliers')).then((r) => r.json()),
-        fetch(buildApiUrl('/api/admin/users')).then((r) => r.json()),
-        fetch(buildApiUrl('/api/admin/orders')).then((r) => r.json()),
+        fetch(buildApiUrl('/api/admin/suppliers'), { headers }).then((r) => r.json()),
+        fetch(buildApiUrl('/api/admin/users'), { headers }).then((r) => r.json()),
+        fetch(buildApiUrl('/api/admin/orders'), { headers }).then((r) => r.json()),
       ])
         .then(([s, u, o]) => {
           if (Array.isArray(s)) setSuppliers(s as Supplier[])
@@ -118,7 +127,7 @@ export default function AdminDashboardPage() {
     try {
       const res = await fetch(buildApiUrl(`/api/admin/suppliers/${id}`), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify(patch),
       })
       if (!res.ok) { setActionMessage('Update failed.'); return }
@@ -132,7 +141,7 @@ export default function AdminDashboardPage() {
   async function deleteSupplier(id: string) {
     if (!window.confirm('Delete this supplier? This cannot be undone.')) return
     try {
-      await fetch(buildApiUrl(`/api/admin/suppliers/${id}`), { method: 'DELETE' })
+      await fetch(buildApiUrl(`/api/admin/suppliers/${id}`), { method: 'DELETE', headers: getAuthHeader() })
       setSuppliers((prev) => prev.filter((s) => s.id !== id))
     } catch { setActionMessage('Delete failed.') }
   }
@@ -140,7 +149,7 @@ export default function AdminDashboardPage() {
   async function deleteUser(id: string) {
     if (!window.confirm('Delete this user? This cannot be undone.')) return
     try {
-      await fetch(buildApiUrl(`/api/admin/users/${id}`), { method: 'DELETE' })
+      await fetch(buildApiUrl(`/api/admin/users/${id}`), { method: 'DELETE', headers: getAuthHeader() })
       setUsers((prev) => prev.filter((u) => u.id !== id))
     } catch { setActionMessage('Delete failed.') }
   }
