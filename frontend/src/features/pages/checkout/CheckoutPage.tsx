@@ -60,23 +60,15 @@ type GeoNorgeAddress = {
   kommunenavn: string
 }
 
-type PaymentMethod = 'vipps' | 'card'
+type AccountType = 'INDIVIDUAL' | 'BUSINESS'
+
+type PaymentMethod = 'vipps' | 'card' | 'invoice'
 
 type SavedAddress = {
   id: string
   label: string | null
   address: string
   phone: string | null
-  isDefault: boolean
-}
-
-type SavedPaymentMethod = {
-  id: string
-  cardholderName: string
-  maskedNumber: string
-  lastFour: string
-  expiry: string
-  cardType: string | null
   isDefault: boolean
 }
 
@@ -95,40 +87,6 @@ type WoltError = {
 
 function formatCurrency(value: number) {
   return `${value.toFixed(2)} kr`
-}
-
-function formatCardNumber(raw: string) {
-  return raw.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim()
-}
-
-function formatExpiry(raw: string) {
-  const digits = raw.replace(/\D/g, '').slice(0, 4)
-  if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`
-  return digits
-}
-
-function detectCardType(number: string): string {
-  const digits = number.replace(/\s/g, '')
-  if (/^4/.test(digits)) return 'Visa'
-  if (/^5[1-5]/.test(digits) || /^2[2-7]/.test(digits)) return 'Mastercard'
-  if (/^3[47]/.test(digits)) return 'Amex'
-  return ''
-}
-
-function validateCardNumber(number: string): boolean {
-  return /^\d{16}$/.test(number.replace(/\s/g, ''))
-}
-
-function validateExpiry(expiry: string): boolean {
-  if (!/^\d{2}\/\d{2}$/.test(expiry)) return false
-  const [mm, yy] = expiry.split('/').map(Number)
-  if (mm < 1 || mm > 12) return false
-  const now = new Date()
-  return new Date(2000 + yy, mm, 0) >= now
-}
-
-function validateCvv(cvv: string): boolean {
-  return /^\d{3,4}$/.test(cvv)
 }
 
 function etaLabel(minutes: number): string {
@@ -159,11 +117,10 @@ export default function CheckoutPage() {
   const [matchError, setMatchError] = useState('')
   const [isReady, setIsReady] = useState(false)
 
-  // Saved addresses + payment methods
+  // Saved addresses
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
-  const [savedPayments, setSavedPayments] = useState<SavedPaymentMethod[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string | 'manual'>('manual')
-  const [selectedPaymentId, setSelectedPaymentId] = useState<string | 'new'>('new')
+  const [accountType, setAccountType] = useState<AccountType>('INDIVIDUAL')
 
   // Address
   const [addressQuery, setAddressQuery] = useState('')
@@ -179,13 +136,8 @@ export default function CheckoutPage() {
   const woltTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Payment
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('card')
-  const [cardNumber, setCardNumber] = useState('')
-  const [cardName, setCardName] = useState('')
-  const [cardExpiry, setCardExpiry] = useState('')
-  const [cardCvv, setCardCvv] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('vipps')
   const [vippsPhone, setVippsPhone] = useState('')
-  const [cardErrors, setCardErrors] = useState<{ number?: string; expiry?: string; cvv?: string; name?: string }>({})
 
   // Order
   const [notes, setNotes] = useState('')
@@ -231,7 +183,7 @@ export default function CheckoutPage() {
     return {}
   }
 
-  // Load saved addresses and payment methods
+  // Load saved addresses and account type
   useEffect(() => {
     if (!buyer) return
     const headers = getAuthHeader()
@@ -251,13 +203,12 @@ export default function CheckoutPage() {
       })
       .catch(() => { /* ignore */ })
 
-    fetch(buildApiUrl('/api/auth/payment-methods'), { headers })
+    fetch(buildApiUrl('/api/auth/me'), { headers })
       .then((r) => r.json())
-      .then((data: SavedPaymentMethod[]) => {
-        if (Array.isArray(data)) {
-          setSavedPayments(data)
-          const def = data.find((p) => p.isDefault) ?? data[0]
-          if (def) setSelectedPaymentId(def.id)
+      .then((data: { accountType?: AccountType }) => {
+        if (data.accountType === 'BUSINESS') {
+          setAccountType('BUSINESS')
+          setPaymentMethod('invoice')
         }
       })
       .catch(() => { /* ignore */ })
@@ -409,40 +360,17 @@ export default function CheckoutPage() {
     return Math.round((store.subtotal + effectiveDeliveryCost(store)) * 100) / 100
   }
 
-  function validateCard(): boolean {
-    const errors: typeof cardErrors = {}
-    if (!cardName.trim()) errors.name = 'Cardholder name is required'
-    if (!validateCardNumber(cardNumber)) errors.number = 'Enter a valid 16-digit card number'
-    if (!validateExpiry(cardExpiry)) errors.expiry = 'Enter a valid expiry (MM/YY)'
-    if (!validateCvv(cardCvv)) errors.cvv = 'Enter a valid CVV (3–4 digits)'
-    setCardErrors(errors)
-    return Object.keys(errors).length === 0
-  }
-
   async function handlePlaceOrder() {
     if (!selectedStore || !buyer || isPlacing) return
     if (!addressQuery.trim()) {
       setOrderError('Please enter a delivery address.')
       return
     }
-    if (paymentMethod === 'card' && selectedPaymentId === 'new') {
-      if (!validateCard()) return
-    }
 
     setOrderError('')
     setIsPlacing(true)
 
     try {
-      let paymentNote: string
-      if (paymentMethod === 'vipps') {
-        paymentNote = `Payment: Vipps (${vippsPhone})`
-      } else if (selectedPaymentId !== 'new') {
-        const saved = savedPayments.find((p) => p.id === selectedPaymentId)
-        paymentNote = saved ? `Payment: ${saved.cardType ?? 'Card'} ${saved.maskedNumber}` : 'Payment: Saved card'
-      } else {
-        paymentNote = `Payment: Card ending in ${cardNumber.replace(/\s/g, '').slice(-4)}`
-      }
-
       const deliveryCost = effectiveDeliveryCost(selectedStore)
 
       const response = await fetch(buildApiUrl('/api/orders'), {
@@ -452,6 +380,7 @@ export default function CheckoutPage() {
           buyerId: buyer.id,
           deliveryFee: deliveryCost,
           deliveryAddress: addressQuery.trim(),
+          paymentMethod,
           ...(selectedAddressId !== 'manual' ? { deliveryAddressId: selectedAddressId } : {}),
           storeCode: selectedStore.storeCode,
           items: selectedStore.items.map((item) => ({
@@ -464,7 +393,6 @@ export default function CheckoutPage() {
             `Store: ${selectedStore.storeName}`,
             `Delivery to: ${addressQuery.trim()}`,
             woltEstimate ? `Wolt delivery: ${formatCurrency(woltEstimate.fee)}, ~${etaLabel(woltEstimate.etaMinutes)}` : null,
-            paymentNote,
             notes ? `Note: ${notes}` : '',
           ]
             .filter(Boolean)
@@ -547,8 +475,6 @@ export default function CheckoutPage() {
 
   const stores = matchResult?.stores ?? []
   const savings = matchResult?.savings ?? 0
-  const usingNewCard = paymentMethod === 'card' && selectedPaymentId === 'new'
-
   const woltDeliveryClosed = woltError && WOLT_CLOSED_CODES.has(woltError.errorCode)
   const woltOutsideArea = woltError && WOLT_OUTSIDE_AREA_CODES.has(woltError.errorCode)
   const woltUnavailable = woltError && woltError.errorCode === 'WOLT_UNAVAILABLE'
@@ -855,115 +781,68 @@ export default function CheckoutPage() {
             </div>
 
             <div className="space-y-2 px-5 py-4">
-              {savedPayments.map((pm) => (
-                <button
-                  key={pm.id}
-                  type="button"
-                  onClick={() => { setSelectedPaymentId(pm.id); setPaymentMethod('card') }}
-                  className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${selectedPaymentId === pm.id ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
-                >
-                  <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${selectedPaymentId === pm.id ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
-                    {selectedPaymentId === pm.id ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-[#1f2b22]">{pm.cardType ?? 'Card'} {pm.maskedNumber}</p>
-                    <p className="text-xs text-[#6d7b70]">{pm.cardholderName} · Expires {pm.expiry}</p>
-                  </div>
-                  {pm.isDefault ? <span className="ml-auto shrink-0 rounded-full bg-[#dcf5e2] px-2 py-0.5 text-[10px] font-semibold text-[#1a7a34]">Default</span> : null}
-                </button>
-              ))}
-
-              <button
-                className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${paymentMethod === 'vipps' ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
-                onClick={() => { setPaymentMethod('vipps'); setSelectedPaymentId('new') }}
-                type="button"
-              >
-                <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${paymentMethod === 'vipps' ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
-                  {paymentMethod === 'vipps' ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
-                </span>
-                <div>
-                  <p className="text-sm font-semibold text-[#1f2b22]">Vipps</p>
-                  <p className="text-xs text-[#6d7b70]">Pay with your Vipps account</p>
-                </div>
-              </button>
-
-              <button
-                className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${usingNewCard ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
-                onClick={() => { setPaymentMethod('card'); setSelectedPaymentId('new') }}
-                type="button"
-              >
-                <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${usingNewCard ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
-                  {usingNewCard ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
-                </span>
-                <div>
-                  <p className="text-sm font-semibold text-[#1f2b22]">New credit / debit card</p>
-                  <p className="text-xs text-[#6d7b70]">Visa, Mastercard</p>
-                </div>
-              </button>
-
-              {usingNewCard ? (
-                <div className="mt-3 space-y-3 rounded-xl border border-[#e5ece2] bg-[#f8fbf7] p-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#6b7b70]">Cardholder name</label>
-                    <input
-                      autoComplete="cc-name"
-                      className={`mt-1.5 w-full rounded-lg border bg-white px-3 py-2 text-sm text-[#1f2937] outline-none focus:ring-2 focus:ring-[#2f9f4f]/30 ${cardErrors.name ? 'border-red-400 focus:border-red-400' : 'border-[#d4ddd0] focus:border-[#2f9f4f]'}`}
-                      onChange={(e) => { setCardName(e.target.value); setCardErrors((p) => ({ ...p, name: undefined })) }}
-                      placeholder="Full name on card"
-                      type="text"
-                      value={cardName}
-                    />
-                    {cardErrors.name ? <p className="mt-1 text-xs text-red-500">{cardErrors.name}</p> : null}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#6b7b70]">
-                      Card number
-                      {detectCardType(cardNumber) ? <span className="ml-2 font-normal text-[#2f9f4f]">{detectCardType(cardNumber)}</span> : null}
-                    </label>
-                    <input
-                      autoComplete="cc-number"
-                      className={`mt-1.5 w-full rounded-lg border bg-white px-3 py-2 font-mono text-sm text-[#1f2937] outline-none focus:ring-2 focus:ring-[#2f9f4f]/30 ${cardErrors.number ? 'border-red-400 focus:border-red-400' : 'border-[#d4ddd0] focus:border-[#2f9f4f]'}`}
-                      inputMode="numeric"
-                      maxLength={19}
-                      onChange={(e) => { setCardNumber(formatCardNumber(e.target.value)); setCardErrors((p) => ({ ...p, number: undefined })) }}
-                      placeholder="0000 0000 0000 0000"
-                      type="text"
-                      value={cardNumber}
-                    />
-                    {cardErrors.number ? <p className="mt-1 text-xs text-red-500">{cardErrors.number}</p> : null}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
+              {accountType === 'BUSINESS' ? (
+                <>
+                  <button
+                    className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${paymentMethod === 'invoice' ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
+                    onClick={() => setPaymentMethod('invoice')}
+                    type="button"
+                  >
+                    <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${paymentMethod === 'invoice' ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
+                      {paymentMethod === 'invoice' ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                    </span>
                     <div>
-                      <label className="block text-xs font-semibold text-[#6b7b70]">Expiry</label>
-                      <input
-                        autoComplete="cc-exp"
-                        className={`mt-1.5 w-full rounded-lg border bg-white px-3 py-2 font-mono text-sm text-[#1f2937] outline-none focus:ring-2 focus:ring-[#2f9f4f]/30 ${cardErrors.expiry ? 'border-red-400 focus:border-red-400' : 'border-[#d4ddd0] focus:border-[#2f9f4f]'}`}
-                        inputMode="numeric"
-                        maxLength={5}
-                        onChange={(e) => { setCardExpiry(formatExpiry(e.target.value)); setCardErrors((p) => ({ ...p, expiry: undefined })) }}
-                        placeholder="MM/YY"
-                        type="text"
-                        value={cardExpiry}
-                      />
-                      {cardErrors.expiry ? <p className="mt-1 text-xs text-red-500">{cardErrors.expiry}</p> : null}
+                      <p className="text-sm font-semibold text-[#1f2b22]">Invoice (net 30)</p>
+                      <p className="text-xs text-[#6d7b70]">Pay within 30 days of the order date</p>
                     </div>
+                    <span className="ml-auto shrink-0 rounded-full bg-[#dcf5e2] px-2 py-0.5 text-[10px] font-semibold text-[#1a7a34]">Default</span>
+                  </button>
+
+                  <button
+                    className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${paymentMethod === 'vipps' ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
+                    onClick={() => setPaymentMethod('vipps')}
+                    type="button"
+                  >
+                    <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${paymentMethod === 'vipps' ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
+                      {paymentMethod === 'vipps' ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                    </span>
                     <div>
-                      <label className="block text-xs font-semibold text-[#6b7b70]">CVV</label>
-                      <input
-                        autoComplete="cc-csc"
-                        className={`mt-1.5 w-full rounded-lg border bg-white px-3 py-2 font-mono text-sm text-[#1f2937] outline-none focus:ring-2 focus:ring-[#2f9f4f]/30 ${cardErrors.cvv ? 'border-red-400 focus:border-red-400' : 'border-[#d4ddd0] focus:border-[#2f9f4f]'}`}
-                        inputMode="numeric"
-                        maxLength={4}
-                        onChange={(e) => { setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4)); setCardErrors((p) => ({ ...p, cvv: undefined })) }}
-                        placeholder="CVV"
-                        type="text"
-                        value={cardCvv}
-                      />
-                      {cardErrors.cvv ? <p className="mt-1 text-xs text-red-500">{cardErrors.cvv}</p> : null}
+                      <p className="text-sm font-semibold text-[#1f2b22]">
+                        <span className="mr-1.5 inline-block rounded bg-[#ff5b24] px-1.5 py-0.5 text-[10px] font-bold text-white">V</span>
+                        Vipps
+                      </p>
+                      <p className="text-xs text-[#6d7b70]">Pay with your Vipps account</p>
+                    </div>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${paymentMethod === 'vipps' ? 'border-[#2f9f4f] bg-[#f0faf2]' : 'border-[#e5ece2] bg-white hover:border-[#b2d4bc]'}`}
+                    onClick={() => setPaymentMethod('vipps')}
+                    type="button"
+                  >
+                    <span className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${paymentMethod === 'vipps' ? 'border-[#2f9f4f] bg-[#2f9f4f]' : 'border-[#d4ddd0]'}`}>
+                      {paymentMethod === 'vipps' ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-[#1f2b22]">
+                        <span className="mr-1.5 inline-block rounded bg-[#ff5b24] px-1.5 py-0.5 text-[10px] font-bold text-white">V</span>
+                        Vipps
+                      </p>
+                      <p className="text-xs text-[#6d7b70]">Pay instantly with your Vipps account</p>
+                    </div>
+                  </button>
+
+                  <div className="flex w-full cursor-not-allowed items-start gap-3 rounded-xl border-2 border-[#e5ece2] bg-[#f8faf7] px-4 py-3 opacity-60">
+                    <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 border-[#d4ddd0]" />
+                    <div>
+                      <p className="text-sm font-semibold text-[#1f2b22]">Card (Stripe)</p>
+                      <p className="text-xs text-[#6d7b70]">Coming soon</p>
                     </div>
                   </div>
-                </div>
-              ) : null}
+                </>
+              )}
 
               {paymentMethod === 'vipps' ? (
                 <div className="mt-3 rounded-xl border border-[#e5ece2] bg-[#f8fbf7] p-4">

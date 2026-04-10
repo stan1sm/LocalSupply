@@ -171,6 +171,7 @@ type BuyerOrderStatusInput = {
   status: 'CONFIRMED' | 'CANCELLED'
   supplierName: string
   total: number
+  paymentMethod?: string
 }
 
 export async function sendBuyerOrderStatusEmail({
@@ -180,6 +181,7 @@ export async function sendBuyerOrderStatusEmail({
   status,
   supplierName,
   total,
+  paymentMethod,
 }: BuyerOrderStatusInput): Promise<void> {
   const transport = getMailTransport()
   if (!transport) return
@@ -187,6 +189,16 @@ export async function sendBuyerOrderStatusEmail({
   const shortId = orderId.slice(-6).toUpperCase()
   const ordersUrl = new URL('/orders', getFrontendBaseUrl()).toString()
   const statusLabel = status === 'CONFIRMED' ? 'confirmed' : 'cancelled'
+
+  function paymentMethodLine(): string {
+    if (status !== 'CONFIRMED') return ''
+    if (paymentMethod === 'invoice') return 'Payment terms: 30 days from order date'
+    if (paymentMethod === 'vipps') return 'Payment via Vipps — you will receive a payment request on your phone'
+    if (paymentMethod === 'card') return 'Payment by card'
+    return ''
+  }
+
+  const paymentLine = paymentMethodLine()
 
   const textBody = [
     `Hi ${buyerName},`,
@@ -196,6 +208,7 @@ export async function sendBuyerOrderStatusEmail({
     status === 'CONFIRMED'
       ? 'Your order is being prepared and will be delivered by Wolt.'
       : 'If you have questions, please contact the supplier directly.',
+    ...(paymentLine ? [paymentLine] : []),
     '',
     `Total: ${total.toFixed(2)} kr`,
     '',
@@ -208,6 +221,7 @@ export async function sendBuyerOrderStatusEmail({
     status === 'CONFIRMED'
       ? '<p>Your order is being prepared and will be delivered by Wolt.</p>'
       : '<p>If you have questions, please contact the supplier directly.</p>',
+    paymentLine ? `<p>${paymentLine}</p>` : '',
     `<p>Total: ${total.toFixed(2)} kr</p>`,
     `<p><a href="${ordersUrl}">View your orders →</a></p>`,
   ].join('')
