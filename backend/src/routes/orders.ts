@@ -9,6 +9,7 @@ const ordersRouter = Router()
 
 type CreateOrderItemInput = {
   productId?: string | undefined
+  catalogProductId?: string | undefined
   name?: string | undefined
   unit?: string | undefined
   unitPrice?: number | undefined
@@ -22,6 +23,8 @@ ordersRouter.post('/', async (req, res) => {
   const supplierIdInput = typeof body.supplierId === 'string' ? body.supplierId.trim() : ''
   const notes = typeof body.notes === 'string' ? body.notes.trim() : ''
   const deliveryFee = typeof body.deliveryFee === 'number' && Number.isFinite(body.deliveryFee) ? body.deliveryFee : 0
+  // storeCode is required when catalog items are included so prices can be validated server-side
+  const storeCode = typeof body.storeCode === 'string' ? body.storeCode.trim() : ''
 
   const rawItems: unknown[] = Array.isArray(body.items) ? body.items : []
   const items: CreateOrderItemInput[] = rawItems
@@ -29,25 +32,23 @@ ordersRouter.post('/', async (req, res) => {
       const record = item as Record<string, unknown>
       const quantity = typeof record.quantity === 'number' && record.quantity > 0 ? record.quantity : 0
       const productId = typeof record.productId === 'string' && record.productId.length > 0 ? record.productId : undefined
+      const catalogProductId = typeof record.catalogProductId === 'string' && record.catalogProductId.length > 0 ? record.catalogProductId : undefined
       const name = typeof record.name === 'string' ? record.name.trim() : undefined
       const unit = typeof record.unit === 'string' ? record.unit.trim() : undefined
-      const unitPrice =
-        typeof record.unitPrice === 'number' && Number.isFinite(record.unitPrice) && record.unitPrice > 0
-          ? record.unitPrice
-          : undefined
 
       return {
         productId,
+        catalogProductId,
         name,
         unit,
-        unitPrice,
         quantity,
       }
     })
     .filter((item) => {
       if (!item.quantity || item.quantity <= 0) return false
       if (item.productId) return true
-      return Boolean(item.name && item.unitPrice && item.unitPrice > 0)
+      if (item.catalogProductId) return true
+      return false
     })
 
   const errors: Record<string, string> = {}
@@ -110,39 +111,75 @@ ordersRouter.post('/', async (req, res) => {
 
     const productById = new Map(existingProducts.map((product) => [product.id, product]))
 
+    // Catalog price lookup — server validates price, client value is never trusted
+    const catalogProductIds = items
+      .map((item) => item.catalogProductId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+
+    const catalogPriceMap = new Map<string, number>()
+    const catalogNameMap = new Map<string, string>()
+    if (catalogProductIds.length > 0 && storeCode) {
+      const catalogPrices = await prisma.catalogProductPrice.findMany({
+        where: { catalogProductId: { in: catalogProductIds }, storeCode },
+        include: { catalogProduct: { select: { name: true } } },
+      })
+      for (const cp of catalogPrices) {
+        const price = Number(cp.currentPrice ?? cp.currentUnitPrice ?? 0)
+        if (price > 0) {
+          catalogPriceMap.set(cp.catalogProductId, price)
+          catalogNameMap.set(cp.catalogProductId, cp.catalogProduct.name)
+        }
+      }
+    }
+
     let subtotal = 0
     const orderItemsData: { productId: string; quantity: number; unitPrice: number }[] = []
+    const stockDecrements: { id: string; qty: number }[] = []
 
     for (const item of items) {
-      let product = item.productId ? productById.get(item.productId) : null
+      // Path 1: named Product (supplier-direct orders) — price comes from DB
+      if (item.productId) {
+        const product = productById.get(item.productId)
+        if (!product) continue
 
-      if (!product && item.name && item.unitPrice && item.unitPrice > 0) {
-        product = await prisma.product.create({
-          data: {
-            supplierId: supplier.id,
-            name: item.name,
-            description: null,
-            unit: item.unit && item.unit.length > 0 ? item.unit : 'unit',
-            price: item.unitPrice,
-            stockQty: 0,
-          },
-        })
-        productById.set(product.id, product)
+        const unitPrice = Number(product.price)
+        if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue
+
+        subtotal += unitPrice * item.quantity
+        orderItemsData.push({ productId: product.id, quantity: item.quantity, unitPrice })
+        if (product.stockQty > 0) {
+          stockDecrements.push({ id: product.id, qty: item.quantity })
+        }
+        continue
       }
 
-      if (!product) continue
+      // Path 2: catalog item — look up authoritative price server-side, never trust client
+      if (item.catalogProductId) {
+        if (!storeCode) continue // storeCode required to resolve catalog price
+        const unitPrice = catalogPriceMap.get(item.catalogProductId)
+        if (!unitPrice) continue // product not found in this store's catalog
 
-      const unitPrice = Number(product.price)
-      if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue
+        // Upsert a thin Product record so OrderItem has a valid FK
+        const catalogName = catalogNameMap.get(item.catalogProductId) ?? item.name ?? 'Catalog item'
+        let product = await prisma.product.findFirst({
+          where: { supplierId: supplier.id, name: catalogName },
+        })
+        if (!product) {
+          product = await prisma.product.create({
+            data: {
+              supplierId: supplier.id,
+              name: catalogName,
+              description: null,
+              unit: item.unit && item.unit.length > 0 ? item.unit : 'unit',
+              price: unitPrice,
+              stockQty: 0,
+            },
+          })
+        }
 
-      const lineTotal = unitPrice * item.quantity
-      subtotal += lineTotal
-
-      orderItemsData.push({
-        productId: product.id,
-        quantity: item.quantity,
-        unitPrice,
-      })
+        subtotal += unitPrice * item.quantity
+        orderItemsData.push({ productId: product.id, quantity: item.quantity, unitPrice })
+      }
     }
 
     if (orderItemsData.length === 0) {
@@ -190,6 +227,18 @@ ordersRouter.post('/', async (req, res) => {
         buyer: true,
       },
     })
+
+    // Decrement stock for supplier-owned products (best-effort, floor at 0)
+    if (stockDecrements.length > 0) {
+      await Promise.all(
+        stockDecrements.map(({ id, qty }) =>
+          prisma.product.updateMany({
+            where: { id, stockQty: { gt: 0 } },
+            data: { stockQty: { decrement: qty } },
+          }),
+        ),
+      )
+    }
 
     // Attempt Wolt delivery creation (best-effort — order is already saved)
     let woltDeliveryId: string | null = null

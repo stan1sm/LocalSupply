@@ -453,10 +453,11 @@ export default function CheckoutPage() {
           deliveryFee: deliveryCost,
           deliveryAddress: addressQuery.trim(),
           ...(selectedAddressId !== 'manual' ? { deliveryAddressId: selectedAddressId } : {}),
+          storeCode: selectedStore.storeCode,
           items: selectedStore.items.map((item) => ({
+            catalogProductId: item.catalogProductId,
             name: item.name,
             unit: 'unit',
-            unitPrice: item.unitPrice,
             quantity: item.quantity,
           })),
           notes: [
