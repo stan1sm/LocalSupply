@@ -199,6 +199,67 @@ authRouter.get('/me', requireBuyerAuth, async (req, res) => {
   }
 })
 
+authRouter.patch('/profile', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const firstName = typeof body.firstName === 'string' ? body.firstName.trim() : null
+  const lastName = typeof body.lastName === 'string' ? body.lastName.trim() : null
+
+  if (firstName !== null && firstName.length === 0) {
+    res.status(400).json({ message: 'First name cannot be empty.' }); return
+  }
+  if (lastName !== null && lastName.length === 0) {
+    res.status(400).json({ message: 'Last name cannot be empty.' }); return
+  }
+
+  try {
+    const prisma = getPrismaClient()
+    const updated = await prisma.user.update({
+      where: { id: buyerId },
+      data: {
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+      },
+    })
+    res.json({ id: updated.id, firstName: updated.firstName, lastName: updated.lastName, email: updated.email })
+  } catch (error) {
+    console.error('Profile update failed', error)
+    res.status(503).json({ message: 'Unable to update profile right now.' })
+  }
+})
+
+authRouter.patch('/password', requireBuyerAuth, async (req, res) => {
+  const buyerId = res.locals.buyerId as string
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+  const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : ''
+  const newPassword = typeof body.newPassword === 'string' ? body.newPassword : ''
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ message: 'currentPassword and newPassword are required.' }); return
+  }
+  if (newPassword.length < 8) {
+    res.status(400).json({ message: 'New password must be at least 8 characters.' }); return
+  }
+
+  try {
+    const prisma = getPrismaClient()
+    const user = await prisma.user.findUnique({ where: { id: buyerId } })
+    if (!user || !user.passwordHash) {
+      res.status(404).json({ message: 'User not found.' }); return
+    }
+    const valid = await verifyPassword(currentPassword, user.passwordHash)
+    if (!valid) {
+      res.status(401).json({ message: 'Current password is incorrect.' }); return
+    }
+    const newHash = await hashPassword(newPassword)
+    await prisma.user.update({ where: { id: buyerId }, data: { passwordHash: newHash } })
+    res.json({ message: 'Password updated.' })
+  } catch (error) {
+    console.error('Password change failed', error)
+    res.status(503).json({ message: 'Unable to update password right now.' })
+  }
+})
+
 authRouter.post('/resend-verification', async (req, res) => {
   const validation = validateUserEmailPayload(req.body)
 
