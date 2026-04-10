@@ -3,6 +3,7 @@ import { getPrismaClient } from '../lib/prisma.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
 import { signAdminToken } from '../lib/jwt.js'
 import { requireAdminAuth } from '../middleware/requireAdminAuth.js'
+import { sendSupplierVerificationApprovedEmail, sendSupplierVerificationRejectedEmail } from '../lib/email.js'
 
 const adminRouter = Router()
 
@@ -125,6 +126,14 @@ adminRouter.patch('/suppliers/:id', requireAdminAuth, async (req, res) => {
 
     const supplier = await prisma.supplier.update({ where: { id: supplierId }, data })
     res.json({ id: supplier.id, verificationStatus: supplier.verificationStatus, isVerified: supplier.isVerified, showInMarketplace: supplier.showInMarketplace })
+
+    if (verificationStatus === 'VERIFIED') {
+      sendSupplierVerificationApprovedEmail({ email: supplier.email, businessName: supplier.businessName })
+        .catch(() => { /* already logged inside */ })
+    } else if (verificationStatus === 'REJECTED') {
+      sendSupplierVerificationRejectedEmail({ email: supplier.email, businessName: supplier.businessName, reason: supplier.verificationRejectedReason })
+        .catch(() => { /* already logged inside */ })
+    }
   } catch (error) {
     console.error('Admin update supplier failed', error)
     res.status(503).json({ message: 'Unable to update supplier right now.' })

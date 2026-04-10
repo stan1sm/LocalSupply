@@ -25,15 +25,16 @@ export default function AdminLoginPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
         })
-        const data = (await res.json().catch(() => ({}))) as { admin?: { id: string; email: string; name: string }; message?: string }
+        const data = (await res.json().catch(() => ({}))) as { token?: string; admin?: { id: string; email: string; name: string }; message?: string }
 
         if (!res.ok) {
           setError(data.message ?? 'Invalid credentials.')
           return
         }
 
-        if (data.admin) {
+        if (data.admin && data.token) {
           window.localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(data.admin))
+          window.localStorage.setItem('localsupply-admin-token', data.token)
           router.push('/admin/dashboard')
         }
       } catch {
