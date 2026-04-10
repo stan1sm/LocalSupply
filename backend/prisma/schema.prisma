@@ -138,6 +138,7 @@ model Product {
   orderItems OrderItem[]
 
   @@index([supplierId])
+  @@index([isActive])
 }
 
 model CatalogProduct {
@@ -226,6 +227,8 @@ model Order {
 
   @@index([buyerId])
   @@index([supplierId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
 }
 
 model Admin {
