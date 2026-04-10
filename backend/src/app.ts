@@ -1,5 +1,7 @@
 import cors, { type CorsOptions } from 'cors'
 import express from 'express'
+import { adminAuth } from './middleware/adminAuth.js'
+import adminRouter from './routes/admin.js'
 
 const app = express()
 
@@ -47,5 +49,7 @@ app.use(express.json())
 app.get('/', (_req, res) => {
   res.json({ status: 'ok' })
 })
+
+app.use('/admin', adminAuth, adminRouter)
 
 export default app

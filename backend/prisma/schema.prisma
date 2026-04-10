@@ -21,6 +21,13 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -41,7 +48,8 @@ model Supplier {
   email        String   @unique
   passwordHash String
   address      String
-  isVerified   Boolean  @default(false)
+  verificationStatus         VerificationStatus @default(UNVERIFIED)
+  verificationRejectedReason String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
