@@ -60,14 +60,9 @@ async function callJsonApi<T>(path: string, body: unknown): Promise<T> {
 export async function getEmbedding(text: string): Promise<number[]> {
   const { embeddingModel } = getConfig()
 
-  const payload = {
-    model: embeddingModel,
-    input: text,
-  }
-
   const data = await callJsonApi<{
     data: Array<{ embedding: number[] }>
-  }>('/v1/embeddings', payload)
+  }>('/v1/embeddings', { model: embeddingModel, input: text })
 
   if (!data.data?.[0]?.embedding) {
     throw new Error('AI embedding response did not contain embedding data.')
@@ -76,16 +71,44 @@ export async function getEmbedding(text: string): Promise<number[]> {
   return data.data[0].embedding
 }
 
+export async function getEmbeddings(texts: string[]): Promise<number[][]> {
+  if (texts.length === 0) return []
+  if (texts.length === 1) return [await getEmbedding(texts[0]!)]
+
+  const { embeddingModel } = getConfig()
+
+  const data = await callJsonApi<{
+    data: Array<{ index: number; embedding: number[] }>
+  }>('/v1/embeddings', { model: embeddingModel, input: texts })
+
+  if (!Array.isArray(data.data) || data.data.length === 0) {
+    throw new Error('AI batch embedding response did not contain embedding data.')
+  }
+
+  const sorted = [...data.data].sort((a, b) => a.index - b.index)
+  return sorted.map((item) => item.embedding)
+}
+
 type JsonChatResponse<T> = {
   result: T
   raw: unknown
 }
 
+type JsonSchemaSpec = {
+  name: string
+  schema: Record<string, unknown>
+}
+
 export async function completeJson<T>(options: {
   systemPrompt: string
   userPrompt: string
+  jsonSchema?: JsonSchemaSpec
 }): Promise<JsonChatResponse<T>> {
   const { chatModel } = getConfig()
+
+  const responseFormat = options.jsonSchema
+    ? { type: 'json_schema' as const, json_schema: { name: options.jsonSchema.name, strict: true, schema: options.jsonSchema.schema } }
+    : { type: 'json_object' as const }
 
   const response = await callJsonApi<any>('/v1/chat/completions', {
     model: chatModel,
@@ -93,7 +116,7 @@ export async function completeJson<T>(options: {
       { role: 'system', content: options.systemPrompt },
       { role: 'user', content: options.userPrompt },
     ],
-    response_format: { type: 'json_object' },
+    response_format: responseFormat,
     temperature: 0.2,
   })
 

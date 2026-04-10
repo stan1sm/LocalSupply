@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { getPrismaClient } from '../lib/prisma.js'
 import { planMealFromText } from '../lib/intentCartPlanner.js'
-import { getEmbedding } from '../lib/aiClient.js'
+import { getEmbeddings } from '../lib/aiClient.js'
 
 const cartRouter = Router()
 
@@ -32,32 +32,27 @@ const defaultDeliveryEstimate: StoreDeliveryEstimate = {
 
 const DEFAULT_EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
 
-// When text search finds nothing for a slot, try these catalog categories based on slot role keywords.
-const SLOT_ROLE_CATEGORY_FALLBACK: Array<{ keywords: string[]; categories: string[] }> = [
-  { keywords: ['protein', 'meat', 'kjøtt'], categories: ['Kjøtt', 'Kylling', 'Saltpølser', 'Spekepølser', 'Bacon', 'Fisk og sjømat'] },
-  { keywords: ['fish', 'seafood', 'fisk', 'sjømat'], categories: ['Fisk og sjømat', 'Sild/ansjos'] },
-  { keywords: ['vegetable', 'grønnsak', 'salad', 'salat'], categories: ['Grønnsaker', 'Salater', 'Rotgrønnsaker', 'Frukt'] },
-  { keywords: ['cheese', 'ost'], categories: ['Gulost', 'Hvitmuggost', 'Blåmuggost', 'Smøreost', 'Brunost'] },
-  { keywords: ['dairy', 'milk', 'melk'], categories: ['Melk', 'Fløte', 'Yoghurt', 'Rømme', 'Smør', 'Egg'] },
-  { keywords: ['pasta', 'noodle', 'nudler'], categories: ['Pasta og nudler'] },
-  { keywords: ['rice', 'ris'], categories: ['Ris og gryn'] },
-  { keywords: ['bread', 'brød', 'tortilla', 'wrap', 'lefse'], categories: ['Brød', 'Tortilla og wrap', 'Lefser og flatbrød', 'Rundstykker'] },
-  { keywords: ['sauce', 'saus', 'salsa', 'pastasaus'], categories: ['Pastasaus', 'Sauser og marinader', 'Ketchup'] },
-  { keywords: ['spice', 'krydder', 'herb', 'urte', 'seasoning'], categories: ['Krydder', 'Krydderblandinger', 'Salt og pepper'] },
-  { keywords: ['oil', 'olje', 'vinegar', 'eddik'], categories: ['Olje og eddik'] },
-  { keywords: ['egg'], categories: ['Egg'] },
-  { keywords: ['butter', 'smør'], categories: ['Smør', 'Margarin'] },
-  { keywords: ['cream', 'fløte', 'rømme'], categories: ['Fløte', 'Rømme'] },
-  { keywords: ['drink', 'drikke', 'juice', 'water', 'vann'], categories: ['Juice', 'Vann', 'Brus'] },
-  { keywords: ['frozen', 'frossen'], categories: ['Grønnsaker, frosne', 'Fisk, frossen', 'Kjøtt, frossen'] },
-]
+// Cached catalog categories with TTL to avoid re-querying every request.
+let cachedCategories: string[] | null = null
+let categoriesCachedAt = 0
+const CATEGORY_CACHE_TTL_MS = 5 * 60 * 1000
 
-function getRoleCategoryFallback(slotRole: string, tags: string[]): string[] {
-  const needle = `${slotRole} ${tags.join(' ')}`.toLowerCase()
-  for (const entry of SLOT_ROLE_CATEGORY_FALLBACK) {
-    if (entry.keywords.some((kw) => needle.includes(kw))) return entry.categories
+async function getCatalogCategories(prisma: any): Promise<string[]> {
+  if (cachedCategories && Date.now() - categoriesCachedAt < CATEGORY_CACHE_TTL_MS) {
+    return cachedCategories
   }
-  return []
+  const rows = await prisma.catalogProduct.findMany({
+    select: { category: true },
+    where: { category: { not: null } },
+    distinct: ['category'],
+  })
+  const result: string[] = rows
+    .map((r: { category: string | null }) => r.category)
+    .filter((c: string | null): c is string => Boolean(c))
+    .sort()
+  cachedCategories = result
+  categoriesCachedAt = Date.now()
+  return result
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -263,379 +258,291 @@ cartRouter.post('/intent', async (req, res) => {
   try {
     const prisma = getPrismaClient()
 
-    // Fetch real catalog categories to ground the LLM in what's actually available.
-    const categoryRows = await (prisma as any).catalogProduct.findMany({
-      select: { category: true },
-      where: { category: { not: null } },
-      distinct: ['category'],
-    })
-    const catalogCategories: string[] = categoryRows
-      .map((r: { category: string | null }) => r.category)
-      .filter((c: string | null): c is string => Boolean(c))
-      .sort()
+    const catalogCategories = await getCatalogCategories(prisma)
 
     const mealPlan = await planMealFromText(text, language, catalogCategories)
 
     const slots = mealPlan.slots
     if (slots.length === 0) {
-      res
-        .status(200)
-        .json({ items: [], explanation: ['Could not identify specific ingredients from your request.'], storeChoice: null, totalPrice: 0 })
+      res.status(200).json({
+        items: [],
+        explanation: ['Could not identify specific ingredients from your request.'],
+        storeChoice: null,
+        totalPrice: 0,
+      })
       return
     }
 
-    const lowerMealType = String(mealPlan.mealType ?? '').toLowerCase()
-    const lowerText = text.toLowerCase()
-    const isTacoRequest =
-      lowerMealType.includes('taco') ||
-      lowerText.includes('taco') ||
-      slots.some((slot) => slot.tags.some((t) => t.toLowerCase().includes('taco')))
-
-    // For taco meals, make protein matching far more reliable by always extending tags with meat keywords.
-    const fallbackProteinTags = [
-      'kjøttdeig',
-      'karbonadedeig',
-      'biff',
-      'storfe',
-      'ground beef',
-      'minced meat',
-      'mince',
-      'beef mince',
-    ]
-
-    const isVegetarianRequest =
-      lowerText.includes('vegetar') ||
-      lowerText.includes('vegan') ||
-      lowerText.includes('vegetarisk') ||
-      lowerText.includes('vegansk') ||
-      lowerText.includes('tofu')
-
-    // Extra tokens to find meat even when the catalog uses slightly different naming.
-    const proteinSearchTokens = Array.from(
-      new Set([
-        ...fallbackProteinTags,
-        'kjottdeig',
-        'kjøtt',
-        'kjott',
-        'deig',
-        'ground meat',
-        'minced',
-        'mince',
-        'beef',
-        'storfe',
-      ]),
-    )
-
-    const forceProteinForTaco = isTacoRequest && !isVegetarianRequest
-
-    const [stores] = await Promise.all([
-      prisma.catalogProductPrice.findMany({
-        select: { storeCode: true, storeName: true },
-        distinct: ['storeCode'],
-      }),
-    ])
-
     const quantityMultiplier = people ?? mealPlan.people
 
-    // Pre-compute per-slot data (tags, effectiveTags, slotLooksProtein) once.
-    const slotData = slots.map((slot) => {
-      const tags = Array.isArray(slot.tags)
+    const slotTags = slots.map((slot) =>
+      Array.isArray(slot.tags)
         ? slot.tags.map((tag) => String(tag ?? '').trim()).filter((tag) => tag.length >= 2)
-        : []
-      const slotRoleLower = String(slot.role ?? '').toLowerCase()
-      const slotLooksProtein =
-        slotRoleLower.includes('protein') ||
-        slotRoleLower.includes('meat') ||
-        slotRoleLower.includes('kjøtt') ||
-        tags.some((t) => fallbackProteinTags.some((k) => t.toLowerCase().includes(k)))
-      const effectiveTags =
-        isTacoRequest && slotLooksProtein ? Array.from(new Set([...tags, ...fallbackProteinTags])) : tags
-      return { slot, tags, effectiveTags, slotLooksProtein }
-    })
+        : [],
+    )
 
-    // Fetch slot embeddings once in parallel — one per slot, not one per slot×store.
-    const slotEmbeddings = await Promise.all(
-      slotData.map(async ({ slot, effectiveTags }) => {
-        if (effectiveTags.length === 0) return null
-        try {
-          return await getEmbedding(`${slot.role} | ${effectiveTags.join(' ')}`)
-        } catch {
-          return null
-        }
+    // [Step 1] Batch-embed all slot queries in a single API call.
+    const embeddingInputs = slots.map((slot, i) => {
+      const tags = slotTags[i]!
+      return tags.length > 0 ? `${slot.role} | ${tags.join(' ')}` : null
+    })
+    const nonNullInputs = embeddingInputs.filter((t): t is string => t !== null)
+    let rawEmbeddings: number[][] = []
+    try {
+      rawEmbeddings = nonNullInputs.length > 0 ? await getEmbeddings(nonNullInputs) : []
+    } catch {
+      // Proceed without embeddings — text search still works.
+    }
+    const slotEmbeddings: (number[] | null)[] = []
+    let embIdx = 0
+    for (const input of embeddingInputs) {
+      if (input !== null && embIdx < rawEmbeddings.length) {
+        slotEmbeddings.push(rawEmbeddings[embIdx]!)
+        embIdx++
+      } else {
+        slotEmbeddings.push(null)
+      }
+    }
+
+    // [Step 2] Per slot: text search CatalogProduct (store-agnostic) for candidates.
+    const slotCandidateProductIds: string[][] = await Promise.all(
+      slotTags.map(async (tags) => {
+        if (tags.length === 0) return []
+
+        const orClauses = tags.flatMap((tag) => [
+          { name: { contains: tag, mode: 'insensitive' as const } },
+          { brand: { contains: tag, mode: 'insensitive' as const } },
+          { category: { contains: tag, mode: 'insensitive' as const } },
+        ])
+
+        const rows = await prisma.catalogProduct.findMany({
+          where: { OR: orClauses },
+          select: { id: true },
+          take: 60,
+        })
+
+        return rows.map((r) => r.id)
       }),
     )
 
-    // Process all stores in parallel.
-    const storeCandidates = (
-      await Promise.all(
-        stores.map(async (storeRow) => {
-          const storeCode = storeRow.storeCode
-          const storeName = storeRow.storeName
-          const delivery = getDeliveryEstimate(storeCode)
-          const items: {
-            priceId: string
-            imageUrl: string | null
-            catalogProductId: string
-            name: string
-            unitPrice: number
-            unitInfo: string | null
-            quantity: number
-            lineTotal: number
-          }[] = []
-          // Process all slots for this store in parallel.
-          type SlotResult = {
-            priceId: string
-            imageUrl: string | null
-            catalogProductId: string
-            name: string
-            unitPrice: number
-            unitInfo: string | null
-            quantity: number
-            lineTotal: number
-            required: boolean
-            isProtein: boolean
-          }
+    // [Step 3] Batch-fetch embeddings for all candidate product IDs in one query.
+    const allCandidateIds = [...new Set(slotCandidateProductIds.flat())]
+    const embeddingByProductId = new Map<string, number[]>()
 
-          const slotResults = await Promise.all(
-            slotData.map(async ({ slot, effectiveTags, slotLooksProtein }, slotIdx) => {
-              const slotEmbedding = slotEmbeddings[slotIdx] ?? null
-              if (effectiveTags.length === 0) return null
+    if (allCandidateIds.length > 0) {
+      const embeddingRows = await (prisma as any).productEmbedding.findMany({
+        where: {
+          modelName: DEFAULT_EMBEDDING_MODEL,
+          productId: { in: allCandidateIds },
+        },
+        select: { productId: true, vectorJson: true },
+      })
+      if (Array.isArray(embeddingRows)) {
+        for (const row of embeddingRows) {
+          const vec = row.vectorJson as unknown as number[]
+          if (Array.isArray(vec) && vec.length > 0) embeddingByProductId.set(row.productId, vec)
+        }
+      }
+    }
 
-              const orClauses = effectiveTags.flatMap((tag) => [
-                { name: { contains: tag, mode: 'insensitive' as const } },
-                { brand: { contains: tag, mode: 'insensitive' as const } },
-                { category: { contains: tag, mode: 'insensitive' as const } },
-              ])
+    // [Step 4] Rank candidates per slot by embedding similarity, keep top 10.
+    const SIMILARITY_THRESHOLD = 0.20
+    const TOP_K_PER_SLOT = 10
 
-              let candidates = await prisma.catalogProductPrice.findMany({
-                where: {
-                  storeCode,
-                  currentPrice: { not: null },
-                  catalogProduct: { OR: orClauses },
-                },
-                include: { catalogProduct: true },
-                orderBy: [{ currentPrice: 'asc' }],
-                take: 40,
-              })
+    const slotTopProductIds: string[][] = slots.map((_slot, slotIdx) => {
+      const candidateIds = slotCandidateProductIds[slotIdx] ?? []
+      const slotEmb = slotEmbeddings[slotIdx]
 
-              // If text search found nothing, fall back to category-based search using the slot role.
-              if (candidates.length === 0) {
-                const fallbackCategories = getRoleCategoryFallback(slot.role, effectiveTags)
-                if (fallbackCategories.length > 0) {
-                  candidates = await prisma.catalogProductPrice.findMany({
-                    where: {
-                      storeCode,
-                      currentPrice: { not: null },
-                      catalogProduct: { category: { in: fallbackCategories } },
-                    },
-                    include: { catalogProduct: true },
-                    orderBy: [{ currentPrice: 'asc' }],
-                    take: 40,
-                  })
-                }
-              }
+      if (!slotEmb || candidateIds.length === 0) return candidateIds.slice(0, TOP_K_PER_SLOT)
 
-              if (candidates.length === 0) return null
+      const scored: { productId: string; similarity: number }[] = []
+      for (const productId of candidateIds) {
+        const vec = embeddingByProductId.get(productId)
+        if (!vec) {
+          scored.push({ productId, similarity: 0 })
+          continue
+        }
+        scored.push({ productId, similarity: cosineSimilarity(slotEmb, vec) })
+      }
 
-              const candidateProductIds = [...new Set(candidates.map((c) => c.catalogProductId))]
-              const embeddingRows =
-                slotEmbedding && candidateProductIds.length > 0
-                  ? await (prisma as any).productEmbedding.findMany({
-                      where: {
-                        modelName: DEFAULT_EMBEDDING_MODEL,
-                        productId: { in: candidateProductIds },
-                      },
-                      select: { productId: true, vectorJson: true },
-                    })
-                  : []
+      scored.sort((a, b) => b.similarity - a.similarity)
 
-              const embeddingByProductId = new Map<string, number[]>()
-              if (slotEmbedding && Array.isArray(embeddingRows)) {
-                for (const row of embeddingRows) {
-                  const vec = row.vectorJson as unknown as number[]
-                  if (Array.isArray(vec) && vec.length > 0) embeddingByProductId.set(row.productId, vec)
-                }
-              }
+      const filtered = scored.filter((s) => s.similarity >= SIMILARITY_THRESHOLD)
+      const result = filtered.length > 0 ? filtered : scored
 
-              let bestMatch: {
-                priceId: string
-                imageUrl: string | null
-                catalogProductId: string
-                name: string
-                unitPrice: number
-                unitInfo: string | null
-              } | null = null
+      return result.slice(0, TOP_K_PER_SLOT).map((s) => s.productId)
+    })
 
-              // Default to cheapest candidate.
-              for (const row of candidates) {
-                const unitPrice = asNumber(row.currentPrice)
-                if (unitPrice === null || unitPrice <= 0) continue
-                bestMatch = {
-                  priceId: row.id,
-                  imageUrl: row.catalogProduct.imageUrl,
-                  catalogProductId: row.catalogProductId,
-                  name: row.catalogProduct.name,
-                  unitPrice,
-                  unitInfo: formatUnitInfo(
-                    asNumber(row.currentUnitPrice),
-                    row.currentUnitPriceUnit ?? null,
-                    row.catalogProduct.unit ?? null,
-                  ),
-                }
-                break
-              }
+    // [Step 5] Batch-fetch all prices for top products across all stores.
+    const allTopProductIds = [...new Set(slotTopProductIds.flat())]
 
-              if (slotEmbedding) {
-                let bestSimilarity = -Infinity
-                const similarityThreshold = 0.12
-                for (const row of candidates) {
-                  const unitPrice = asNumber(row.currentPrice)
-                  if (unitPrice === null || unitPrice <= 0) continue
-                  const vec = embeddingByProductId.get(row.catalogProductId)
-                  if (!vec) continue
-                  const similarity = cosineSimilarity(slotEmbedding, vec)
-                  if (similarity < similarityThreshold) continue
-                  if (
-                    similarity > bestSimilarity ||
-                    (similarity === bestSimilarity && bestMatch && unitPrice < bestMatch.unitPrice)
-                  ) {
-                    bestSimilarity = similarity
-                    bestMatch = {
-                      priceId: row.id,
-                      imageUrl: row.catalogProduct.imageUrl,
-                      catalogProductId: row.catalogProductId,
-                      name: row.catalogProduct.name,
-                      unitPrice,
-                      unitInfo: formatUnitInfo(
-                        asNumber(row.currentUnitPrice),
-                        row.currentUnitPriceUnit ?? null,
-                        row.catalogProduct.unit ?? null,
-                      ),
-                    }
-                  }
-                }
-              }
+    const allPriceRows = allTopProductIds.length > 0
+      ? await prisma.catalogProductPrice.findMany({
+          where: {
+            catalogProductId: { in: allTopProductIds },
+            currentPrice: { not: null },
+          },
+          include: { catalogProduct: true },
+        })
+      : []
 
-              if (!bestMatch) return null
+    // Index prices by (catalogProductId, storeCode).
+    type PriceRow = typeof allPriceRows[number]
+    const priceIndex = new Map<string, PriceRow[]>()
+    const storeNameByCode = new Map<string, string>()
 
-              const baseQuantity = slot.required ? 1 : 0.5
-              const quantity = Math.max(1, Math.round(baseQuantity * quantityMultiplier * 0.5))
-              return {
-                ...bestMatch,
-                imageUrl: bestMatch.imageUrl ?? null,
-                quantity,
-                lineTotal: bestMatch.unitPrice * quantity,
-                required: slot.required,
-                isProtein: forceProteinForTaco && slotLooksProtein,
-              } satisfies SlotResult
-            }),
-          )
+    for (const row of allPriceRows) {
+      const unitPrice = asNumber(row.currentPrice)
+      if (unitPrice === null || unitPrice <= 0) continue
 
-          let subtotal = 0
-          let requiredFulfilled = 0
-          let pickedProteinLike = false
+      storeNameByCode.set(row.storeCode, row.storeName)
 
-          for (const result of slotResults) {
-            if (!result) continue
-            items.push({
-              priceId: result.priceId,
-              imageUrl: result.imageUrl,
-              catalogProductId: result.catalogProductId,
-              name: result.name,
-              unitPrice: result.unitPrice,
-              unitInfo: result.unitInfo,
-              quantity: result.quantity,
-              lineTotal: result.lineTotal,
-            })
-            subtotal += result.lineTotal
-            if (result.required) requiredFulfilled += 1
-            if (result.isProtein) pickedProteinLike = true
-          }
+      const key = `${row.catalogProductId}|${row.storeCode}`
+      let list = priceIndex.get(key)
+      if (!list) {
+        list = []
+        priceIndex.set(key, list)
+      }
+      list.push(row)
+    }
 
-          // Fallback: if taco request and no protein matched, find cheapest meat in one query.
-          if (forceProteinForTaco && !pickedProteinLike) {
-            try {
-              const proteinOrClauses = proteinSearchTokens.flatMap((token) => [
-                { name: { contains: token, mode: 'insensitive' as const } },
-                { brand: { contains: token, mode: 'insensitive' as const } },
-                { category: { contains: token, mode: 'insensitive' as const } },
-              ])
-              const rows = await prisma.catalogProductPrice.findMany({
-                where: {
-                  storeCode,
-                  currentPrice: { not: null },
-                  catalogProduct: { OR: proteinOrClauses },
-                },
-                include: { catalogProduct: true },
-                orderBy: [{ currentPrice: 'asc' }],
-                take: 5,
-              })
-              const forcedBest = rows
-                .map((row) => ({ row, unitPrice: asNumber(row.currentPrice) }))
-                .filter(({ unitPrice }) => unitPrice !== null && unitPrice > 0)
-                .sort((a, b) => a.unitPrice! - b.unitPrice!)[0]
+    const allStoreCodes = [...storeNameByCode.keys()]
 
-              if (forcedBest) {
-                const { row, unitPrice } = forcedBest
-                const quantity = Math.max(1, Math.round(1 * quantityMultiplier * 0.5))
-                const lineTotal = unitPrice! * quantity
-                items.push({
-                  priceId: row.id,
-                  imageUrl: row.catalogProduct.imageUrl,
-                  catalogProductId: row.catalogProductId,
-                  name: row.catalogProduct.name,
-                  unitPrice: unitPrice!,
-                  unitInfo: formatUnitInfo(
-                    asNumber(row.currentUnitPrice),
-                    row.currentUnitPriceUnit ?? null,
-                    row.catalogProduct.unit ?? null,
-                  ),
-                  quantity,
-                  lineTotal,
-                })
-                subtotal += lineTotal
-              }
-            } catch (error) {
-              console.error('Forced protein search failed', error)
+    // [Step 6] Build per-store carts in memory.
+    type StoreCart = {
+      storeCode: string
+      storeName: string
+      items: {
+        priceId: string
+        imageUrl: string | null
+        catalogProductId: string
+        name: string
+        unitPrice: number
+        unitInfo: string | null
+        quantity: number
+        lineTotal: number
+      }[]
+      subtotal: number
+      slotsFulfilled: number
+      requiredFulfilled: number
+    }
+
+    const storeCarts: StoreCart[] = allStoreCodes.map((storeCode) => {
+      const storeName = storeNameByCode.get(storeCode)!
+      const items: StoreCart['items'] = []
+      let subtotal = 0
+      let slotsFulfilled = 0
+      let requiredFulfilled = 0
+
+      for (let slotIdx = 0; slotIdx < slots.length; slotIdx++) {
+        const slot = slots[slotIdx]!
+        const topIds = slotTopProductIds[slotIdx] ?? []
+        const slotEmb = slotEmbeddings[slotIdx]
+
+        let bestMatch: {
+          priceId: string
+          imageUrl: string | null
+          catalogProductId: string
+          name: string
+          unitPrice: number
+          unitInfo: string | null
+          score: number
+        } | null = null
+
+        for (const productId of topIds) {
+          const key = `${productId}|${storeCode}`
+          const priceRows = priceIndex.get(key)
+          if (!priceRows) continue
+
+          const cheapest = priceRows.reduce<PriceRow | null>((best, row) => {
+            const price = asNumber(row.currentPrice)
+            if (price === null || price <= 0) return best
+            if (!best) return row
+            const bestPrice = asNumber(best.currentPrice)
+            return bestPrice !== null && price < bestPrice ? row : best
+          }, null)
+
+          if (!cheapest) continue
+
+          const unitPrice = asNumber(cheapest.currentPrice)!
+          const emb = embeddingByProductId.get(productId)
+          const similarity = slotEmb && emb ? cosineSimilarity(slotEmb, emb) : 0
+
+          // Combined score: 70% relevance, 30% inverse price rank.
+          const maxPrice = 500
+          const priceScore = 1 - Math.min(unitPrice / maxPrice, 1)
+          const combinedScore = similarity * 0.7 + priceScore * 0.3
+
+          if (!bestMatch || combinedScore > bestMatch.score) {
+            bestMatch = {
+              priceId: cheapest.id,
+              imageUrl: cheapest.catalogProduct.imageUrl,
+              catalogProductId: cheapest.catalogProductId,
+              name: cheapest.catalogProduct.name,
+              unitPrice,
+              unitInfo: formatUnitInfo(
+                asNumber(cheapest.currentUnitPrice),
+                cheapest.currentUnitPriceUnit ?? null,
+                cheapest.catalogProduct.unit ?? null,
+              ),
+              score: combinedScore,
             }
           }
+        }
 
-          const total = Math.round((subtotal + delivery.deliveryCost) * 100) / 100
-          return {
-            storeCode,
-            storeName,
-            items,
-            subtotal: Math.round(subtotal * 100) / 100,
-            deliveryCost: delivery.deliveryCost,
-            total,
-            eta: delivery.etaLabel,
-            etaMinutes: delivery.etaMinutes,
-            slotsFulfilled: items.length,
-            requiredFulfilled,
-          }
-        }),
-      )
-    ).filter((c) => c.slotsFulfilled > 0)
+        if (bestMatch) {
+          const baseQuantity = slot.required ? 1 : 0.5
+          const quantity = Math.max(1, Math.round(baseQuantity * quantityMultiplier * 0.5))
+          const lineTotal = bestMatch.unitPrice * quantity
+          items.push({
+            priceId: bestMatch.priceId,
+            imageUrl: bestMatch.imageUrl,
+            catalogProductId: bestMatch.catalogProductId,
+            name: bestMatch.name,
+            unitPrice: bestMatch.unitPrice,
+            unitInfo: bestMatch.unitInfo,
+            quantity,
+            lineTotal,
+          })
+          subtotal += lineTotal
+          slotsFulfilled += 1
+          if (slot.required) requiredFulfilled += 1
+        }
+      }
+
+      return { storeCode, storeName, items, subtotal, slotsFulfilled, requiredFulfilled }
+    })
 
     const requiredCount = slots.filter((s) => s.required).length
-    const scored = storeCandidates
+    const scored = storeCarts
+      .filter((c) => c.slotsFulfilled > 0)
       .sort((a, b) => {
         if (a.requiredFulfilled !== b.requiredFulfilled) return b.requiredFulfilled - a.requiredFulfilled
         if (a.slotsFulfilled !== b.slotsFulfilled) return b.slotsFulfilled - a.slotsFulfilled
-        return a.total - b.total
+        const aTotal = a.subtotal + getDeliveryEstimate(a.storeCode).deliveryCost
+        const bTotal = b.subtotal + getDeliveryEstimate(b.storeCode).deliveryCost
+        return aTotal - bTotal
       })
 
     const bestStore = scored[0] ?? null
 
     if (!bestStore || bestStore.items.length === 0) {
-      res.status(200).json({ items: [], explanation: ['Could not find matching products in the catalog.'], storeChoice: null, totalPrice: 0 })
+      res.status(200).json({
+        items: [],
+        explanation: ['Could not find matching products in the catalog.'],
+        storeChoice: null,
+        totalPrice: 0,
+      })
       return
     }
 
+    const delivery = getDeliveryEstimate(bestStore.storeCode)
+    const storeSubtotal = Math.round(bestStore.subtotal * 100) / 100
+    const storeTotal = Math.round((bestStore.subtotal + delivery.deliveryCost) * 100) / 100
+
     const rawMealType = String(mealPlan.mealType ?? 'meal').trim()
     const readableMealTypeBase = rawMealType.replace(/_/g, ' ').toLowerCase()
-    const readableMealType =
-      readableMealTypeBase.charAt(0).toUpperCase() + readableMealTypeBase.slice(1)
+    const readableMealType = readableMealTypeBase.charAt(0).toUpperCase() + readableMealTypeBase.slice(1)
 
     const explanation: string[] = [
       `Planned a "${readableMealType}" meal for ${mealPlan.people} people.`,
@@ -665,13 +572,13 @@ cartRouter.post('/intent', async (req, res) => {
       storeChoice: {
         storeCode: bestStore.storeCode,
         storeName: bestStore.storeName,
-        subtotal: bestStore.subtotal,
-        deliveryCost: bestStore.deliveryCost,
-        total: bestStore.total,
-        eta: bestStore.eta,
-        etaMinutes: bestStore.etaMinutes,
+        subtotal: storeSubtotal,
+        deliveryCost: delivery.deliveryCost,
+        total: storeTotal,
+        eta: delivery.etaLabel,
+        etaMinutes: delivery.etaMinutes,
       },
-      totalPrice: bestStore.total,
+      totalPrice: storeTotal,
     })
   } catch (error) {
     console.error('Intent cart planning failed', error)
