@@ -63,6 +63,30 @@ const authLimiter = rateLimit({
   message: { message: 'Too many requests, please try again later.' },
 })
 
+const searchLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests, please try again later.' },
+})
+
+const orderLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests, please try again later.' },
+})
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests, please try again later.' },
+})
+
 app.use(cors(corsOptions))
 
 // Capture raw body for Wolt webhook signature verification before JSON parsing
@@ -76,6 +100,9 @@ app.use('/api/suppliers/register', authLimiter)
 app.use('/api/admin/login', authLimiter)
 app.use('/api/auth/forgot-password', authLimiter)
 app.use('/api/auth/reset-password', authLimiter)
+app.use('/api/products', searchLimiter)
+app.use('/api/orders', orderLimiter)
+app.use('/api/suppliers', uploadLimiter)
 app.use('/api/addresses', addressesRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/auth', authRouter)
