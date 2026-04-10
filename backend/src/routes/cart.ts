@@ -32,28 +32,6 @@ const defaultDeliveryEstimate: StoreDeliveryEstimate = {
 
 const DEFAULT_EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
 
-// Cached catalog categories with TTL to avoid re-querying every request.
-let cachedCategories: string[] | null = null
-let categoriesCachedAt = 0
-const CATEGORY_CACHE_TTL_MS = 5 * 60 * 1000
-
-async function getCatalogCategories(prisma: any): Promise<string[]> {
-  if (cachedCategories && Date.now() - categoriesCachedAt < CATEGORY_CACHE_TTL_MS) {
-    return cachedCategories
-  }
-  const rows = await prisma.catalogProduct.findMany({
-    select: { category: true },
-    where: { category: { not: null } },
-    distinct: ['category'],
-  })
-  const result: string[] = rows
-    .map((r: { category: string | null }) => r.category)
-    .filter((c: string | null): c is string => Boolean(c))
-    .sort()
-  cachedCategories = result
-  categoriesCachedAt = Date.now()
-  return result
-}
 
 function cosineSimilarity(a: number[], b: number[]): number {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) return 0
@@ -248,7 +226,6 @@ cartRouter.post('/match', async (req, res) => {
 cartRouter.post('/intent', async (req, res) => {
   const text = typeof req.body?.text === 'string' ? req.body.text.trim() : ''
   const language = req.body?.language === 'no' ? 'no' : 'en'
-  const people = typeof req.body?.people === 'number' && Number.isFinite(req.body.people) && req.body.people > 0 ? req.body.people : undefined
 
   if (!text) {
     res.status(400).json({ message: 'Text is required.' })
@@ -258,12 +235,11 @@ cartRouter.post('/intent', async (req, res) => {
   try {
     const prisma = getPrismaClient()
 
-    const catalogCategories = await getCatalogCategories(prisma)
+    // Step 1: LLM generates a recipe, then we get a structured ingredient list.
+    const mealPlan = await planMealFromText(text, language)
 
-    const mealPlan = await planMealFromText(text, language, catalogCategories)
-
-    const slots = mealPlan.slots
-    if (slots.length === 0) {
+    const ingredients = mealPlan.ingredients
+    if (ingredients.length === 0) {
       res.status(200).json({
         items: [],
         explanation: ['Could not identify specific ingredients from your request.'],
@@ -273,46 +249,28 @@ cartRouter.post('/intent', async (req, res) => {
       return
     }
 
-    const quantityMultiplier = people ?? mealPlan.people
-
-    const slotTags = slots.map((slot) =>
-      Array.isArray(slot.tags)
-        ? slot.tags.map((tag) => String(tag ?? '').trim()).filter((tag) => tag.length >= 2)
-        : [],
-    )
-
-    // [Step 1] Batch-embed all slot queries in a single API call.
-    const embeddingInputs = slots.map((slot, i) => {
-      const tags = slotTags[i]!
-      return tags.length > 0 ? `${slot.role} | ${tags.join(' ')}` : null
-    })
-    const nonNullInputs = embeddingInputs.filter((t): t is string => t !== null)
+    // Step 2: Embed each ingredient's product name in a single batch API call.
+    const embeddingInputs = ingredients.map((ing) => ing.product)
     let rawEmbeddings: number[][] = []
     try {
-      rawEmbeddings = nonNullInputs.length > 0 ? await getEmbeddings(nonNullInputs) : []
+      rawEmbeddings = await getEmbeddings(embeddingInputs)
     } catch {
       // Proceed without embeddings — text search still works.
     }
-    const slotEmbeddings: (number[] | null)[] = []
-    let embIdx = 0
-    for (const input of embeddingInputs) {
-      if (input !== null && embIdx < rawEmbeddings.length) {
-        slotEmbeddings.push(rawEmbeddings[embIdx]!)
-        embIdx++
-      } else {
-        slotEmbeddings.push(null)
-      }
-    }
+    const ingredientEmbeddings: (number[] | null)[] = embeddingInputs.map(
+      (_, i) => rawEmbeddings[i] ?? null,
+    )
 
-    // [Step 2] Per slot: text search CatalogProduct (store-agnostic) for candidates.
-    const slotCandidateProductIds: string[][] = await Promise.all(
-      slotTags.map(async (tags) => {
-        if (tags.length === 0) return []
+    // Step 3: Per ingredient — text search CatalogProduct (store-agnostic).
+    const ingredientCandidateIds: string[][] = await Promise.all(
+      ingredients.map(async (ing) => {
+        const terms = ing.searchTerms.filter((t) => t.length >= 2)
+        if (terms.length === 0) return []
 
-        const orClauses = tags.flatMap((tag) => [
-          { name: { contains: tag, mode: 'insensitive' as const } },
-          { brand: { contains: tag, mode: 'insensitive' as const } },
-          { category: { contains: tag, mode: 'insensitive' as const } },
+        const orClauses = terms.flatMap((term) => [
+          { name: { contains: term, mode: 'insensitive' as const } },
+          { brand: { contains: term, mode: 'insensitive' as const } },
+          { category: { contains: term, mode: 'insensitive' as const } },
         ])
 
         const rows = await prisma.catalogProduct.findMany({
@@ -325,8 +283,8 @@ cartRouter.post('/intent', async (req, res) => {
       }),
     )
 
-    // [Step 3] Batch-fetch embeddings for all candidate product IDs in one query.
-    const allCandidateIds = [...new Set(slotCandidateProductIds.flat())]
+    // Step 4: Batch-fetch embeddings for all candidate product IDs.
+    const allCandidateIds = [...new Set(ingredientCandidateIds.flat())]
     const embeddingByProductId = new Map<string, number[]>()
 
     if (allCandidateIds.length > 0) {
@@ -345,15 +303,15 @@ cartRouter.post('/intent', async (req, res) => {
       }
     }
 
-    // [Step 4] Rank candidates per slot by embedding similarity, keep top 10.
+    // Step 5: Rank candidates per ingredient by embedding similarity, keep top 10.
     const SIMILARITY_THRESHOLD = 0.20
-    const TOP_K_PER_SLOT = 10
+    const TOP_K = 10
 
-    const slotTopProductIds: string[][] = slots.map((_slot, slotIdx) => {
-      const candidateIds = slotCandidateProductIds[slotIdx] ?? []
-      const slotEmb = slotEmbeddings[slotIdx]
+    const ingredientTopIds: string[][] = ingredients.map((_ing, idx) => {
+      const candidateIds = ingredientCandidateIds[idx] ?? []
+      const ingEmb = ingredientEmbeddings[idx]
 
-      if (!slotEmb || candidateIds.length === 0) return candidateIds.slice(0, TOP_K_PER_SLOT)
+      if (!ingEmb || candidateIds.length === 0) return candidateIds.slice(0, TOP_K)
 
       const scored: { productId: string; similarity: number }[] = []
       for (const productId of candidateIds) {
@@ -362,7 +320,7 @@ cartRouter.post('/intent', async (req, res) => {
           scored.push({ productId, similarity: 0 })
           continue
         }
-        scored.push({ productId, similarity: cosineSimilarity(slotEmb, vec) })
+        scored.push({ productId, similarity: cosineSimilarity(ingEmb, vec) })
       }
 
       scored.sort((a, b) => b.similarity - a.similarity)
@@ -370,11 +328,11 @@ cartRouter.post('/intent', async (req, res) => {
       const filtered = scored.filter((s) => s.similarity >= SIMILARITY_THRESHOLD)
       const result = filtered.length > 0 ? filtered : scored
 
-      return result.slice(0, TOP_K_PER_SLOT).map((s) => s.productId)
+      return result.slice(0, TOP_K).map((s) => s.productId)
     })
 
-    // [Step 5] Batch-fetch all prices for top products across all stores.
-    const allTopProductIds = [...new Set(slotTopProductIds.flat())]
+    // Step 6: Batch-fetch all prices for top products across all stores.
+    const allTopProductIds = [...new Set(ingredientTopIds.flat())]
 
     const allPriceRows = allTopProductIds.length > 0
       ? await prisma.catalogProductPrice.findMany({
@@ -386,7 +344,6 @@ cartRouter.post('/intent', async (req, res) => {
         })
       : []
 
-    // Index prices by (catalogProductId, storeCode).
     type PriceRow = typeof allPriceRows[number]
     const priceIndex = new Map<string, PriceRow[]>()
     const storeNameByCode = new Map<string, string>()
@@ -408,7 +365,7 @@ cartRouter.post('/intent', async (req, res) => {
 
     const allStoreCodes = [...storeNameByCode.keys()]
 
-    // [Step 6] Build per-store carts in memory.
+    // Step 7: Build per-store carts in memory.
     type StoreCart = {
       storeCode: string
       storeName: string
@@ -423,7 +380,7 @@ cartRouter.post('/intent', async (req, res) => {
         lineTotal: number
       }[]
       subtotal: number
-      slotsFulfilled: number
+      ingredientsFulfilled: number
       requiredFulfilled: number
     }
 
@@ -431,13 +388,13 @@ cartRouter.post('/intent', async (req, res) => {
       const storeName = storeNameByCode.get(storeCode)!
       const items: StoreCart['items'] = []
       let subtotal = 0
-      let slotsFulfilled = 0
+      let ingredientsFulfilled = 0
       let requiredFulfilled = 0
 
-      for (let slotIdx = 0; slotIdx < slots.length; slotIdx++) {
-        const slot = slots[slotIdx]!
-        const topIds = slotTopProductIds[slotIdx] ?? []
-        const slotEmb = slotEmbeddings[slotIdx]
+      for (let idx = 0; idx < ingredients.length; idx++) {
+        const ing = ingredients[idx]!
+        const topIds = ingredientTopIds[idx] ?? []
+        const ingEmb = ingredientEmbeddings[idx]
 
         let bestMatch: {
           priceId: string
@@ -466,9 +423,8 @@ cartRouter.post('/intent', async (req, res) => {
 
           const unitPrice = asNumber(cheapest.currentPrice)!
           const emb = embeddingByProductId.get(productId)
-          const similarity = slotEmb && emb ? cosineSimilarity(slotEmb, emb) : 0
+          const similarity = ingEmb && emb ? cosineSimilarity(ingEmb, emb) : 0
 
-          // Combined score: 70% relevance, 30% inverse price rank.
           const maxPrice = 500
           const priceScore = 1 - Math.min(unitPrice / maxPrice, 1)
           const combinedScore = similarity * 0.7 + priceScore * 0.3
@@ -491,8 +447,7 @@ cartRouter.post('/intent', async (req, res) => {
         }
 
         if (bestMatch) {
-          const baseQuantity = slot.required ? 1 : 0.5
-          const quantity = Math.max(1, Math.round(baseQuantity * quantityMultiplier * 0.5))
+          const quantity = ing.qty
           const lineTotal = bestMatch.unitPrice * quantity
           items.push({
             priceId: bestMatch.priceId,
@@ -505,20 +460,20 @@ cartRouter.post('/intent', async (req, res) => {
             lineTotal,
           })
           subtotal += lineTotal
-          slotsFulfilled += 1
-          if (slot.required) requiredFulfilled += 1
+          ingredientsFulfilled += 1
+          if (ing.required) requiredFulfilled += 1
         }
       }
 
-      return { storeCode, storeName, items, subtotal, slotsFulfilled, requiredFulfilled }
+      return { storeCode, storeName, items, subtotal, ingredientsFulfilled, requiredFulfilled }
     })
 
-    const requiredCount = slots.filter((s) => s.required).length
+    const requiredCount = ingredients.filter((ing) => ing.required).length
     const scored = storeCarts
-      .filter((c) => c.slotsFulfilled > 0)
+      .filter((c) => c.ingredientsFulfilled > 0)
       .sort((a, b) => {
         if (a.requiredFulfilled !== b.requiredFulfilled) return b.requiredFulfilled - a.requiredFulfilled
-        if (a.slotsFulfilled !== b.slotsFulfilled) return b.slotsFulfilled - a.slotsFulfilled
+        if (a.ingredientsFulfilled !== b.ingredientsFulfilled) return b.ingredientsFulfilled - a.ingredientsFulfilled
         const aTotal = a.subtotal + getDeliveryEstimate(a.storeCode).deliveryCost
         const bTotal = b.subtotal + getDeliveryEstimate(b.storeCode).deliveryCost
         return aTotal - bTotal
@@ -546,7 +501,7 @@ cartRouter.post('/intent', async (req, res) => {
 
     const explanation: string[] = [
       `Planned a "${readableMealType}" meal for ${mealPlan.people} people.`,
-      `Chose store ${bestStore.storeName} as the cheapest option including delivery (${bestStore.slotsFulfilled} items).`,
+      `Chose store ${bestStore.storeName} as the cheapest option including delivery (${bestStore.ingredientsFulfilled} items).`,
     ]
 
     if (bestStore.requiredFulfilled < requiredCount) {

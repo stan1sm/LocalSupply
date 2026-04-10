@@ -1,139 +1,142 @@
 import { completeJson } from './aiClient.js'
 
-type MealPlanSlot = {
-  role: string
-  tags: string[]
+type RecipeIngredient = {
+  name: string
+  amount: string
+  essential: boolean
+}
+
+type Recipe = {
+  title: string
+  servings: number
+  ingredients: RecipeIngredient[]
+}
+
+export type MealIngredient = {
+  product: string
+  searchTerms: string[]
   required: boolean
+  qty: number
 }
 
 export type MealPlanSpec = {
   mealType: string
   people: number
   notes: string | null
-  slots: MealPlanSlot[]
+  ingredients: MealIngredient[]
 }
 
-const MEAL_PLAN_SCHEMA = {
-  name: 'meal_plan',
+const RECIPE_SCHEMA = {
+  name: 'recipe',
   schema: {
     type: 'object',
     properties: {
-      mealType: { type: 'string', description: 'Short identifier like "taco_night", "pasta_carbonara", "pizza"' },
-      people: { type: 'integer', description: 'Number of people to cook for' },
-      notes: { type: ['string', 'null'], description: 'Dietary notes or constraints' },
-      slots: {
+      title: { type: 'string', description: 'Short recipe title' },
+      servings: { type: 'integer', description: 'Number of servings' },
+      ingredients: {
         type: 'array',
         items: {
           type: 'object',
           properties: {
-            role: { type: 'string', description: 'Ingredient role, e.g. "protein", "pasta", "cheese"' },
-            tags: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Search keywords: Norwegian catalog category first, then Norwegian product names, then English equivalents',
-            },
-            required: { type: 'boolean', description: 'True if the meal cannot work without this ingredient' },
+            name: { type: 'string', description: 'Ingredient name in Norwegian as you would find it in a grocery store' },
+            amount: { type: 'string', description: 'Quantity with unit, e.g. "400g", "2 stk", "1 boks", "3 ss"' },
+            essential: { type: 'boolean', description: 'True if the dish does not work without this ingredient' },
           },
-          required: ['role', 'tags', 'required'],
+          required: ['name', 'amount', 'essential'],
           additionalProperties: false,
         },
       },
     },
-    required: ['mealType', 'people', 'notes', 'slots'],
+    required: ['title', 'servings', 'ingredients'],
     additionalProperties: false,
   },
 } as const
 
+async function generateRecipe(text: string, language: 'en' | 'no'): Promise<Recipe> {
+  const systemPrompt = `You are a cooking expert who writes recipes for Norwegian home cooks.
+Given a meal request (which may be in English, Norwegian, or any language), generate a complete recipe with an ingredient list.
+
+Critical rules:
+- The user's request can be in ANY language — understand it and generate the recipe.
+- Ingredient names MUST ALWAYS be written in Norwegian, exactly as they appear in Norwegian grocery stores (e.g. "kjøttdeig av storfe", "tortillalefser", "revet ost", "lettrømme", "hvitløk", "løk", "olivenolje").
+- NEVER write ingredient names in English. Even if the user writes in English, ingredients must be Norwegian. "ground beef" → "kjøttdeig", "garlic" → "hvitløk", "olive oil" → "olivenolje", "chicken breast" → "kyllingfilet".
+- Use specific raw ingredient names, not prepared products. Write "kjøttdeig" (raw minced meat), NOT "kjøttdeigsaus" (ready-made sauce). Write "revet ost" (shredded cheese), NOT "ostesnacks" (cheese snacks).
+- Include all ingredients needed for a complete dish, including basics like olje, salt, pepper, krydder.
+- Scale amounts to the number of servings.
+- Default to 2 servings if not specified.
+- The amount field should use Norwegian grocery units: g, kg, stk, pakke, boks, dl, ss (tablespoon), ts (teaspoon).`
+
+  const titleLanguage = language === 'no' ? 'Norwegian' : 'English'
+
+  const userPrompt = `Request: ${text}
+
+Return a JSON recipe. Write the title in ${titleLanguage}. Servings as integer. Ingredients array where each ingredient has name (ALWAYS in Norwegian as found in grocery stores), amount (with unit), and essential (boolean).`
+
+  const { result } = await completeJson<Recipe>({
+    systemPrompt,
+    userPrompt,
+    jsonSchema: RECIPE_SCHEMA,
+  })
+
+  return {
+    title: String(result.title ?? '').slice(0, 128) || 'Meal',
+    servings: Number.isFinite(result.servings) && result.servings > 0 ? result.servings : 2,
+    ingredients: Array.isArray(result.ingredients)
+      ? result.ingredients
+          .map((ing) => ({
+            name: String(ing.name ?? '').trim().slice(0, 128),
+            amount: String(ing.amount ?? '').trim().slice(0, 32),
+            essential: Boolean(ing.essential),
+          }))
+          .filter((ing) => ing.name.length > 0)
+      : [],
+  }
+}
+
+function parseQty(amount: string): number {
+  const match = amount.match(/(\d+(?:[.,]\d+)?)/)
+  if (!match) return 1
+  const n = parseFloat(match[1]!.replace(',', '.'))
+  return Number.isFinite(n) && n > 0 ? Math.ceil(n) : 1
+}
+
+function buildSearchTerms(ingredientName: string): string[] {
+  const terms: string[] = [ingredientName]
+  const words = ingredientName
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .filter((w) => w.length >= 3)
+  for (const word of words) {
+    if (!terms.includes(word)) terms.push(word)
+  }
+  return terms.slice(0, 8)
+}
+
 export async function planMealFromText(
   text: string,
   language: 'en' | 'no' = 'en',
-  catalogCategories: string[] = [],
+  _catalogCategories: string[] = [],
 ): Promise<MealPlanSpec> {
-  const categoryHint =
-    catalogCategories.length > 0
-      ? `\n\nAvailable Norwegian grocery catalog categories (use exact names as the first tag when possible):\n${catalogCategories.join(', ')}`
-      : ''
+  const recipe = await generateRecipe(text, language)
 
-  const systemPrompt = `You are a grocery meal planner for Norwegian households.
-Given a short free-text request, return a JSON object describing what ingredients are needed.
+  const ingredients: MealIngredient[] = recipe.ingredients.map((ing) => ({
+    product: ing.name,
+    searchTerms: buildSearchTerms(ing.name),
+    required: ing.essential,
+    qty: parseQty(ing.amount),
+  }))
 
-Hard rules:
-- Each slot tag list MUST start with the exact Norwegian grocery catalog category name that best matches the ingredient.
-- After the category, include Norwegian product name keywords, then English equivalents.
-- Generate 6-12 tags per slot for reliable matching across different product naming conventions.
-- Include common Norwegian spelling variants (e.g. both "kjøttdeig" and "kjottdeig").
-- For protein/meat slots always include specific Norwegian product keywords like "kjøttdeig", "kyllingfilet", "laks" etc. alongside the category.
-- Default to 2 people if not specified.${categoryHint}`
-
-  const userPrompt = `Language: ${language}
-
-User request:
-${text}
-
-Return JSON with: mealType, people (integer), notes (string or null), slots (array).
-Each slot: role (string), tags (array of 6-12 keyword strings), required (boolean).
-
-Examples:
-
-{"mealType":"taco_night","people":4,"notes":"Norwegian-style tacos with beef","slots":[
-  {"role":"protein","tags":["Kjøtt","kjøttdeig","kjottdeig","karbonadedeig","storfe","ground beef","minced meat","taco meat"],"required":true},
-  {"role":"tortillas","tags":["Tortilla og wrap","tortillalefser","lefse","tortilla","taco shells","wraps"],"required":true},
-  {"role":"cheese","tags":["Gulost","revet ost","ost","taco cheese","shredded cheese","cheddar"],"required":true},
-  {"role":"salsa","tags":["Sauser og marinader","salsa","taco sauce","tacosaus","dip"],"required":true},
-  {"role":"vegetables","tags":["Grønnsaker","salat","tomat","agurk","mais","paprika","lettuce","corn"],"required":false},
-  {"role":"seasoning","tags":["Krydderblandinger","taco krydder","tacokrydder","taco seasoning","spice mix"],"required":false}
-]}
-
-{"mealType":"pasta_carbonara","people":2,"notes":"Classic carbonara with bacon and parmesan","slots":[
-  {"role":"pasta","tags":["Pasta og nudler","spaghetti","pasta","spagetti","linguine","tagliatelle"],"required":true},
-  {"role":"bacon","tags":["Bacon","bacon","pancetta","guanciale","stekt bacon","røkt bacon"],"required":true},
-  {"role":"cheese","tags":["Gulost","parmesan","parmigiano","ost","hard cheese","grana padano"],"required":true},
-  {"role":"eggs","tags":["Egg","egg","eggs","frittgående egg","økologisk egg"],"required":true},
-  {"role":"cream","tags":["Fløte","fløte","kremfløte","matfløte","cooking cream","heavy cream"],"required":false}
-]}
-
-{"mealType":"chicken_salad","people":2,"notes":"Light chicken salad","slots":[
-  {"role":"protein","tags":["Kylling","kyllingfilet","kyllingbryst","kylling","chicken breast","chicken fillet"],"required":true},
-  {"role":"greens","tags":["Salater","salat","bladsalat","ruccola","spinat","mixed greens","lettuce"],"required":true},
-  {"role":"vegetables","tags":["Grønnsaker","tomat","agurk","paprika","rødløk","tomato","cucumber"],"required":true},
-  {"role":"dressing","tags":["Sauser og marinader","dressing","vinaigrette","salatdressing","salad dressing"],"required":false}
-]}
-
-{"mealType":"pancakes_breakfast","people":3,"notes":"Norwegian pancakes for breakfast","slots":[
-  {"role":"flour","tags":["Mel","hvetemel","mel","bakmel","flour","plain flour","all-purpose flour"],"required":true},
-  {"role":"milk","tags":["Melk","melk","lettmelk","helmelk","whole milk","semi-skimmed milk"],"required":true},
-  {"role":"eggs","tags":["Egg","egg","eggs","frittgående egg"],"required":true},
-  {"role":"butter","tags":["Smør","smør","meierismør","butter","unsalted butter"],"required":true},
-  {"role":"topping","tags":["Sukker","sukker","syltetøy","blåbærsyltetøy","jam","sugar","berry jam"],"required":false}
-]}`
-
-  const { result } = await completeJson<MealPlanSpec>({
-    systemPrompt,
-    userPrompt,
-    jsonSchema: MEAL_PLAN_SCHEMA,
-  })
-
-  const people = Number.isFinite(result.people as number) && (result.people as number) > 0 ? result.people : 2
-
-  const slots = Array.isArray(result.slots)
-    ? result.slots
-        .map((slot) => ({
-          role: String(slot.role ?? '').slice(0, 64) || 'item',
-          tags: Array.isArray(slot.tags)
-            ? slot.tags
-                .map((tag) => String(tag ?? '').trim())
-                .filter((tag) => tag.length > 0)
-                .slice(0, 12)
-            : [],
-          required: Boolean(slot.required),
-        }))
-        .filter((slot) => slot.tags.length > 0)
-    : []
+  const mealType = recipe.title
+    .toLowerCase()
+    .replace(/[^a-zæøå0-9\s]/g, '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .slice(0, 64) || 'meal'
 
   return {
-    mealType: String(result.mealType ?? '').slice(0, 64) || 'meal',
-    people,
-    notes: typeof result.notes === 'string' ? result.notes.slice(0, 256) : null,
-    slots,
+    mealType,
+    people: recipe.servings,
+    notes: null,
+    ingredients,
   }
 }
