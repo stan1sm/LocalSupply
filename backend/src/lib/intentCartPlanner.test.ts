@@ -4,13 +4,14 @@ import { planMealFromText } from './intentCartPlanner.js'
 vi.mock('./aiClient.js', () => ({
   completeJson: vi.fn(async (_options: { systemPrompt: string; userPrompt: string; jsonSchema?: unknown }) => ({
     result: {
-      mealType: 'taco_night',
-      people: 4,
-      notes: 'Norwegian-style tacos with beef',
-      slots: [
-        { role: 'protein', tags: ['Kjøtt', 'kjøttdeig', 'karbonadedeig', 'ground beef', 'minced meat', 'taco meat'], required: true },
-        { role: 'tortillas', tags: ['Tortilla og wrap', 'tortillalefser', 'tortilla'], required: true },
-        { role: 'cheese', tags: ['Gulost', 'revet ost', 'cheddar'], required: true },
+      title: 'Taco',
+      servings: 4,
+      ingredients: [
+        { name: 'kjøttdeig av storfe', amount: '800g', essential: true },
+        { name: 'tortillalefser', amount: '8 stk', essential: true },
+        { name: 'revet ost', amount: '200g', essential: true },
+        { name: 'tacokrydder', amount: '1 pakke', essential: true },
+        { name: 'isbergsalat', amount: '1 stk', essential: false },
       ],
     },
     raw: {},
@@ -18,59 +19,75 @@ vi.mock('./aiClient.js', () => ({
 }))
 
 describe('planMealFromText', () => {
-  it('returns a normalized meal plan', async () => {
+  it('returns a normalized meal plan with ingredients from recipe', async () => {
     const result = await planMealFromText('Taco night for 4 people', 'en')
 
-    expect(result.mealType).toBe('taco_night')
+    expect(result.mealType).toBe('taco')
     expect(result.people).toBe(4)
-    expect(result.notes).toBe('Norwegian-style tacos with beef')
-    expect(result.slots.length).toBe(3)
-    expect(result.slots[0]!.role).toBe('protein')
-    expect(result.slots[0]!.tags.length).toBeGreaterThan(0)
-    expect(result.slots[0]!.required).toBe(true)
+    expect(result.ingredients.length).toBe(5)
+    expect(result.ingredients[0]!.product).toBe('kjøttdeig av storfe')
+    expect(result.ingredients[0]!.required).toBe(true)
+    expect(result.ingredients[0]!.qty).toBe(800)
   })
 
-  it('caps tags at 12 per slot', async () => {
-    const result = await planMealFromText('Taco night', 'en')
+  it('generates searchTerms from ingredient name', async () => {
+    const result = await planMealFromText('Taco', 'en')
 
-    for (const slot of result.slots) {
-      expect(slot.tags.length).toBeLessThanOrEqual(12)
-    }
+    const first = result.ingredients[0]!
+    expect(first.searchTerms).toContain('kjøttdeig av storfe')
+    expect(first.searchTerms.length).toBeGreaterThan(1)
   })
 
-  it('defaults to 2 people when not specified', async () => {
+  it('defaults qty to 1 when amount has no number', async () => {
     const { completeJson } = await import('./aiClient.js')
     ;(completeJson as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       result: {
-        mealType: 'pasta',
-        people: -1,
-        notes: null,
-        slots: [{ role: 'pasta', tags: ['Pasta og nudler', 'spaghetti'], required: true }],
-      },
-      raw: {},
-    })
-
-    const result = await planMealFromText('some pasta', 'en')
-    expect(result.people).toBe(2)
-  })
-
-  it('filters out slots with empty tags', async () => {
-    const { completeJson } = await import('./aiClient.js')
-    ;(completeJson as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      result: {
-        mealType: 'test',
-        people: 2,
-        notes: null,
-        slots: [
-          { role: 'good', tags: ['Kjøtt', 'biff'], required: true },
-          { role: 'empty', tags: [], required: false },
+        title: 'Test',
+        servings: 2,
+        ingredients: [
+          { name: 'salt', amount: 'etter smak', essential: false },
         ],
       },
       raw: {},
     })
 
     const result = await planMealFromText('test', 'en')
-    expect(result.slots.length).toBe(1)
-    expect(result.slots[0]!.role).toBe('good')
+    expect(result.ingredients[0]!.qty).toBe(1)
+  })
+
+  it('defaults to 2 servings when invalid', async () => {
+    const { completeJson } = await import('./aiClient.js')
+    ;(completeJson as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      result: {
+        title: 'Pasta',
+        servings: -1,
+        ingredients: [
+          { name: 'spaghetti', amount: '500g', essential: true },
+        ],
+      },
+      raw: {},
+    })
+
+    const result = await planMealFromText('pasta', 'en')
+    expect(result.people).toBe(2)
+  })
+
+  it('filters out ingredients with empty names', async () => {
+    const { completeJson } = await import('./aiClient.js')
+    ;(completeJson as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      result: {
+        title: 'Test',
+        servings: 2,
+        ingredients: [
+          { name: 'spaghetti', amount: '500g', essential: true },
+          { name: '', amount: '1', essential: false },
+        ],
+      },
+      raw: {},
+    })
+
+    const result = await planMealFromText('test', 'en')
+    expect(result.ingredients.length).toBe(1)
+    expect(result.ingredients[0]!.product).toBe('spaghetti')
   })
 })
