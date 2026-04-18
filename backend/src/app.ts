@@ -6,6 +6,7 @@ import addressesRouter from './routes/addresses.js'
 import adminRouter from './routes/admin.js'
 import authRouter from './routes/auth.js'
 import cartRouter from './routes/cart.js'
+import chatRouter from './routes/chat.js'
 import ordersRouter from './routes/orders.js'
 import productsRouter from './routes/products.js'
 import suppliersRouter from './routes/suppliers.js'
@@ -103,6 +104,7 @@ app.use('/api/auth/reset-password', authLimiter)
 app.use('/api/products', searchLimiter)
 app.use('/api/orders', orderLimiter)
 app.use('/api/suppliers', uploadLimiter)
+app.use('/api/chat', chatRouter)
 app.use('/api/addresses', addressesRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/auth', authRouter)

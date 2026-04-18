@@ -269,8 +269,8 @@ export default function SupplierMarketplacePage() {
                         View Products
                       </a>
                       <a
-                        className="flex-1 rounded-2xl bg-[#2f9f4f] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#25813f]"
-                        href={`mailto:${supplier.email}`}
+                        className="flex-1 rounded-2xl bg-[#2f9f4f] px-3 py-2 text-center text-xs font-semibold text-white transition hover:bg-[#25813f]"
+                        href={`/chat?supplierId=${encodeURIComponent(supplier.id)}`}
                       >
                         Connect
                       </a>
