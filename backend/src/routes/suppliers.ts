@@ -357,6 +357,7 @@ suppliersRouter.post('/register', async (req, res) => {
 
     res.status(201).json({
       message: 'Supplier account created.',
+      token: signSupplierToken(supplier.id),
       supplier: {
         id: supplier.id,
         businessName: supplier.businessName,
