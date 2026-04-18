@@ -47,6 +47,7 @@ model User {
   orders         Order[]             @relation("BuyerOrders")
   addresses      UserAddress[]
   paymentMethods UserPaymentMethod[]
+  conversations  Conversation[]      @relation("BuyerConversations")
 }
 
 model UserAddress {
@@ -117,8 +118,9 @@ model Supplier {
   acceptDirectOrders    Boolean  @default(true)
   minimumOrderAmount    Decimal? @db.Decimal(10, 2)
 
-  products Product[]
-  orders   Order[]   @relation("SupplierOrders")
+  products      Product[]
+  orders        Order[]        @relation("SupplierOrders")
+  conversations Conversation[] @relation("SupplierConversations")
 }
 
 model Product {
@@ -229,6 +231,35 @@ model Order {
   @@index([supplierId])
   @@index([status])
   @@index([createdAt(sort: Desc)])
+}
+
+model Conversation {
+  id         String   @id @default(cuid())
+  buyerId    String
+  supplierId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  buyer    User     @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation("SupplierConversations", fields: [supplierId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([buyerId, supplierId])
+  @@index([buyerId])
+  @@index([supplierId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderType     String
+  senderId       String
+  content        String
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt(sort: Asc)])
 }
 
 model Admin {
