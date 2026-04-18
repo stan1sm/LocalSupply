@@ -8,42 +8,44 @@ export default function EmailVerifiedPage({ status }: EmailVerifiedPageProps) {
   const isInvalid = status === 'invalid'
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f2f4ef] px-4 py-8 sm:px-6 lg:py-12">
-      <section className="w-full max-w-2xl overflow-hidden rounded-3xl border border-[#dfe5da] bg-white shadow-[0_20px_50px_rgba(17,24,39,0.08)]">
-        <div className="bg-gradient-to-r from-[#1f7b3a] via-[#2a9448] to-[#2fa04f] px-8 py-10 text-white">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/85">LocalSupply</p>
-          <h1 className="mt-4 text-3xl font-extrabold leading-tight sm:text-4xl">
-            {isInvalid ? 'Verification link unavailable' : 'Email verified'}
-          </h1>
-          <p className="mt-3 max-w-xl text-sm text-white/85 sm:text-base">
-            {isInvalid
-              ? 'This verification link is invalid or has expired. Register again to receive a fresh link.'
-              : 'Email verified, continue to login.'}
-          </p>
+    <main className="flex min-h-screen items-center justify-center bg-[#f3f4f6] px-4 py-8">
+      <div className="w-full max-w-md rounded-2xl border border-[#dfe5da] bg-white p-8 shadow-[0_20px_50px_rgba(17,24,39,0.08)]">
+        <div className={`mb-5 flex h-14 w-14 items-center justify-center rounded-full ${isInvalid ? 'bg-[#fff5f5]' : 'bg-[#f0faf4]'}`}>
+          {isInvalid ? (
+            <svg className="h-7 w-7 text-[#c53030]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+            </svg>
+          ) : (
+            <svg className="h-7 w-7 text-[#2f9f4f]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg>
+          )}
         </div>
 
-        <div className="space-y-4 px-8 py-8 text-sm text-[#4b5a4f] sm:text-base">
-          <p>
-            {isInvalid
-              ? 'For security, verification links can only be used once and expire automatically.'
-              : 'Your account is now ready for sign-in. Return to the login page and use the email and password you registered with.'}
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              className="rounded-xl bg-[#2f9f4f] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f]"
-              href={isInvalid ? '/register' : '/login'}
-            >
-              {isInvalid ? 'Register Again' : 'Continue to Login'}
-            </Link>
-            <Link
-              className="rounded-xl border border-[#d0d8cc] px-5 py-3 text-sm font-semibold text-[#314237] transition hover:border-[#2f9f4f] hover:text-[#2f9f4f]"
-              href="/"
-            >
-              Back to Home
-            </Link>
-          </div>
+        <h1 className="text-xl font-bold text-[#1b2a1f]">
+          {isInvalid ? 'Verification link unavailable' : 'Email verified'}
+        </h1>
+        <p className="mt-2 text-sm text-[#5b665f]">
+          {isInvalid
+            ? 'This link is invalid or has already been used. Verification links expire automatically for security.'
+            : 'Your email is confirmed. You can now sign in with the email and password you registered with.'}
+        </p>
+
+        <div className="mt-6 flex flex-col gap-2">
+          <Link
+            className="block w-full rounded-xl bg-[#2f9f4f] px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-[#25813f]"
+            href={isInvalid ? '/register' : '/login'}
+          >
+            {isInvalid ? 'Register again' : 'Continue to sign in'}
+          </Link>
+          <Link
+            className="block w-full rounded-xl border border-[#d4ddcf] px-4 py-3 text-center text-sm font-semibold text-[#314237] transition hover:border-[#9db5a4] hover:text-[#2f9f4f]"
+            href="/"
+          >
+            Back to homepage
+          </Link>
         </div>
-      </section>
+      </div>
     </main>
   )
 }

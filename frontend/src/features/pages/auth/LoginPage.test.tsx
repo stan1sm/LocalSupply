@@ -44,7 +44,7 @@ describe('LoginPage', () => {
 
     fireEvent.change(screen.getByPlaceholderText('you@email.com'), { target: { value: ' AVA@EXAMPLE.COM ' } })
     fireEvent.change(screen.getByPlaceholderText('Enter your password'), { target: { value: 'Abcd!123' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -78,7 +78,7 @@ describe('LoginPage', () => {
 
     fireEvent.change(screen.getByPlaceholderText('you@email.com'), { target: { value: 'ava@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Enter your password'), { target: { value: 'Abcd!123' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Sign In' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled()

@@ -6,40 +6,42 @@ type CheckEmailPageProps = {
 
 export default function CheckEmailPage({ verificationPreviewUrl }: CheckEmailPageProps) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f2f4ef] px-4 py-8 sm:px-6 lg:py-12">
-      <section className="w-full max-w-2xl overflow-hidden rounded-3xl border border-[#dfe5da] bg-white shadow-[0_20px_50px_rgba(17,24,39,0.08)]">
-        <div className="bg-gradient-to-r from-[#2fa04f] via-[#2a9448] to-[#1f7b3a] px-8 py-10 text-white">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/85">LocalSupply</p>
-          <h1 className="mt-4 text-3xl font-extrabold leading-tight sm:text-4xl">Check email for verification</h1>
-          <p className="mt-3 max-w-xl text-sm text-white/85 sm:text-base">
-            Your account was created. Open the verification link we sent to your inbox before signing in.
-          </p>
+    <main className="flex min-h-screen items-center justify-center bg-[#f3f4f6] px-4 py-8">
+      <div className="w-full max-w-md rounded-2xl border border-[#dfe5da] bg-white p-8 shadow-[0_20px_50px_rgba(17,24,39,0.08)]">
+        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[#f0faf4]">
+          <svg className="h-7 w-7 text-[#2f9f4f]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+          </svg>
         </div>
 
-        <div className="space-y-4 px-8 py-8 text-sm text-[#4b5a4f] sm:text-base">
-          <p>If you do not see the message, check your spam folder and confirm you registered with the correct email address.</p>
-          {verificationPreviewUrl ? (
-            <div className="rounded-2xl border border-[#cfe7d5] bg-[#f4fbf6] p-4 text-sm text-[#295237]">
-              <p className="font-semibold">Email fallback is active.</p>
-              <p className="mt-2">Open the verification link directly while you are still testing without a sending domain.</p>
-              <a
-                className="mt-3 inline-flex rounded-xl bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#25813f]"
-                href={verificationPreviewUrl}
-              >
-                Open Verification Link
-              </a>
-            </div>
-          ) : null}
-          <div className="flex flex-wrap gap-3">
-            <Link
-              className="rounded-xl bg-[#2f9f4f] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f]"
-              href="/login"
+        <h1 className="text-xl font-bold text-[#1b2a1f]">Check your inbox</h1>
+        <p className="mt-2 text-sm text-[#5b665f]">
+          Your account was created. Open the verification link we sent to confirm your email before signing in.
+        </p>
+        <p className="mt-2 text-[10px] text-[#9ca3af]">
+          No email? Check your spam folder and confirm you used the right address.
+        </p>
+
+        {verificationPreviewUrl ? (
+          <div className="mt-4 rounded-xl border border-[#a3d4b3] bg-[#f0faf4] px-4 py-3">
+            <p className="text-xs font-semibold text-[#1a5c2e]">Email fallback is active</p>
+            <p className="mt-0.5 text-[11px] text-[#3d6b4b]">Open the verification link directly while testing without a sending domain.</p>
+            <a
+              className="mt-3 inline-flex items-center rounded-lg bg-[#2f9f4f] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#25813f]"
+              href={verificationPreviewUrl}
             >
-              Back to Login
-            </Link>
+              Open verification link
+            </a>
           </div>
-        </div>
-      </section>
+        ) : null}
+
+        <Link
+          className="mt-6 block w-full rounded-xl bg-[#2f9f4f] px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-[#25813f]"
+          href="/login"
+        >
+          Back to sign in
+        </Link>
+      </div>
     </main>
   )
 }
