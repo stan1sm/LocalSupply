@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 
 type SupplierSession = {
@@ -9,6 +9,36 @@ type SupplierSession = {
   contactName: string
   email: string
   address: string
+}
+
+type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
+type DaySchedule = { open: boolean; start: string; end: string }
+type WeeklyHours = Record<DayKey, DaySchedule>
+
+const DAY_KEYS: DayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+const DAY_LABELS: Record<DayKey, string> = {
+  mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday',
+  thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday',
+}
+const DEFAULT_HOURS: WeeklyHours = {
+  mon: { open: true,  start: '08:00', end: '16:00' },
+  tue: { open: true,  start: '08:00', end: '16:00' },
+  wed: { open: true,  start: '08:00', end: '16:00' },
+  thu: { open: true,  start: '08:00', end: '16:00' },
+  fri: { open: true,  start: '08:00', end: '16:00' },
+  sat: { open: false, start: '10:00', end: '14:00' },
+  sun: { open: false, start: '09:00', end: '13:00' },
+}
+
+function parseHours(raw: string | null | undefined): WeeklyHours {
+  if (!raw) return { ...DEFAULT_HOURS }
+  try {
+    const parsed = JSON.parse(raw) as Partial<WeeklyHours>
+    if (typeof parsed === 'object' && parsed !== null && 'mon' in parsed) {
+      return { ...DEFAULT_HOURS, ...parsed }
+    }
+  } catch { /* fall through */ }
+  return { ...DEFAULT_HOURS }
 }
 
 type SupplierProfile = SupplierSession & {
@@ -20,7 +50,6 @@ type SupplierProfile = SupplierSession & {
   badgeText?: string | null
   brandColor?: string | null
   serviceRadiusKm?: number | null
-  serviceAreas?: string | null
   openingHours?: string | null
   openingHoursNote?: string | null
   websiteUrl?: string | null
@@ -39,10 +68,10 @@ const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 type Tab = 'profile' | 'branding' | 'hours' | 'ordering'
 
 const TABS: { id: Tab; label: string; description: string }[] = [
-  { id: 'profile', label: 'Store profile', description: 'Name, tagline, description, type, and contact links.' },
-  { id: 'branding', label: 'Branding', description: 'Logo, banner image, and brand color.' },
-  { id: 'hours', label: 'Hours & area', description: 'Opening hours and delivery service area.' },
-  { id: 'ordering', label: 'Ordering', description: 'Marketplace visibility and order settings.' },
+  { id: 'profile',  label: 'Store profile', description: 'Name, tagline, description, type, and contact links.' },
+  { id: 'branding', label: 'Branding',      description: 'Logo, banner image, and brand color.' },
+  { id: 'hours',    label: 'Hours',          description: 'Set your opening hours for each day of the week.' },
+  { id: 'ordering', label: 'Ordering',       description: 'Marketplace visibility and order settings.' },
 ]
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
@@ -94,34 +123,151 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   )
 }
 
+function ImageUploadField({
+  label,
+  hint,
+  currentUrl,
+  aspect,
+  onUploaded,
+  uploadUrl,
+  token,
+}: {
+  label: string
+  hint: string
+  currentUrl: string | null | undefined
+  aspect: 'square' | 'wide'
+  onUploaded: (url: string) => void
+  uploadUrl: string
+  token: string | null
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+
+  async function handleFile(file: File) {
+    setUploading(true)
+    setUploadError('')
+    try {
+      const form = new FormData()
+      form.append('image', file)
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      })
+      const payload = (await response.json().catch(() => ({}))) as Record<string, string>
+      if (!response.ok) throw new Error(payload.message ?? 'Upload failed.')
+      const url = payload.logoUrl ?? payload.heroImageUrl ?? ''
+      if (url) onUploaded(url)
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Upload failed.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className={labelClass}>{label}</p>
+      <p className={hintClass}>{hint}</p>
+
+      {currentUrl ? (
+        <div className="relative inline-block">
+          <img
+            alt={label}
+            className={`rounded-xl border border-[#e2e9df] object-cover bg-white ${
+              aspect === 'square' ? 'h-20 w-20' : 'h-28 w-full max-w-sm'
+            }`}
+            src={currentUrl}
+          />
+          <button
+            className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#c53030] text-[10px] font-bold text-white shadow hover:bg-[#9b2c2c]"
+            onClick={() => onUploaded('')}
+            title="Remove image"
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+      ) : (
+        <div
+          className={`flex items-center justify-center rounded-xl border-2 border-dashed border-[#d4ddcf] bg-[#f9fbf8] ${
+            aspect === 'square' ? 'h-20 w-20' : 'h-24 w-full max-w-sm'
+          }`}
+        >
+          <span className="text-[10px] text-[#9ca3af]">No image</span>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <button
+          className="flex items-center gap-1.5 rounded-xl border border-[#d4ddcf] bg-white px-3 py-2 text-xs font-semibold text-[#374740] transition hover:border-[#9db5a4] hover:text-[#2f9f4f] disabled:opacity-60"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+          type="button"
+        >
+          {uploading ? (
+            <>
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#9db5a4] border-t-[#2f9f4f]" />
+              Uploading…
+            </>
+          ) : (
+            <>
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M12 4v12M8 8l4-4 4 4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Upload image
+            </>
+          )}
+        </button>
+        <input
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) handleFile(file)
+            e.target.value = ''
+          }}
+          ref={inputRef}
+          type="file"
+        />
+      </div>
+      {uploadError && <p className="text-[10px] text-[#c53030]">{uploadError}</p>}
+    </div>
+  )
+}
+
 export default function SupplierSettingsPage() {
   const [session, setSession] = useState<SupplierSession | null>(null)
   const [profile, setProfile] = useState<SupplierProfile | null>(null)
   const [savedProfile, setSavedProfile] = useState<SupplierProfile | null>(null)
+  const [hours, setHours] = useState<WeeklyHours>(DEFAULT_HOURS)
+  const [savedHours, setSavedHours] = useState<WeeklyHours>(DEFAULT_HOURS)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [activeTab, setActiveTab] = useState<Tab>('profile')
+  const [token, setToken] = useState<string | null>(null)
 
   const isDirty = useMemo(() => {
     if (!profile || !savedProfile) return false
-    return JSON.stringify(profile) !== JSON.stringify(savedProfile)
-  }, [profile, savedProfile])
+    const profileDirty = JSON.stringify(profile) !== JSON.stringify(savedProfile)
+    const hoursDirty = JSON.stringify(hours) !== JSON.stringify(savedHours)
+    return profileDirty || hoursDirty
+  }, [profile, savedProfile, hours, savedHours])
 
   useEffect(() => {
     try {
       const stored = typeof window !== 'undefined' ? window.localStorage.getItem(SUPPLIER_STORAGE_KEY) : null
+      const storedToken = typeof window !== 'undefined' ? window.localStorage.getItem(SUPPLIER_TOKEN_KEY) : null
+      setToken(storedToken)
       if (stored) {
         const parsed = JSON.parse(stored) as SupplierSession
-        if (parsed && parsed.id) {
-          setSession(parsed)
-        }
+        if (parsed && parsed.id) setSession(parsed)
       }
     } catch {
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem(SUPPLIER_STORAGE_KEY)
-      }
+      if (typeof window !== 'undefined') window.localStorage.removeItem(SUPPLIER_STORAGE_KEY)
     } finally {
       setIsLoading(false)
     }
@@ -138,8 +284,12 @@ export default function SupplierSettingsPage() {
         const payload = (await response.json().catch(() => ({}))) as SupplierProfile | { message?: string }
         if (!response.ok) throw new Error((payload as { message?: string }).message ?? 'Unable to load supplier profile.')
         if (!cancelled) {
-          setProfile(payload as SupplierProfile)
-          setSavedProfile(payload as SupplierProfile)
+          const p = payload as SupplierProfile
+          setProfile(p)
+          setSavedProfile(p)
+          const parsed = parseHours(p.openingHours)
+          setHours(parsed)
+          setSavedHours(parsed)
         }
       } catch (error) {
         if (!cancelled) setErrorMessage(error instanceof Error ? error.message : 'Unable to load supplier profile.')
@@ -155,6 +305,12 @@ export default function SupplierSettingsPage() {
     setSuccessMessage('')
   }
 
+  function updateDay(day: DayKey, patch: Partial<DaySchedule>) {
+    setHours((prev) => ({ ...prev, [day]: { ...prev[day], ...patch } }))
+    setErrorMessage('')
+    setSuccessMessage('')
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!session || !profile || isSaving) return
@@ -162,7 +318,6 @@ export default function SupplierSettingsPage() {
     setErrorMessage('')
     setSuccessMessage('')
     try {
-      const token = typeof window !== 'undefined' ? window.localStorage.getItem(SUPPLIER_TOKEN_KEY) : null
       const response = await fetch(buildApiUrl(`/api/suppliers/${encodeURIComponent(session.id)}/profile`), {
         method: 'PUT',
         headers: {
@@ -178,8 +333,7 @@ export default function SupplierSettingsPage() {
           badgeText: profile.badgeText,
           brandColor: profile.brandColor,
           serviceRadiusKm: profile.serviceRadiusKm,
-          serviceAreas: profile.serviceAreas,
-          openingHours: profile.openingHours,
+          openingHours: JSON.stringify(hours),
           openingHoursNote: profile.openingHoursNote,
           websiteUrl: profile.websiteUrl,
           instagramUrl: profile.instagramUrl,
@@ -194,8 +348,12 @@ export default function SupplierSettingsPage() {
       })
       const payload = (await response.json().catch(() => ({}))) as SupplierProfile | { message?: string }
       if (!response.ok) throw new Error((payload as { message?: string }).message ?? 'Unable to update profile.')
-      setProfile(payload as SupplierProfile)
-      setSavedProfile(payload as SupplierProfile)
+      const p = payload as SupplierProfile
+      setProfile(p)
+      setSavedProfile(p)
+      const parsed = parseHours(p.openingHours)
+      setHours(parsed)
+      setSavedHours(parsed)
       setSuccessMessage('Changes saved successfully.')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to update profile.')
@@ -251,10 +409,10 @@ export default function SupplierSettingsPage() {
           </div>
           <nav aria-label="Supplier dashboard navigation" className="space-y-1">
             {[
-              { id: 'dashboard', label: 'Dashboard', icon: 'D', href: '/supplier' },
-              { id: 'products', label: 'Products', icon: 'P', href: '/supplier/dashboard' },
-              { id: 'orders', label: 'Orders', icon: 'O', href: '/supplier/orders' },
-              { id: 'settings', label: 'Store settings', icon: 'S', href: '/supplier/settings' },
+              { id: 'dashboard', label: 'Dashboard',     icon: 'D', href: '/supplier' },
+              { id: 'products',  label: 'Products',      icon: 'P', href: '/supplier/dashboard' },
+              { id: 'orders',    label: 'Orders',        icon: 'O', href: '/supplier/orders' },
+              { id: 'settings',  label: 'Store settings',icon: 'S', href: '/supplier/settings' },
             ].map((item) => {
               const isActive = item.id === 'settings'
               return (
@@ -398,7 +556,7 @@ export default function SupplierSettingsPage() {
                         type="text"
                         value={profile?.badgeText ?? ''}
                       />
-                      <p className={hintClass}>Short label shown on your marketplace card, e.g. "Local farm".</p>
+                      <p className={hintClass}>Short label shown on your marketplace card, e.g. &quot;Local farm&quot;.</p>
                     </label>
                   </div>
 
@@ -455,38 +613,26 @@ export default function SupplierSettingsPage() {
 
               {/* Tab: Branding */}
               {activeTab === 'branding' && (
-                <div className="space-y-5">
+                <div className="space-y-6">
                   <SectionTitle>Images</SectionTitle>
-                  <label className={labelClass}>
-                    Logo URL
-                    <input
-                      className={inputClass}
-                      maxLength={2048}
-                      onChange={(event) => updateField('logoUrl', event.target.value)}
-                      placeholder="https://…/logo.png"
-                      type="url"
-                      value={profile?.logoUrl ?? ''}
-                    />
-                    <p className={hintClass}>Square image works best. Used in your store listing and emails.</p>
-                    {profile?.logoUrl && (
-                      <img alt="Logo preview" className="mt-2 h-14 w-14 rounded-xl border border-[#e2e9df] object-contain bg-white p-1" src={profile.logoUrl} />
-                    )}
-                  </label>
-                  <label className={labelClass}>
-                    Banner image URL
-                    <input
-                      className={inputClass}
-                      maxLength={2048}
-                      onChange={(event) => updateField('heroImageUrl', event.target.value)}
-                      placeholder="https://…/banner.jpg"
-                      type="url"
-                      value={profile?.heroImageUrl ?? ''}
-                    />
-                    <p className={hintClass}>Large landscape image shown at the top of your store profile page. Recommended: 1200×400px.</p>
-                    {profile?.heroImageUrl && (
-                      <img alt="Banner preview" className="mt-2 h-24 w-full rounded-xl border border-[#e2e9df] object-cover" src={profile.heroImageUrl} />
-                    )}
-                  </label>
+                  <ImageUploadField
+                    aspect="square"
+                    currentUrl={profile?.logoUrl}
+                    hint="Square image works best. Used in your store listing and emails."
+                    label="Logo"
+                    onUploaded={(url) => updateField('logoUrl', url || null)}
+                    token={token}
+                    uploadUrl={buildApiUrl(`/api/suppliers/${encodeURIComponent(session.id)}/logo`)}
+                  />
+                  <ImageUploadField
+                    aspect="wide"
+                    currentUrl={profile?.heroImageUrl}
+                    hint="Large landscape image shown at the top of your store profile page. Recommended: 1200×400px."
+                    label="Banner image"
+                    onUploaded={(url) => updateField('heroImageUrl', url || null)}
+                    token={token}
+                    uploadUrl={buildApiUrl(`/api/suppliers/${encodeURIComponent(session.id)}/banner`)}
+                  />
 
                   <SectionTitle>Brand color</SectionTitle>
                   <label className={labelClass}>
@@ -512,24 +658,66 @@ export default function SupplierSettingsPage() {
                 </div>
               )}
 
-              {/* Tab: Hours & area */}
+              {/* Tab: Hours */}
               {activeTab === 'hours' && (
                 <div className="space-y-5">
                   <SectionTitle>Opening hours</SectionTitle>
-                  <label className={labelClass}>
-                    <span className="flex items-center justify-between">
-                      Opening hours <CharCount value={profile?.openingHours} max={2000} />
-                    </span>
-                    <textarea
-                      className={inputClass}
-                      maxLength={2000}
-                      onChange={(event) => updateField('openingHours', event.target.value)}
-                      placeholder={'Mon–Fri: 08:00–16:00\nSat: 10:00–14:00\nSun: Closed'}
-                      rows={4}
-                      value={profile?.openingHours ?? ''}
-                    />
-                    <p className={hintClass}>Free-form text — write it as you&apos;d want it displayed to buyers.</p>
-                  </label>
+                  <div className="overflow-hidden rounded-xl border border-[#e5ece2]">
+                    {DAY_KEYS.map((day, index) => {
+                      const schedule = hours[day]
+                      return (
+                        <div
+                          key={day}
+                          className={`grid grid-cols-[100px_1fr] items-center gap-4 px-4 py-3 ${
+                            index < DAY_KEYS.length - 1 ? 'border-b border-[#f0f4ef]' : ''
+                          } ${schedule.open ? 'bg-white' : 'bg-[#f9fbf8]'}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <button
+                              className={`h-4 w-4 shrink-0 rounded border-2 transition ${
+                                schedule.open
+                                  ? 'border-[#2f9f4f] bg-[#2f9f4f]'
+                                  : 'border-[#c7d2c2] bg-white'
+                              }`}
+                              onClick={() => updateDay(day, { open: !schedule.open })}
+                              type="button"
+                              aria-label={`Toggle ${DAY_LABELS[day]}`}
+                            >
+                              {schedule.open && (
+                                <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                                  <path d="m4.5 12.75 6 6 9-13.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              )}
+                            </button>
+                            <span className={`text-xs font-semibold ${schedule.open ? 'text-[#1f2b22]' : 'text-[#9ca3af]'}`}>
+                              {DAY_LABELS[day].slice(0, 3)}
+                            </span>
+                          </div>
+
+                          {schedule.open ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                className="w-24 rounded-lg border border-[#d4ddcf] bg-white px-2 py-1.5 text-xs text-[#1f2937] outline-none focus:border-[#2f9f4f] focus:ring-1 focus:ring-[#b7e0c2]"
+                                onChange={(e) => updateDay(day, { start: e.target.value })}
+                                type="time"
+                                value={schedule.start}
+                              />
+                              <span className="text-xs text-[#9ca3af]">to</span>
+                              <input
+                                className="w-24 rounded-lg border border-[#d4ddcf] bg-white px-2 py-1.5 text-xs text-[#1f2937] outline-none focus:border-[#2f9f4f] focus:ring-1 focus:ring-[#b7e0c2]"
+                                onChange={(e) => updateDay(day, { end: e.target.value })}
+                                type="time"
+                                value={schedule.end}
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-xs text-[#9ca3af]">Closed</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
                   <label className={labelClass}>
                     <span className="flex items-center justify-between">
                       Additional notes <CharCount value={profile?.openingHoursNote} max={400} />
@@ -545,36 +733,22 @@ export default function SupplierSettingsPage() {
                     <p className={hintClass}>Any exceptions, seasonal closures, or special arrangements.</p>
                   </label>
 
-                  <SectionTitle>Service area</SectionTitle>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className={labelClass}>
-                      Service radius (km)
-                      <input
-                        className={inputClass}
-                        inputMode="numeric"
-                        min={0}
-                        onChange={(event) =>
-                          updateField('serviceRadiusKm', event.target.value ? Number.parseInt(event.target.value, 10) || 0 : null)
-                        }
-                        placeholder="e.g. 20"
-                        type="number"
-                        value={profile?.serviceRadiusKm ?? ''}
-                      />
-                      <p className={hintClass}>How far you can deliver from your location.</p>
-                    </label>
-                    <label className={labelClass}>
-                      Service areas
-                      <input
-                        className={inputClass}
-                        maxLength={400}
-                        onChange={(event) => updateField('serviceAreas', event.target.value)}
-                        placeholder="0550 Oslo; Grünerløkka; Bærum…"
-                        type="text"
-                        value={profile?.serviceAreas ?? ''}
-                      />
-                      <p className={hintClass}>Postal codes or neighbourhood names, separated by semicolons.</p>
-                    </label>
-                  </div>
+                  <SectionTitle>Delivery radius</SectionTitle>
+                  <label className={labelClass}>
+                    Service radius (km)
+                    <input
+                      className={inputClass}
+                      inputMode="numeric"
+                      min={0}
+                      onChange={(event) =>
+                        updateField('serviceRadiusKm', event.target.value ? Number.parseInt(event.target.value, 10) || 0 : null)
+                      }
+                      placeholder="e.g. 20"
+                      type="number"
+                      value={profile?.serviceRadiusKm ?? ''}
+                    />
+                    <p className={hintClass}>How far you can deliver from your location.</p>
+                  </label>
                 </div>
               )}
 
