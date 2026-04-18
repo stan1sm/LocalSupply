@@ -43,7 +43,10 @@ suppliersRouter.get('/verify/:orgnr', async (req, res) => {
     const forcedDissolution = data.underTvangsavviklingEllerTvangsopplosning === true
     const registeredInBusinessRegister = data.registrertIForetaksregisteret === true
 
-    const isActive = !inBankruptcy && !inLiquidation && !forcedDissolution && registeredInBusinessRegister
+    // registrertIForetaksregisteret is only true for AS and similar entities.
+    // ENK and other types are only in Enhetsregisteret — presence in the API response
+    // is sufficient proof of existence. Active = no negative flags.
+    const isActive = !inBankruptcy && !inLiquidation && !forcedDissolution
 
     const forretningsadresse = data.forretningsadresse as Record<string, unknown> | undefined
     const adresseLines = Array.isArray(forretningsadresse?.adresse) ? (forretningsadresse.adresse as string[]) : []
@@ -327,8 +330,7 @@ suppliersRouter.post('/register', async (req, res) => {
         const inBankruptcy = brregData.konkurs === true
         const inLiquidation = brregData.underAvvikling === true
         const forcedDissolution = brregData.underTvangsavviklingEllerTvangsopplosning === true
-        const registeredInBusinessRegister = brregData.registrertIForetaksregisteret === true
-        verificationStatus = (!inBankruptcy && !inLiquidation && !forcedDissolution && registeredInBusinessRegister)
+        verificationStatus = (!inBankruptcy && !inLiquidation && !forcedDissolution)
           ? 'VERIFIED'
           : 'REJECTED'
       }
