@@ -23,7 +23,7 @@ describe('RegisterPage', () => {
   it('shows password mismatch until passwords match', () => {
     render(<RegisterPage />)
 
-    const passwordInput = screen.getByPlaceholderText('Create a secure password')
+    const passwordInput = screen.getByPlaceholderText('Create a strong password')
     const confirmPasswordInput = screen.getByPlaceholderText('Repeat your password')
 
     fireEvent.change(passwordInput, { target: { value: 'Abcd!123' } })

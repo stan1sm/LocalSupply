@@ -6,38 +6,29 @@ import { useRouter } from 'next/navigation'
 import { buildApiUrl } from '../../../lib/api'
 import { EMAIL_REGEX, passwordPolicyError, sanitizeEmailInput } from '../../../utils/inputSecurity'
 
-type LoginFormData = {
-  email: string
-  password: string
-}
-
+type LoginFormData = { email: string; password: string }
 type LoginFormErrors = Partial<Record<keyof LoginFormData, string>>
 type LoginApiResponse = {
   token?: string
-  user?: {
-    id: string
-    firstName: string
-    lastName: string
-    email: string
-  }
+  user?: { id: string; firstName: string; lastName: string; email: string }
   email?: string
   message?: string
   errors?: LoginFormErrors
 }
 
-const initialFormData: LoginFormData = {
-  email: '',
-  password: '',
-}
-
 const BUYER_STORAGE_KEY = 'localsupply-user'
+
+const inputClass =
+  'w-full rounded-lg border border-[#d6ddd2] bg-[#f9fbf8] px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/20'
+const labelClass = 'block space-y-1 text-xs font-medium text-[#2e3b31]'
+const errorClass = 'text-[10px] text-[#c53030]'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [formData, setFormData] = useState<LoginFormData>(initialFormData)
+  const [formData, setFormData] = useState<LoginFormData>({ email: '', password: '' })
   const [errors, setErrors] = useState<LoginFormErrors>({})
   const [submitMessage, setSubmitMessage] = useState('')
-  const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error'>('idle')
+  const [submitIsError, setSubmitIsError] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const normalizedEmail = formData.email.trim().toLowerCase()
@@ -47,105 +38,69 @@ export default function LoginPage() {
     setFormData((prev) => ({ ...prev, email: sanitizeEmailInput(value) }))
     setErrors((prev) => ({ ...prev, email: undefined }))
     setSubmitMessage('')
-    setSubmitState('idle')
   }
 
   function handlePasswordChange(value: string) {
     setFormData((prev) => ({ ...prev, password: value.slice(0, 128) }))
     setErrors((prev) => ({ ...prev, password: undefined }))
     setSubmitMessage('')
-    setSubmitState('idle')
-  }
-
-  function validate(data: LoginFormData): LoginFormErrors {
-    const nextErrors: LoginFormErrors = {}
-
-    if (!EMAIL_REGEX.test(data.email)) {
-      nextErrors.email = 'Enter a valid email address.'
-    }
-
-    const passwordError = passwordPolicyError(data.password)
-    if (passwordError) {
-      nextErrors.password = passwordError
-    }
-
-    return nextErrors
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return
 
-    const normalizedData = {
-      email: normalizedEmail,
-      password: formData.password,
-    }
-
-    const nextErrors = validate(normalizedData)
+    const normalizedData = { email: normalizedEmail, password: formData.password }
+    const nextErrors: LoginFormErrors = {}
+    if (!EMAIL_REGEX.test(normalizedData.email)) nextErrors.email = 'Enter a valid email address.'
+    const pErr = passwordPolicyError(normalizedData.password)
+    if (pErr) nextErrors.password = pErr
     setErrors(nextErrors)
     setFormData(normalizedData)
 
     if (Object.keys(nextErrors).length > 0) {
-      setSubmitState('error')
       setSubmitMessage('Please fix the highlighted fields.')
+      setSubmitIsError(true)
       return
     }
 
     setIsSubmitting(true)
-
     try {
       const response = await fetch(buildApiUrl('/api/auth/login'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(normalizedData),
       })
-
       const payload = (await response.json().catch(() => ({}))) as LoginApiResponse
 
       if (!response.ok) {
-        if (payload.errors) {
-          setErrors((prev) => ({ ...prev, ...payload.errors }))
-        }
-
+        if (payload.errors) setErrors((prev) => ({ ...prev, ...payload.errors }))
         if (response.status === 403 && payload.email) {
           const nextUrl = new URL('/email-not-verified', window.location.origin)
           nextUrl.searchParams.set('email', payload.email)
           router.push(`${nextUrl.pathname}${nextUrl.search}`)
           return
         }
-
-        setSubmitState('error')
         setSubmitMessage(payload.message ?? 'Unable to sign in right now.')
+        setSubmitIsError(true)
         return
       }
 
-      setErrors({})
-      setSubmitState('success')
-      setSubmitMessage('Signed in successfully. Redirecting to your dashboard...')
       if (payload.user && typeof window !== 'undefined') {
         try {
-          window.localStorage.setItem(
-            BUYER_STORAGE_KEY,
-            JSON.stringify({
-              id: payload.user.id,
-              firstName: payload.user.firstName,
-              lastName: payload.user.lastName,
-              email: payload.user.email,
-            }),
-          )
-          if (payload.token) {
-            window.localStorage.setItem('localsupply-token', payload.token)
-          }
-        } catch {
-          // Ignore storage errors and continue.
-        }
+          window.localStorage.setItem(BUYER_STORAGE_KEY, JSON.stringify({
+            id: payload.user.id,
+            firstName: payload.user.firstName,
+            lastName: payload.user.lastName,
+            email: payload.user.email,
+          }))
+          if (payload.token) window.localStorage.setItem('localsupply-token', payload.token)
+        } catch { /* ignore */ }
       }
       router.push('/marketplace/dashboard')
     } catch {
-      setSubmitState('error')
       setSubmitMessage('Unable to reach the sign-in service. Please try again.')
+      setSubmitIsError(true)
     } finally {
       setIsSubmitting(false)
     }
@@ -171,46 +126,44 @@ export default function LoginPage() {
         <h2 className="text-xl font-bold text-[#1b2a1f]">Welcome back</h2>
         <p className="mt-1.5 text-sm text-[#5b665f]">
           Need an account?{' '}
-          <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/register">
-            Create one
-          </Link>
+          <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/register">Create one</Link>
         </p>
 
         <form className="mt-6 space-y-4" noValidate onSubmit={handleSubmit}>
-          <label className="block space-y-2 text-sm font-medium text-[#2e3b31]">
+          <label className={labelClass}>
             Email
             <input
               aria-invalid={Boolean(errors.email) || hasLiveInvalidEmail}
               autoComplete="email"
-              className="w-full rounded-xl border border-[#d6ddd2] bg-[#f9fbf8] px-4 py-3 text-sm text-[#1f2937] outline-none transition focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/20"
+              className={inputClass}
               maxLength={254}
               name="email"
-              onChange={(event) => handleEmailChange(event.target.value)}
+              onChange={(e) => handleEmailChange(e.target.value)}
               placeholder="you@email.com"
               required
               spellCheck={false}
               type="email"
               value={formData.email}
             />
-            {hasLiveInvalidEmail ? <p className="text-xs text-[#c53030]">Use a valid email format like name@example.com.</p> : null}
-            {errors.email ? <p className="text-xs text-[#c53030]">{errors.email}</p> : null}
+            {hasLiveInvalidEmail ? <p className={errorClass}>Use a valid email format like name@example.com.</p> : null}
+            {errors.email ? <p className={errorClass}>{errors.email}</p> : null}
           </label>
 
-          <label className="block space-y-2 text-sm font-medium text-[#2e3b31]">
+          <label className={labelClass}>
             Password
             <input
               aria-invalid={Boolean(errors.password)}
               autoComplete="current-password"
-              className="w-full rounded-xl border border-[#d6ddd2] bg-[#f9fbf8] px-4 py-3 text-sm text-[#1f2937] outline-none transition focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/20"
+              className={inputClass}
               maxLength={128}
               name="password"
-              onChange={(event) => handlePasswordChange(event.target.value)}
+              onChange={(e) => handlePasswordChange(e.target.value)}
               placeholder="Enter your password"
               required
               type="password"
               value={formData.password}
             />
-            {errors.password ? <p className="text-xs text-[#c53030]">{errors.password}</p> : null}
+            {errors.password ? <p className={errorClass}>{errors.password}</p> : null}
           </label>
 
           <div className="flex justify-end">
@@ -220,17 +173,20 @@ export default function LoginPage() {
           </div>
 
           <button
-            className="w-full rounded-xl bg-[#2f9f4f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f9f4f]/35 disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full rounded-xl bg-[#2f9f4f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f9f4f]/35 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSubmitting}
             type="submit"
           >
-            {isSubmitting ? 'Signing In...' : 'Sign In'}
+            {isSubmitting ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Signing in…
+              </span>
+            ) : 'Sign in'}
           </button>
+
           {submitMessage ? (
-            <p
-              aria-live="polite"
-              className={`text-center text-xs ${submitState === 'error' ? 'text-[#c53030]' : submitState === 'success' ? 'text-[#2f9f4f]' : 'text-[#5b665f]'}`}
-            >
+            <p aria-live="polite" className={`text-center text-[10px] ${submitIsError ? 'text-[#c53030]' : 'text-[#2f9f4f]'}`}>
               {submitMessage}
             </p>
           ) : null}

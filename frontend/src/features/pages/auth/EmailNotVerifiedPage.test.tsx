@@ -20,8 +20,8 @@ describe('EmailNotVerifiedPage', () => {
     render(<EmailNotVerifiedPage email="ava@example.com" />)
 
     expect(screen.getByRole('heading', { name: 'Email not verified' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Resend Verification Email' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Back to Login' })).toHaveAttribute('href', '/login')
+    expect(screen.getByRole('button', { name: 'Resend verification email' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/login')
   })
 
   it('calls the resend endpoint and shows the fallback verification link when provided', async () => {
@@ -35,7 +35,7 @@ describe('EmailNotVerifiedPage', () => {
 
     render(<EmailNotVerifiedPage email="ava@example.com" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Resend Verification Email' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Resend verification email' }))
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -47,7 +47,7 @@ describe('EmailNotVerifiedPage', () => {
       )
     })
 
-    expect(screen.getByRole('link', { name: 'Open Verification Link' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Open verification link' })).toHaveAttribute(
       'href',
       'https://localsupply-api.vercel.app/api/auth/verify-email?token=preview',
     )

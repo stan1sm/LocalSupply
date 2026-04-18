@@ -15,14 +15,14 @@ describe('CheckEmailPage', () => {
   it('renders the verification instructions and navigation links', () => {
     render(<CheckEmailPage />)
 
-    expect(screen.getByRole('heading', { name: 'Check email for verification' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Back to Login' })).toHaveAttribute('href', '/login')
+    expect(screen.getByRole('heading', { name: 'Check your inbox' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/login')
   })
 
   it('shows the fallback verification link when provided', () => {
     render(<CheckEmailPage verificationPreviewUrl="https://localsupply-api.vercel.app/api/auth/verify-email?token=preview" />)
 
-    expect(screen.getByRole('link', { name: 'Open Verification Link' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Open verification link' })).toHaveAttribute(
       'href',
       'https://localsupply-api.vercel.app/api/auth/verify-email?token=preview',
     )

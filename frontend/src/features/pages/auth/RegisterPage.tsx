@@ -7,6 +7,7 @@ import { buildApiUrl } from '../../../lib/api'
 import {
   EMAIL_REGEX,
   HUMAN_NAME_REGEX,
+  getPasswordRequirementStatus,
   passwordPolicyError,
   sanitizeEmailInput,
   sanitizeTextInput,
@@ -20,7 +21,6 @@ type RegisterFormData = {
   confirmPassword: string
   termsAccepted: boolean
 }
-
 type RegisterFormErrors = Partial<Record<keyof RegisterFormData, string>>
 type RegisterApiErrorResponse = {
   deliveryMode?: 'email' | 'fallback'
@@ -29,78 +29,42 @@ type RegisterApiErrorResponse = {
   errors?: RegisterFormErrors
 }
 
-const initialFormData: RegisterFormData = {
-  firstName: '',
-  lastName: '',
-  email: '',
-  password: '',
-  confirmPassword: '',
-  termsAccepted: false,
-}
+const inputClass =
+  'w-full rounded-lg border border-[#d6ddd2] bg-[#f9fbf8] px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/20'
+const labelClass = 'block space-y-1 text-xs font-medium text-[#2e3b31]'
+const errorClass = 'text-[10px] text-[#c53030]'
 
 export default function RegisterPage() {
   const router = useRouter()
-  const [formData, setFormData] = useState<RegisterFormData>(initialFormData)
+  const [formData, setFormData] = useState<RegisterFormData>({
+    firstName: '', lastName: '', email: '', password: '', confirmPassword: '', termsAccepted: false,
+  })
   const [errors, setErrors] = useState<RegisterFormErrors>({})
   const [submitMessage, setSubmitMessage] = useState('')
-  const [submitState, setSubmitState] = useState<'idle' | 'success' | 'error'>('idle')
+  const [submitIsError, setSubmitIsError] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
   const hasLivePasswordMismatch =
-    (formData.password.length > 0 || formData.confirmPassword.length > 0) && formData.confirmPassword !== formData.password
+    (formData.password.length > 0 || formData.confirmPassword.length > 0) &&
+    formData.confirmPassword !== formData.password
+  const passwordRequirements = getPasswordRequirementStatus(formData.password)
 
   function handleTextChange(field: 'firstName' | 'lastName', value: string) {
     setFormData((prev) => ({ ...prev, [field]: sanitizeTextInput(value, 50) }))
     setErrors((prev) => ({ ...prev, [field]: undefined }))
     setSubmitMessage('')
-    setSubmitState('idle')
   }
 
   function handleEmailChange(value: string) {
     setFormData((prev) => ({ ...prev, email: sanitizeEmailInput(value) }))
     setErrors((prev) => ({ ...prev, email: undefined }))
     setSubmitMessage('')
-    setSubmitState('idle')
   }
 
   function handlePasswordChange(field: 'password' | 'confirmPassword', value: string) {
     setFormData((prev) => ({ ...prev, [field]: value.slice(0, 128) }))
     setErrors((prev) => ({ ...prev, [field]: undefined }))
     setSubmitMessage('')
-    setSubmitState('idle')
-  }
-
-  function validate(data: RegisterFormData): RegisterFormErrors {
-    const nextErrors: RegisterFormErrors = {}
-    const firstName = data.firstName.trim()
-    const lastName = data.lastName.trim()
-    const email = data.email.trim().toLowerCase()
-
-    if (!HUMAN_NAME_REGEX.test(firstName)) {
-      nextErrors.firstName = 'Use 2-50 letters, spaces, apostrophes, or hyphens.'
-    }
-
-    if (!HUMAN_NAME_REGEX.test(lastName)) {
-      nextErrors.lastName = 'Use 2-50 letters, spaces, apostrophes, or hyphens.'
-    }
-
-    if (!EMAIL_REGEX.test(email)) {
-      nextErrors.email = 'Enter a valid email address.'
-    }
-
-    const passwordError = passwordPolicyError(data.password)
-    if (passwordError) {
-      nextErrors.password = passwordError
-    }
-
-    if (data.confirmPassword !== data.password) {
-      nextErrors.confirmPassword = "Passwords don't match."
-    }
-
-    if (!data.termsAccepted) {
-      nextErrors.termsAccepted = 'You must accept the terms to continue.'
-    }
-
-    return nextErrors
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -114,49 +78,46 @@ export default function RegisterPage() {
       email: formData.email.trim().toLowerCase(),
     }
 
-    const nextErrors = validate(normalizedData)
+    const nextErrors: RegisterFormErrors = {}
+    if (!HUMAN_NAME_REGEX.test(normalizedData.firstName)) nextErrors.firstName = 'Use 2–50 letters, spaces, apostrophes, or hyphens.'
+    if (!HUMAN_NAME_REGEX.test(normalizedData.lastName)) nextErrors.lastName = 'Use 2–50 letters, spaces, apostrophes, or hyphens.'
+    if (!EMAIL_REGEX.test(normalizedData.email)) nextErrors.email = 'Enter a valid email address.'
+    const pErr = passwordPolicyError(normalizedData.password)
+    if (pErr) nextErrors.password = pErr
+    if (normalizedData.confirmPassword !== normalizedData.password) nextErrors.confirmPassword = "Passwords don't match."
+    if (!normalizedData.termsAccepted) nextErrors.termsAccepted = 'You must accept the terms to continue.'
+
     setErrors(nextErrors)
     setFormData(normalizedData)
 
     if (Object.keys(nextErrors).length > 0) {
-      setSubmitState('error')
       setSubmitMessage('Please fix the highlighted fields.')
+      setSubmitIsError(true)
       return
     }
 
     setIsSubmitting(true)
-
     try {
       const response = await fetch(buildApiUrl('/api/auth/register'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(normalizedData),
       })
-
       const payload = (await response.json().catch(() => ({}))) as RegisterApiErrorResponse
 
       if (!response.ok) {
-        if (payload.errors) {
-          setErrors((prev) => ({ ...prev, ...payload.errors }))
-        }
-
-        setSubmitState('error')
+        if (payload.errors) setErrors((prev) => ({ ...prev, ...payload.errors }))
         setSubmitMessage(payload.message ?? 'Unable to create account right now.')
+        setSubmitIsError(true)
         return
       }
 
-      setErrors({})
-      setFormData(initialFormData)
       const nextUrl = new URL('/check-email', window.location.origin)
-      if (payload.verificationPreviewUrl) {
-        nextUrl.searchParams.set('verificationPreviewUrl', payload.verificationPreviewUrl)
-      }
+      if (payload.verificationPreviewUrl) nextUrl.searchParams.set('verificationPreviewUrl', payload.verificationPreviewUrl)
       router.push(`${nextUrl.pathname}${nextUrl.search}`)
     } catch {
-      setSubmitState('error')
       setSubmitMessage('Unable to reach the registration service. Please try again.')
+      setSubmitIsError(true)
     } finally {
       setIsSubmitting(false)
     }
@@ -182,141 +143,154 @@ export default function RegisterPage() {
         <h2 className="text-xl font-bold text-[#1b2a1f]">Create your account</h2>
         <p className="mt-1.5 text-sm text-[#5b665f]">
           Already registered?{' '}
-          <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/login">
-            Sign in
-          </Link>
+          <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/login">Sign in</Link>
         </p>
 
-          <form className="mt-6 space-y-4" noValidate onSubmit={handleSubmit}>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2 text-sm font-medium text-[#2e3b31]">
-                First Name
-                <input
-                  aria-invalid={Boolean(errors.firstName)}
-                  autoComplete="given-name"
-                  className="w-full rounded-xl border border-[#d6ddd2] bg-[#f9fbf8] px-4 py-3 text-sm text-[#1f2937] outline-none transition focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/20"
-                  maxLength={50}
-                  name="firstName"
-                  onChange={(event) => handleTextChange('firstName', event.target.value)}
-                  placeholder="Ava"
-                  required
-                  type="text"
-                  value={formData.firstName}
-                />
-                {errors.firstName ? <p className="text-xs text-[#c53030]">{errors.firstName}</p> : null}
-              </label>
-              <label className="space-y-2 text-sm font-medium text-[#2e3b31]">
-                Last Name
-                <input
-                  aria-invalid={Boolean(errors.lastName)}
-                  autoComplete="family-name"
-                  className="w-full rounded-xl border border-[#d6ddd2] bg-[#f9fbf8] px-4 py-3 text-sm text-[#1f2937] outline-none transition focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/20"
-                  maxLength={50}
-                  name="lastName"
-                  onChange={(event) => handleTextChange('lastName', event.target.value)}
-                  placeholder="Johnson"
-                  required
-                  type="text"
-                  value={formData.lastName}
-                />
-                {errors.lastName ? <p className="text-xs text-[#c53030]">{errors.lastName}</p> : null}
-              </label>
-            </div>
-
-            <label className="block space-y-2 text-sm font-medium text-[#2e3b31]">
-              Email
+        <form className="mt-6 space-y-4" noValidate onSubmit={handleSubmit}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className={labelClass}>
+              First name
               <input
-                aria-invalid={Boolean(errors.email)}
-                autoComplete="email"
-                className="w-full rounded-xl border border-[#d6ddd2] bg-[#f9fbf8] px-4 py-3 text-sm text-[#1f2937] outline-none transition focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/20"
-                maxLength={254}
-                name="email"
-                onChange={(event) => handleEmailChange(event.target.value)}
-                placeholder="you@email.com"
+                aria-invalid={Boolean(errors.firstName)}
+                autoComplete="given-name"
+                className={inputClass}
+                maxLength={50}
+                name="firstName"
+                onChange={(e) => handleTextChange('firstName', e.target.value)}
+                placeholder="Ava"
                 required
-                spellCheck={false}
-                type="email"
-                value={formData.email}
+                type="text"
+                value={formData.firstName}
               />
-              {errors.email ? <p className="text-xs text-[#c53030]">{errors.email}</p> : null}
+              {errors.firstName ? <p className={errorClass}>{errors.firstName}</p> : null}
             </label>
+            <label className={labelClass}>
+              Last name
+              <input
+                aria-invalid={Boolean(errors.lastName)}
+                autoComplete="family-name"
+                className={inputClass}
+                maxLength={50}
+                name="lastName"
+                onChange={(e) => handleTextChange('lastName', e.target.value)}
+                placeholder="Johnson"
+                required
+                type="text"
+                value={formData.lastName}
+              />
+              {errors.lastName ? <p className={errorClass}>{errors.lastName}</p> : null}
+            </label>
+          </div>
 
-            <label className="block space-y-2 text-sm font-medium text-[#2e3b31]">
+          <label className={labelClass}>
+            Email
+            <input
+              aria-invalid={Boolean(errors.email)}
+              autoComplete="email"
+              className={inputClass}
+              maxLength={254}
+              name="email"
+              onChange={(e) => handleEmailChange(e.target.value)}
+              placeholder="you@email.com"
+              required
+              spellCheck={false}
+              type="email"
+              value={formData.email}
+            />
+            {errors.email ? <p className={errorClass}>{errors.email}</p> : null}
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className={labelClass}>
               Password
               <input
                 aria-invalid={Boolean(errors.password)}
                 autoComplete="new-password"
-                className="w-full rounded-xl border border-[#d6ddd2] bg-[#f9fbf8] px-4 py-3 text-sm text-[#1f2937] outline-none transition focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/20"
+                className={inputClass}
                 maxLength={128}
                 name="password"
-                onChange={(event) => handlePasswordChange('password', event.target.value)}
-                placeholder="Create a secure password"
+                onChange={(e) => handlePasswordChange('password', e.target.value)}
+                placeholder="Create a strong password"
                 required
                 type="password"
                 value={formData.password}
               />
-              <p className="mt-2 text-xs text-[#5b665f]">Use at least 8 characters. Longer is usually safer.</p>
-              {errors.password ? <p className="text-xs text-[#c53030]">{errors.password}</p> : null}
+              <ul className="mt-1 space-y-0.5 text-[11px]">
+                {[
+                  { key: 'hasMinLength', label: 'At least 8 characters' },
+                  { key: 'hasUppercase', label: 'Uppercase letter' },
+                  { key: 'hasLowercase', label: 'Lowercase letter' },
+                  { key: 'hasNumber', label: 'Number' },
+                  { key: 'hasSpecial', label: 'Special character' },
+                ].map(({ key, label }) => {
+                  const met = passwordRequirements[key as keyof typeof passwordRequirements]
+                  return (
+                    <li key={key} className={`flex items-center gap-1.5 ${met ? 'text-[#2f9f4f]' : 'text-[#9ca3af]'}`}>
+                      <span>{met ? '✓' : '○'}</span>{label}
+                    </li>
+                  )
+                })}
+              </ul>
+              {errors.password ? <p className={errorClass}>{errors.password}</p> : null}
             </label>
 
-            <label className="block space-y-2 text-sm font-medium text-[#2e3b31]">
-              Confirm Password
+            <label className={labelClass}>
+              Confirm password
               <input
                 aria-invalid={Boolean(errors.confirmPassword) || hasLivePasswordMismatch}
                 autoComplete="new-password"
-                className="w-full rounded-xl border border-[#d6ddd2] bg-[#f9fbf8] px-4 py-3 text-sm text-[#1f2937] outline-none transition focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/20"
+                className={inputClass}
                 maxLength={128}
                 name="confirmPassword"
-                onChange={(event) => handlePasswordChange('confirmPassword', event.target.value)}
+                onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}
                 placeholder="Repeat your password"
                 required
                 type="password"
                 value={formData.confirmPassword}
               />
-              {hasLivePasswordMismatch ? <p className="text-xs text-[#c53030]">Passwords don't match.</p> : null}
-              {!hasLivePasswordMismatch && errors.confirmPassword ? (
-                <p className="text-xs text-[#c53030]">{errors.confirmPassword}</p>
-              ) : null}
+              {hasLivePasswordMismatch ? <p className={errorClass}>Passwords don&apos;t match.</p> : null}
+              {!hasLivePasswordMismatch && errors.confirmPassword ? <p className={errorClass}>{errors.confirmPassword}</p> : null}
             </label>
+          </div>
 
-            <label className="flex items-start gap-3 text-sm text-[#516056]">
-              <input
-                checked={formData.termsAccepted}
-                className="mt-1 h-4 w-4 rounded border-[#c7d2c2] text-[#2f9f4f] focus:ring-[#2f9f4f]/40"
-                onChange={(event) => {
-                  setFormData((prev) => ({ ...prev, termsAccepted: event.target.checked }))
-                  setErrors((prev) => ({ ...prev, termsAccepted: undefined }))
-                  setSubmitMessage('')
-                  setSubmitState('idle')
-                }}
-                required
-                type="checkbox"
-              />
-              <span>I agree to the terms and privacy policy.</span>
-            </label>
-            {errors.termsAccepted ? <p className="text-xs text-[#c53030]">{errors.termsAccepted}</p> : null}
+          <label className="flex items-start gap-3 text-xs text-[#516056]">
+            <input
+              checked={formData.termsAccepted}
+              className="mt-0.5 h-4 w-4 rounded border-[#c7d2c2] text-[#2f9f4f] focus:ring-[#2f9f4f]/40"
+              onChange={(e) => {
+                setFormData((prev) => ({ ...prev, termsAccepted: e.target.checked }))
+                setErrors((prev) => ({ ...prev, termsAccepted: undefined }))
+                setSubmitMessage('')
+              }}
+              required
+              type="checkbox"
+            />
+            <span>I agree to the terms and privacy policy.</span>
+          </label>
+          {errors.termsAccepted ? <p className={errorClass}>{errors.termsAccepted}</p> : null}
 
-            <button
-              className="w-full rounded-xl bg-[#2f9f4f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f9f4f]/35 disabled:cursor-not-allowed disabled:opacity-70"
-              disabled={isSubmitting}
-              type="submit"
-            >
-              {isSubmitting ? 'Creating Account...' : 'Create Account'}
-            </button>
-            {submitMessage ? (
-              <p
-                aria-live="polite"
-                className={`text-center text-xs ${submitState === 'error' ? 'text-[#c53030]' : 'text-[#5b665f]'} ${
-                  submitState === 'success' ? 'text-[#2f9f4f]' : ''
-                }`}
-              >
-                {submitMessage}
-              </p>
-            ) : null}
-          </form>
+          <button
+            className="w-full rounded-xl bg-[#2f9f4f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f9f4f]/35 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isSubmitting}
+            type="submit"
+          >
+            {isSubmitting ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Creating account…
+              </span>
+            ) : 'Create account'}
+          </button>
+
+          {submitMessage ? (
+            <p aria-live="polite" className={`text-center text-[10px] ${submitIsError ? 'text-[#c53030]' : 'text-[#2f9f4f]'}`}>
+              {submitMessage}
+            </p>
+          ) : null}
+        </form>
 
         <p className="mt-6 text-center text-sm text-[#5b665f]">
-          Are you a business?{' '}
+          Registering as a business?{' '}
           <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/supplier/register">
             Supplier registration
           </Link>
