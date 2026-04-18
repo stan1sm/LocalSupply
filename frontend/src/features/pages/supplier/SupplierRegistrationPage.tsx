@@ -467,6 +467,7 @@ export default function SupplierRegistrationPage() {
         })
         const payload = (await response.json().catch(() => ({}))) as {
           message?: string
+          token?: string
           supplier?: { id: string; businessName: string; contactName: string; email: string; address: string }
           errors?: SupplierFormErrors
         }
@@ -499,6 +500,9 @@ export default function SupplierRegistrationPage() {
         if (payload.supplier) {
           try {
             window.localStorage.setItem('localsupply-supplier', JSON.stringify(payload.supplier))
+            if (payload.token) {
+              window.localStorage.setItem('localsupply-supplier-token', payload.token)
+            }
           } catch {
             // ignore storage errors
           }
