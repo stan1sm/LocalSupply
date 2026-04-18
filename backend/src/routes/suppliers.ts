@@ -3,6 +3,7 @@ import { signSupplierToken } from '../lib/jwt.js'
 import { getPrismaClient } from '../lib/prisma.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
 import { productImageUrl, uploadProductImage } from '../lib/uploadProductImage.js'
+import { supplierImageUrl, uploadSupplierImage } from '../lib/uploadSupplierImage.js'
 import {
   validateSupplierLoginPayload,
   validateSupplierRegistrationPayload,
@@ -106,6 +107,7 @@ suppliersRouter.get('/', async (_req, res) => {
         storeType: supplier.storeType,
         badgeText: supplier.badgeText,
         brandColor: supplier.brandColor,
+        openingHours: supplier.openingHours,
         productCount: (supplier as any)._count?.products ?? 0,
       })),
     )
@@ -341,6 +343,16 @@ suppliersRouter.post('/register', async (req, res) => {
 
   try {
     const prisma = getPrismaClient()
+
+    const existingBuyer = await prisma.user.findUnique({ where: { email } })
+    if (existingBuyer) {
+      res.status(409).json({
+        message: 'An account already exists with this email address.',
+        errors: { email: 'This email is already registered as a buyer account.' },
+      })
+      return
+    }
+
     const passwordHash = await hashPassword(password)
 
     const supplier = await prisma.supplier.create({
@@ -386,6 +398,64 @@ suppliersRouter.post('/register', async (req, res) => {
 
     console.error('Supplier registration failed', error)
     res.status(500).json({ message: 'Unable to create supplier account right now.' })
+  }
+})
+
+suppliersRouter.post('/:supplierId/logo', requireSupplierAuth, (req, res, next) => {
+  uploadSupplierImage.single('image')(req, res, (err: unknown) => {
+    if (err) {
+      const message = err instanceof Error ? err.message : 'Invalid file upload.'
+      return res.status(400).json({ message })
+    }
+    next()
+  })
+}, async (req, res) => {
+  const supplierId = String(req.params.supplierId ?? '').trim()
+  if (res.locals.supplierId !== supplierId) {
+    res.status(403).json({ message: 'Forbidden.' })
+    return
+  }
+  if (!req.file) {
+    res.status(400).json({ message: 'No image file provided.' })
+    return
+  }
+  try {
+    const prisma = getPrismaClient()
+    const logoUrl = supplierImageUrl(req.file.filename)
+    await prisma.supplier.update({ where: { id: supplierId }, data: { logoUrl } })
+    res.status(200).json({ logoUrl })
+  } catch (error) {
+    console.error('Failed to upload supplier logo', error)
+    res.status(503).json({ message: 'Unable to upload logo right now.' })
+  }
+})
+
+suppliersRouter.post('/:supplierId/banner', requireSupplierAuth, (req, res, next) => {
+  uploadSupplierImage.single('image')(req, res, (err: unknown) => {
+    if (err) {
+      const message = err instanceof Error ? err.message : 'Invalid file upload.'
+      return res.status(400).json({ message })
+    }
+    next()
+  })
+}, async (req, res) => {
+  const supplierId = String(req.params.supplierId ?? '').trim()
+  if (res.locals.supplierId !== supplierId) {
+    res.status(403).json({ message: 'Forbidden.' })
+    return
+  }
+  if (!req.file) {
+    res.status(400).json({ message: 'No image file provided.' })
+    return
+  }
+  try {
+    const prisma = getPrismaClient()
+    const heroImageUrl = supplierImageUrl(req.file.filename)
+    await prisma.supplier.update({ where: { id: supplierId }, data: { heroImageUrl } })
+    res.status(200).json({ heroImageUrl })
+  } catch (error) {
+    console.error('Failed to upload supplier banner', error)
+    res.status(503).json({ message: 'Unable to upload banner right now.' })
   }
 })
 

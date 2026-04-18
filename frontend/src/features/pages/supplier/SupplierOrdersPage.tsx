@@ -217,9 +217,10 @@ export default function SupplierOrdersPage() {
           </div>
           <nav aria-label="Supplier dashboard navigation" className="space-y-1">
             {[
-              { id: 'dashboard', label: 'Dashboard', icon: 'D', href: '/supplier/dashboard' },
-              { id: 'products', label: 'Products', icon: 'P', href: '/supplier/dashboard' },
-              { id: 'orders', label: 'Orders', icon: 'O', href: '/supplier/orders' },
+              { id: 'dashboard', label: 'Dashboard',     icon: 'D', href: '/supplier' },
+              { id: 'products',  label: 'Products',      icon: 'P', href: '/supplier/dashboard' },
+              { id: 'orders',    label: 'Orders',        icon: 'O', href: '/supplier/orders' },
+              { id: 'settings',  label: 'Store settings',icon: 'S', href: '/supplier/settings' },
             ].map((item) => {
               const isActive = item.id === 'orders'
               return (

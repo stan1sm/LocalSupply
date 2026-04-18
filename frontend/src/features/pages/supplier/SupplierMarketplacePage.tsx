@@ -3,6 +3,31 @@
 import { useEffect, useMemo, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 
+type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
+type DaySchedule = { open: boolean; start: string; end: string }
+type WeeklyHours = Record<DayKey, DaySchedule>
+
+const JS_DAY_TO_KEY: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+
+function isOpenNow(openingHours: string | null | undefined): boolean | null {
+  if (!openingHours) return null
+  try {
+    const parsed = JSON.parse(openingHours) as Partial<WeeklyHours>
+    if (typeof parsed !== 'object' || !parsed || !('mon' in parsed)) return null
+    const now = new Date()
+    const dayKey = JS_DAY_TO_KEY[now.getDay()]
+    const schedule = parsed[dayKey]
+    if (!schedule) return null
+    if (!schedule.open) return false
+    const [startH, startM] = schedule.start.split(':').map(Number)
+    const [endH, endM] = schedule.end.split(':').map(Number)
+    const current = now.getHours() * 60 + now.getMinutes()
+    return current >= startH * 60 + startM && current < endH * 60 + endM
+  } catch {
+    return null
+  }
+}
+
 type SupplierSummary = {
   id: string
   businessName: string
@@ -14,6 +39,7 @@ type SupplierSummary = {
   storeType?: string | null
   badgeText?: string | null
   brandColor?: string | null
+  openingHours?: string | null
   productCount: number
 }
 
@@ -197,9 +223,22 @@ export default function SupplierMarketplacePage() {
                     <div className="space-y-2">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7a8a7f]">
-                            {supplier.isVerified ? 'Verified supplier' : supplier.storeType || 'Supplier'}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7a8a7f]">
+                              {supplier.isVerified ? 'Verified supplier' : supplier.storeType || 'Supplier'}
+                            </p>
+                            {(() => {
+                              const status = isOpenNow(supplier.openingHours)
+                              if (status === null) return null
+                              return (
+                                <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+                                  status ? 'bg-[#dcfce7] text-[#166534]' : 'bg-[#fee2e2] text-[#991b1b]'
+                                }`}>
+                                  {status ? 'Open' : 'Closed'}
+                                </span>
+                              )
+                            })()}
+                          </div>
                           <h3 className="mt-1 text-base font-semibold text-[#1f2b22]">{supplier.businessName}</h3>
                           {supplier.tagline ? (
                             <p className="mt-1 text-xs text-[#5f6c62]">{supplier.tagline}</p>
