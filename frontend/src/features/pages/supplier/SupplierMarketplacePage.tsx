@@ -117,6 +117,7 @@ export default function SupplierMarketplacePage() {
               { id: 'suppliers', label: 'Suppliers', icon: 'S', href: '/suppliers' },
               { id: 'my-cart', label: 'My Cart', icon: 'C', href: '/cart' },
               { id: 'orders', label: 'Orders', icon: 'O', href: '#' },
+              { id: 'chats', label: 'Chats', icon: 'H', href: '/chat' },
               { id: 'delivery', label: 'Delivery Tracking', icon: 'T', href: '#' },
             ].map((item) => {
               const isActive = item.id === 'suppliers'

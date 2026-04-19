@@ -80,6 +80,7 @@ const navItems: NavItem[] = [
   { id: 'suppliers', label: 'Suppliers', icon: 'S', href: '/suppliers' },
   { id: 'my-cart', label: 'My Cart', icon: 'C', href: '/cart' },
   { id: 'orders', label: 'Orders', icon: 'O', href: '/orders' },
+  { id: 'chats', label: 'Chats', icon: 'C', href: '/chat' },
   { id: 'delivery', label: 'Delivery Tracking', icon: 'T', href: '#' },
   { id: 'settings', label: 'Settings', icon: 'G', href: '/settings' },
 ]
