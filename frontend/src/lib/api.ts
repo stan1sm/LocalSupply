@@ -10,7 +10,3 @@ export function buildApiUrl(path: string) {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   return `${API_BASE_URL}${normalizedPath}`
 }
-
-export function buildWsUrl(): string {
-  return API_BASE_URL.replace(/^http/, 'ws')
-}

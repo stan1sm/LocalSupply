@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { buildApiUrl, buildWsUrl } from '../../../lib/api'
+import { buildApiUrl } from '../../../lib/api'
 
 const BUYER_TOKEN_KEY = 'localsupply-token'
 const BUYER_USER_KEY = 'localsupply-user'
@@ -25,11 +25,8 @@ type ConversationDetail = {
   supplier: { id: string; businessName: string; email: string }
 }
 
-type WsStatus = 'connecting' | 'authing' | 'joining' | 'ready' | 'error'
-
 function formatTime(iso: string) {
-  const d = new Date(iso)
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 function formatDate(iso: string) {
@@ -39,10 +36,28 @@ function formatDate(iso: string) {
     d.getFullYear() === today.getFullYear() &&
     d.getMonth() === today.getMonth() &&
     d.getDate() === today.getDate()
-  ) {
-    return 'Today'
-  }
+  ) return 'Today'
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function getAuth(): { token: string; role: 'buyer' | 'supplier'; userId: string } | null {
+  const buyerToken = window.localStorage.getItem(BUYER_TOKEN_KEY)
+  const buyerRaw = window.localStorage.getItem(BUYER_USER_KEY)
+  if (buyerToken && buyerRaw) {
+    try {
+      const u = JSON.parse(buyerRaw) as { id: string }
+      return { token: buyerToken, role: 'buyer', userId: u.id }
+    } catch { /* */ }
+  }
+  const supplierToken = window.localStorage.getItem(SUPPLIER_TOKEN_KEY)
+  const supplierRaw = window.localStorage.getItem(SUPPLIER_SESSION_KEY)
+  if (supplierToken && supplierRaw) {
+    try {
+      const s = JSON.parse(supplierRaw) as { id: string }
+      return { token: supplierToken, role: 'supplier', userId: s.id }
+    } catch { /* */ }
+  }
+  return null
 }
 
 export default function ChatConversationPage({
@@ -55,12 +70,12 @@ export default function ChatConversationPage({
   const [messages, setMessages] = useState<Message[]>([])
   const [conversation, setConversation] = useState<ConversationDetail | null>(null)
   const [input, setInput] = useState('')
-  const [status, setStatus] = useState<WsStatus>('connecting')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSending, setIsSending] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [myId, setMyId] = useState('')
   const [myType, setMyType] = useState<'buyer' | 'supplier' | null>(null)
   const [convId, setConvId] = useState(conversationId ?? '')
-  const wsRef = useRef<WebSocket | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -69,139 +84,102 @@ export default function ChatConversationPage({
   }, [messages])
 
   useEffect(() => {
-    const buyerToken = window.localStorage.getItem(BUYER_TOKEN_KEY)
-    const supplierToken = window.localStorage.getItem(SUPPLIER_TOKEN_KEY)
-    const buyerRaw = window.localStorage.getItem(BUYER_USER_KEY)
-    const supplierRaw = window.localStorage.getItem(SUPPLIER_SESSION_KEY)
-
-    let token: string | null = null
-    let role: 'buyer' | 'supplier' | null = null
-    let uid = ''
-
-    if (buyerToken && buyerRaw) {
-      try {
-        const u = JSON.parse(buyerRaw) as { id: string }
-        uid = u.id
-        role = 'buyer'
-        token = buyerToken
-      } catch { /* */ }
-    } else if (supplierToken && supplierRaw) {
-      try {
-        const s = JSON.parse(supplierRaw) as { id: string }
-        uid = s.id
-        role = 'supplier'
-        token = supplierToken
-      } catch { /* */ }
-    }
-
-    if (!token || !role) {
-      setStatus('error')
+    const auth = getAuth()
+    if (!auth) {
       setErrorMessage('Sign in to use chat.')
+      setIsLoading(false)
       return
     }
+    setMyId(auth.userId)
+    setMyType(auth.role)
 
-    setMyId(uid)
-    setMyType(role)
-
-    const abortController = new AbortController()
+    const { token, role } = auth
+    let cancelled = false
 
     async function init() {
       let cid = conversationId ?? convId
 
-      // Buyer initiating: create or get conversation
+      // Buyer initiating from supplier page: create or get conversation
       if (!cid && supplierId && role === 'buyer') {
-        try {
-          const resp = await fetch(buildApiUrl('/api/chat/conversations'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ supplierId }),
-            signal: abortController.signal,
-          })
-          if (!resp.ok) throw new Error('Could not start conversation.')
-          const data = (await resp.json()) as ConversationDetail
-          cid = data.id
+        const resp = await fetch(buildApiUrl('/api/chat/conversations'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ supplierId }),
+        })
+        if (!resp.ok) {
+          if (!cancelled) setErrorMessage('Could not start conversation.')
+          return
+        }
+        const data = (await resp.json()) as ConversationDetail
+        cid = data.id
+        if (!cancelled) {
           setConvId(cid)
           setConversation(data)
-        } catch (err) {
-          if ((err as Error).name === 'AbortError') return
-          setStatus('error')
-          setErrorMessage(err instanceof Error ? err.message : 'Could not start conversation.')
-          return
         }
       }
 
       if (!cid) {
-        setStatus('error')
-        setErrorMessage('No conversation to open.')
+        if (!cancelled) setErrorMessage('No conversation to open.')
         return
       }
 
-      // Load conversation info if not yet loaded
-      if (!conversation) {
-        try {
-          const resp = await fetch(buildApiUrl(`/api/chat/conversations/${encodeURIComponent(cid)}`), {
-            headers: { Authorization: `Bearer ${token}` },
-            signal: abortController.signal,
-          })
-          if (resp.ok) {
-            const data = (await resp.json()) as ConversationDetail
-            setConversation(data)
-          }
-        } catch { /* non-fatal */ }
+      // Load conversation details + messages in parallel
+      const [convResp, msgsResp] = await Promise.all([
+        fetch(buildApiUrl(`/api/chat/conversations/${encodeURIComponent(cid)}`), {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(buildApiUrl(`/api/chat/conversations/${encodeURIComponent(cid)}/messages`), {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ])
+
+      if (!cancelled) {
+        if (convResp.ok) setConversation((await convResp.json()) as ConversationDetail)
+        if (msgsResp.ok) setMessages((await msgsResp.json()) as Message[])
+        else setErrorMessage('Could not load messages.')
+        setIsLoading(false)
+        setTimeout(() => inputRef.current?.focus(), 50)
       }
-
-      // WebSocket
-      const ws = new WebSocket(buildWsUrl())
-      wsRef.current = ws
-
-      ws.addEventListener('open', () => {
-        setStatus('authing')
-        ws.send(JSON.stringify({ type: 'auth', token }))
-      })
-
-      ws.addEventListener('message', (event) => {
-        try {
-          const msg = JSON.parse(event.data as string) as Record<string, unknown>
-          if (msg.type === 'authed') {
-            setStatus('joining')
-            ws.send(JSON.stringify({ type: 'join', conversationId: cid }))
-          } else if (msg.type === 'history') {
-            setMessages((msg.messages as Message[]) ?? [])
-            setStatus('ready')
-            setTimeout(() => inputRef.current?.focus(), 50)
-          } else if (msg.type === 'message') {
-            setMessages((prev) => [...prev, msg.message as Message])
-          } else if (msg.type === 'error') {
-            setStatus('error')
-            setErrorMessage(String(msg.message))
-          }
-        } catch { /* */ }
-      })
-
-      ws.addEventListener('close', () => {
-        setStatus((prev) => prev === 'ready' ? 'error' : prev)
-        setErrorMessage((prev) => prev || 'Connection lost. Refresh to reconnect.')
-      })
-
-      ws.addEventListener('error', () => {
-        setStatus('error')
-        setErrorMessage('Could not connect to chat server.')
-      })
     }
 
-    init()
+    init().catch(() => {
+      if (!cancelled) {
+        setErrorMessage('Something went wrong.')
+        setIsLoading(false)
+      }
+    })
 
-    return () => {
-      abortController.abort()
-      wsRef.current?.close()
-    }
+    return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function sendMessage() {
-    if (!input.trim() || status !== 'ready' || !wsRef.current || !convId) return
-    wsRef.current.send(JSON.stringify({ type: 'send', conversationId: convId, content: input.trim() }))
+  async function sendMessage() {
+    const auth = getAuth()
+    if (!input.trim() || isSending || !convId || !auth) return
+    setIsSending(true)
+    const content = input.trim()
     setInput('')
+
+    try {
+      const resp = await fetch(buildApiUrl(`/api/chat/conversations/${encodeURIComponent(convId)}/messages`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+        body: JSON.stringify({ content }),
+      })
+      if (resp.ok) {
+        const msg = (await resp.json()) as Message
+        setMessages((prev) => [...prev, msg])
+      } else {
+        setInput(content)
+        setErrorMessage('Failed to send message.')
+      }
+    } catch {
+      setInput(content)
+      setErrorMessage('Failed to send message.')
+    } finally {
+      setIsSending(false)
+      inputRef.current?.focus()
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -217,66 +195,44 @@ export default function ChatConversationPage({
       : `${conversation.buyer.firstName} ${conversation.buyer.lastName}`
     : '…'
 
-  // Group messages by date for date separators
+  // Group by date
   const grouped: { date: string; msgs: Message[] }[] = []
   for (const msg of messages) {
     const d = formatDate(msg.createdAt)
     const last = grouped[grouped.length - 1]
-    if (last && last.date === d) {
-      last.msgs.push(msg)
-    } else {
-      grouped.push({ date: d, msgs: [msg] })
-    }
-  }
-
-  const statusLabel: Record<WsStatus, string> = {
-    connecting: 'Connecting…',
-    authing: 'Authenticating…',
-    joining: 'Loading messages…',
-    ready: '',
-    error: '',
+    if (last && last.date === d) last.msgs.push(msg)
+    else grouped.push({ date: d, msgs: [msg] })
   }
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
 
-        {/* Header */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <a
             className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[#2f9f4f] hover:text-[#1f2937]"
             href="/chat"
           >
             <span aria-hidden="true">←</span> Messages
           </a>
-          {partnerName !== '…' && (
-            <span className="text-xs text-[#9ca3af]">/ {partnerName}</span>
-          )}
+          {partnerName !== '…' && <span className="text-xs text-[#9ca3af]">/ {partnerName}</span>}
         </div>
 
-        {/* Chat card */}
         <div className="flex h-[calc(100vh-10rem)] flex-col overflow-hidden rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
 
-          {/* Chat header */}
+          {/* Header */}
           <div className="border-b border-[#e5ece2] px-5 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Chat</p>
             <h1 className="mt-0.5 text-lg font-bold text-[#1f2b22]">{partnerName}</h1>
-            {status !== 'ready' && status !== 'error' && (
-              <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[#9ca3af]">
-                <span className="h-2 w-2 animate-spin rounded-full border border-[#9ca3af] border-t-[#2f9f4f]" />
-                {statusLabel[status]}
-              </p>
-            )}
-            {status === 'ready' && (
-              <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[#2f9f4f]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#2f9f4f]" /> Connected
-              </p>
-            )}
           </div>
 
-          {/* Message list */}
+          {/* Messages */}
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-            {status === 'error' ? (
+            {isLoading ? (
+              <div className="flex h-full items-center justify-center">
+                <div className="h-7 w-7 animate-spin rounded-full border-4 border-[#d5ded1] border-t-[#2f9f4f]" />
+              </div>
+            ) : errorMessage ? (
               <div className="flex h-full items-center justify-center">
                 <div className="rounded-2xl border border-[#f0d4d4] bg-[#fff5f5] px-5 py-4 text-center text-sm text-[#9b2c2c]">
                   {errorMessage}
@@ -288,9 +244,9 @@ export default function ChatConversationPage({
                   )}
                 </div>
               </div>
-            ) : messages.length === 0 && status === 'ready' ? (
-              <div className="flex h-full items-center justify-center">
-                <div className="text-center">
+            ) : messages.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-center">
+                <div>
                   <p className="text-sm font-semibold text-[#6b7b70]">Start the conversation</p>
                   <p className="mt-1 text-xs text-[#9ca3af]">Send a message to {partnerName}</p>
                 </div>
@@ -326,28 +282,32 @@ export default function ChatConversationPage({
             <div ref={bottomRef} />
           </div>
 
-          {/* Input bar */}
+          {/* Input */}
           <div className="border-t border-[#e5ece2] px-4 py-3">
             <div className="flex items-center gap-2 rounded-2xl border border-[#d4ddcf] bg-[#f9fbf8] px-3 py-2 focus-within:border-[#2f9f4f] focus-within:ring-2 focus-within:ring-[#b7e0c2]">
               <input
-                className="flex-1 bg-transparent text-sm text-[#1f2937] outline-none placeholder:text-[#95a39a]"
-                disabled={status !== 'ready'}
+                className="flex-1 bg-transparent text-sm text-[#1f2937] outline-none placeholder:text-[#95a39a] disabled:opacity-50"
+                disabled={isLoading || !!errorMessage}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={status === 'ready' ? 'Type a message…' : statusLabel[status] || 'Connecting…'}
+                placeholder="Type a message…"
                 ref={inputRef}
                 type="text"
                 value={input}
               />
               <button
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#2f9f4f] transition hover:bg-[#25813f] disabled:opacity-40"
-                disabled={!input.trim() || status !== 'ready'}
+                disabled={!input.trim() || isSending || !!errorMessage}
                 onClick={sendMessage}
                 type="button"
               >
-                <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7Z" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                {isSending ? (
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                ) : (
+                  <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7Z" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
               </button>
             </div>
             <p className="mt-1 text-center text-[9px] text-[#c7d2c2]">Enter to send</p>
