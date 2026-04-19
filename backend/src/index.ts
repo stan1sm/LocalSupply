@@ -1,15 +1,12 @@
 import 'dotenv/config'
 import app from './app.js'
-import { attachChatServer } from './lib/chatServer.js'
 import { syncCatalog } from './lib/catalogSync.js'
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3001
 
-const server = app.listen(port, () => {
+app.listen(port, () => {
   console.log(`Server listening on port ${port}`)
 })
-
-attachChatServer(server)
 
 const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000
 
