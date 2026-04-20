@@ -45,6 +45,19 @@ type CartItem = {
   unitInfo: string | null
 }
 
+type Substitution = {
+  priceId: string
+  name: string
+  brand: string | null
+  imageUrl: string | null
+  unit: string | null
+  storeName: string
+  price: number
+  savingsAmount: number
+  savingsPercentage: number | null
+  reason: string
+}
+
 type CategoryOption = {
   id: string
   label: string
@@ -128,6 +141,8 @@ export default function MarketplaceDashboardPage() {
   const [storeOptions, setStoreOptions] = useState<StoreOption[]>(DEFAULT_STORE_OPTIONS)
   const [currentPage, setCurrentPage] = useState(1)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [substitutions, setSubstitutions] = useState<Record<string, Substitution[] | null>>({})
+  const [loadingSubstitutions, setLoadingSubstitutions] = useState<Set<string>>(new Set())
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   const deferredSearchQuery = useDeferredValue(searchQuery)
@@ -327,6 +342,32 @@ export default function MarketplaceDashboardPage() {
   function handleProceedToCheckout() {
     if (cartItems.length === 0) return
     window.location.href = '/checkout'
+  }
+
+  async function fetchSubstitutions(itemId: string) {
+    if (substitutions[itemId] !== undefined || loadingSubstitutions.has(itemId)) return
+    setLoadingSubstitutions((prev) => new Set(prev).add(itemId))
+    try {
+      const res = await fetch(buildApiUrl(`/api/products/${encodeURIComponent(itemId)}/substitutions`))
+      const data = (await res.json().catch(() => ({}))) as { suggestions?: Substitution[] }
+      setSubstitutions((prev) => ({ ...prev, [itemId]: data.suggestions ?? [] }))
+    } catch {
+      setSubstitutions((prev) => ({ ...prev, [itemId]: [] }))
+    } finally {
+      setLoadingSubstitutions((prev) => { const next = new Set(prev); next.delete(itemId); return next })
+    }
+  }
+
+  function swapCartItem(oldItemId: string, suggestion: Substitution, quantity: number) {
+    setCartItems((current) =>
+      current.map((item) =>
+        item.id === oldItemId
+          ? { id: suggestion.priceId, name: suggestion.name, price: suggestion.price, store: suggestion.storeName, imageUrl: suggestion.imageUrl, unitInfo: suggestion.unit, quantity }
+          : item,
+      ),
+    )
+    setSubstitutions((prev) => { const next = { ...prev }; delete next[oldItemId]; return next })
+    addToast(`Swapped to ${suggestion.name}`, 'success')
   }
 
   return (
@@ -678,6 +719,42 @@ export default function MarketplaceDashboardPage() {
                         </button>
                       </div>
                       <p className="text-sm font-bold text-[#2f9f4f]">{formatCurrency(item.price * item.quantity)}</p>
+                    </div>
+                    <div className="mt-2">
+                      {substitutions[item.id] === undefined ? (
+                        <button
+                          className="text-[11px] font-semibold text-[#2f9f4f] hover:underline disabled:text-[#9ca3af]"
+                          disabled={loadingSubstitutions.has(item.id)}
+                          onClick={() => fetchSubstitutions(item.id)}
+                          type="button"
+                        >
+                          {loadingSubstitutions.has(item.id) ? 'Finding alternatives…' : 'Find cheaper alternatives'}
+                        </button>
+                      ) : substitutions[item.id]!.length === 0 ? (
+                        <p className="text-[11px] text-[#9ca3af]">No cheaper alternatives found</p>
+                      ) : (
+                        <div className="mt-1 space-y-1.5">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7b70]">Cheaper options</p>
+                          {substitutions[item.id]!.map((s) => (
+                            <div className="flex items-center justify-between gap-2 rounded-xl border border-[#e5ece2] bg-[#f7faf6] px-3 py-2" key={s.priceId}>
+                              <div className="min-w-0">
+                                <p className="truncate text-[11px] font-semibold text-[#1f2b22]">{s.name}</p>
+                                <p className="text-[10px] text-[#7b8b80]">{s.storeName} · {formatCurrency(s.price)}</p>
+                                {s.savingsPercentage !== null && (
+                                  <p className="text-[10px] font-semibold text-[#2f9f4f]">Save {s.savingsPercentage.toFixed(0)}%</p>
+                                )}
+                              </div>
+                              <button
+                                className="shrink-0 rounded-lg bg-[#2f9f4f] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#25813f]"
+                                onClick={() => swapCartItem(item.id, s, item.quantity)}
+                                type="button"
+                              >
+                                Swap
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
