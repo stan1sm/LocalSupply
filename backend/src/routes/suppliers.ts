@@ -91,6 +91,7 @@ suppliersRouter.get('/', async (_req, res) => {
       },
       where: {
         showInMarketplace: true,
+        isVerified: true,
       },
     })
 
