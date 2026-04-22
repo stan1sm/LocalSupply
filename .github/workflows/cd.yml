@@ -76,7 +76,22 @@ jobs:
 
       - name: Run database migrations
         working-directory: backend
-        run: npm run prisma migrate deploy
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL is not set. Skipping migrations."
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            npm run prisma -- migrate deploy && break
+            echo "Migration attempt $attempt failed."
+            if [ $attempt -lt 3 ]; then
+              echo "Retrying in 10s..."
+              sleep 10
+            else
+              echo "All migration attempts failed."
+              exit 1
+            fi
+          done
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
@@ -133,7 +148,22 @@ jobs:
 
       - name: Run database migrations
         working-directory: backend
-        run: npm run prisma migrate deploy
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL is not set. Skipping migrations."
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            npm run prisma -- migrate deploy && break
+            echo "Migration attempt $attempt failed."
+            if [ $attempt -lt 3 ]; then
+              echo "Retrying in 10s..."
+              sleep 10
+            else
+              echo "All migration attempts failed."
+              exit 1
+            fi
+          done
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
