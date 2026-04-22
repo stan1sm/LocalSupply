@@ -410,6 +410,19 @@ productsRouter.get('/stores', async (_req, res) => {
   }
 })
 
+function buildSubstitutionReason(
+  candidate: { brand: string | null; category: string | null; name: string },
+  base: { brand: string | null; category: string | null; name: string },
+): string {
+  if (candidate.brand && candidate.brand === base.brand) {
+    return `Same brand (${candidate.brand}), lower price`
+  }
+  if (candidate.category && candidate.category === base.category) {
+    return `Alternative in ${candidate.category}`
+  }
+  return `Similar product at a lower price`
+}
+
 productsRouter.get('/:productId/substitutions', async (req, res) => {
   const productId = typeof req.params.productId === 'string' ? req.params.productId.trim() : ''
 
@@ -487,7 +500,7 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
         if (!candidate.currentPrice) return null
 
         const similarity = similar.find((entry) => entry.productId === candidate.catalogProductId)?.similarity ?? 0
-        if (similarity < 0.8) return null
+        if (similarity < 0.70) return null
 
         const price = candidate.currentPrice
         const isCheaperOrEqual = price.lte(baseUnitPrice)
@@ -500,12 +513,7 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
         const savingsAmount = baseUnitPrice.minus(price)
         const savingsPercentage = baseUnitPrice.gt(0) ? savingsAmount.div(baseUnitPrice).times(100) : null
 
-        let reason = 'Similar product with lower price'
-        if (candidate.catalogProduct.brand && candidate.catalogProduct.brand === baseProduct.brand) {
-          reason = 'Same brand, cheaper option'
-        } else if (candidate.catalogProduct.category && candidate.catalogProduct.category === baseProduct.category) {
-          reason = 'Same category, cheaper option'
-        }
+        const reason = buildSubstitutionReason(candidate.catalogProduct, baseProduct)
 
         return {
           priceId: candidate.id,
@@ -532,7 +540,7 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
               if (!candidate.currentPrice) return null
 
               const similarity = similar.find((entry) => entry.productId === candidate.catalogProductId)?.similarity ?? 0
-              if (similarity < 0.75) return null
+              if (similarity < 0.62) return null
 
               const price = candidate.currentPrice
               const isCheaperOrEqual = price.lte(baseUnitPrice)
@@ -544,12 +552,7 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
               const savingsAmount = baseUnitPrice.minus(price)
               const savingsPercentage = baseUnitPrice.gt(0) ? savingsAmount.div(baseUnitPrice).times(100) : null
 
-              let reason = 'Similar product with lower price'
-              if (candidate.catalogProduct.brand && candidate.catalogProduct.brand === baseProduct.brand) {
-                reason = 'Same brand, cheaper option'
-              } else if (candidate.catalogProduct.category && candidate.catalogProduct.category === baseProduct.category) {
-                reason = 'Same category, cheaper option'
-              }
+              const reason = buildSubstitutionReason(candidate.catalogProduct, baseProduct)
 
               return {
                 priceId: candidate.id,
