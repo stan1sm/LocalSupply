@@ -249,8 +249,10 @@ cartRouter.post('/intent', async (req, res) => {
       return
     }
 
-    // Step 2: Embed each ingredient's product name in a single batch API call.
-    const embeddingInputs = ingredients.map((ing) => ing.product)
+    // Step 2: Embed each ingredient using name + synonyms for a richer query vector.
+    const embeddingInputs = ingredients.map((ing) =>
+      [ing.product, ...ing.searchTerms.slice(0, 3)].join(' | '),
+    )
     let rawEmbeddings: number[][] = []
     try {
       rawEmbeddings = await getEmbeddings(embeddingInputs)
@@ -304,7 +306,7 @@ cartRouter.post('/intent', async (req, res) => {
     }
 
     // Step 5: Rank candidates per ingredient by embedding similarity, keep top 10.
-    const SIMILARITY_THRESHOLD = 0.20
+    const SIMILARITY_THRESHOLD = 0.25
     const TOP_K = 10
 
     const ingredientTopIds: string[][] = ingredients.map((_ing, idx) => {
@@ -425,7 +427,7 @@ cartRouter.post('/intent', async (req, res) => {
           const emb = embeddingByProductId.get(productId)
           const similarity = ingEmb && emb ? cosineSimilarity(ingEmb, emb) : 0
 
-          const maxPrice = 500
+          const maxPrice = 150
           const priceScore = 1 - Math.min(unitPrice / maxPrice, 1)
           const combinedScore = similarity * 0.7 + priceScore * 0.3
 
