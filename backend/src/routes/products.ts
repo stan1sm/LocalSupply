@@ -472,18 +472,31 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
       return
     }
 
+    // Store names and generic words that appear in product names but carry no product-type signal
+    const TOKEN_STOP_WORDS = new Set([
+      'coop', 'meny', 'rema', 'rema1000', 'spar', 'joker', 'kiwi', 'bunnpris', 'oda',
+      'nrg', 'prior', 'gilde', 'tine', 'stabburet', 'norgesgruppen', 'ica', 'extra',
+      'den', 'norske', 'the', 'and', 'for', 'med', 'fra', 'til', 'uten', 'eller',
+    ])
+
     function tokenize(text: string | null | undefined): string[] {
       if (!text) return []
       return text
         .toLowerCase()
         .replace(/[^a-zæøå0-9\s]/gi, ' ')
         .split(/\s+/)
-        .filter((token) => token.length >= 3 && !/^\d/.test(token))
+        .filter((token) => token.length >= 3 && !/^\d/.test(token) && !TOKEN_STOP_WORDS.has(token))
     }
 
     const baseTokens = new Set(tokenize(baseProduct.name))
     const baseCategory = baseProduct.category ?? null
     const baseUnit = baseProduct.unit ?? null
+
+    // Can't safely substitute if we have no meaningful product tokens or no category
+    if (baseTokens.size === 0 || !baseCategory) {
+      res.status(200).json({ suggestions: [] })
+      return
+    }
 
     function hasTokenOverlap(candidateName: string | null | undefined): boolean {
       const tokens = tokenize(candidateName)
@@ -540,7 +553,7 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
               if (!candidate.currentPrice) return null
 
               const similarity = similar.find((entry) => entry.productId === candidate.catalogProductId)?.similarity ?? 0
-              if (similarity < 0.62) return null
+              if (similarity < 0.68) return null
 
               const price = candidate.currentPrice
               const isCheaperOrEqual = price.lte(baseUnitPrice)
