@@ -150,13 +150,18 @@ export default function RegisterPage() {
 
         <a
           href={buildApiUrl('/api/auth/vipps')}
-          className="mt-6 flex w-full items-center justify-center gap-3 rounded-xl border-2 border-[#FF5B24] bg-white px-4 py-2.5 text-sm font-semibold text-[#FF5B24] transition hover:bg-[#fff4f1]"
+          className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-[#FF5B24] px-4 py-3 font-bold text-white transition hover:bg-[#e5521f]"
         >
-          <svg viewBox="0 0 56 56" className="h-5 w-5 shrink-0" fill="none" aria-hidden="true">
-            <circle cx="28" cy="28" r="28" fill="#FF5B24" />
-            <path d="M17 20h5.6l5.2 10.4L33.8 20H40l-12.2 22L17 20Z" fill="#fff" />
+          Register with&nbsp;
+          <svg viewBox="0 0 68 22" className="h-[1.1em] shrink-0" fill="white" xmlns="http://www.w3.org/2000/svg" aria-label="Vipps">
+            <path d="M0 1h4.8l4.4 8.8L13.6 1H19L10.2 19 1 1z"/>
+            <ellipse cx="9.8" cy="11.5" rx="2.2" ry="1.4" fill="#FF5B24"/>
+            <rect x="22" y="1" width="3.5" height="3.5" rx="1.75"/>
+            <rect x="22" y="6.5" width="3.5" height="12.5" rx="1"/>
+            <path d="M29 6.5h3.5v2a4.5 4.5 0 0 1 3.8-2.2c3 0 5.2 2.4 5.2 6.4s-2.2 6.5-5.3 6.5a4.3 4.3 0 0 1-3.7-2v6.3H29zm3.5 6.1c0 2.1 1.1 3.4 2.8 3.4s2.8-1.3 2.8-3.4-1.1-3.4-2.8-3.4-2.8 1.3-2.8 3.4z"/>
+            <path d="M44 6.5h3.5v2a4.5 4.5 0 0 1 3.8-2.2c3 0 5.2 2.4 5.2 6.4s-2.2 6.5-5.3 6.5a4.3 4.3 0 0 1-3.7-2v6.3H44zm3.5 6.1c0 2.1 1.1 3.4 2.8 3.4s2.8-1.3 2.8-3.4-1.1-3.4-2.8-3.4-2.8 1.3-2.8 3.4z"/>
+            <path d="M58.2 15.4c.8.8 2 1.3 3.2 1.3 1 0 1.7-.4 1.7-1s-.5-.9-2-1.2c-2.6-.6-4-1.6-4-3.6 0-2.2 1.9-3.7 4.7-3.7 1.7 0 3.2.5 4.4 1.4l-1.7 2.3c-.8-.6-1.7-1-2.7-1-.9 0-1.5.4-1.5.9s.4.8 1.9 1.1c2.7.6 4.1 1.7 4.1 3.7 0 2.3-2 3.8-5 3.8-1.9 0-3.6-.6-4.9-1.7z"/>
           </svg>
-          Register with Vipps
         </a>
 
         <div className="relative mt-5 flex items-center gap-3">
