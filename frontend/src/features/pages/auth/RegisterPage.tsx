@@ -43,6 +43,8 @@ export default function RegisterPage() {
   const [submitMessage, setSubmitMessage] = useState('')
   const [submitIsError, setSubmitIsError] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const hasLivePasswordMismatch =
     (formData.password.length > 0 || formData.confirmPassword.length > 0) &&
@@ -203,18 +205,38 @@ export default function RegisterPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className={labelClass}>
               Password
-              <input
-                aria-invalid={Boolean(errors.password)}
-                autoComplete="new-password"
-                className={inputClass}
-                maxLength={128}
-                name="password"
-                onChange={(e) => handlePasswordChange('password', e.target.value)}
-                placeholder="Create a strong password"
-                required
-                type="password"
-                value={formData.password}
-              />
+              <div className="relative">
+                <input
+                  aria-invalid={Boolean(errors.password)}
+                  autoComplete="new-password"
+                  className={`${inputClass} pr-9`}
+                  maxLength={128}
+                  name="password"
+                  onChange={(e) => handlePasswordChange('password', e.target.value)}
+                  placeholder="Create a strong password"
+                  required
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                />
+                <button
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#6b7280]"
+                  onClick={() => setShowPassword((v) => !v)}
+                  tabIndex={-1}
+                  type="button"
+                >
+                  {showPassword ? (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
               <ul className="mt-1 space-y-0.5 text-[11px]">
                 {[
                   { key: 'hasMinLength', label: 'At least 8 characters' },
@@ -236,18 +258,38 @@ export default function RegisterPage() {
 
             <label className={labelClass}>
               Confirm password
-              <input
-                aria-invalid={Boolean(errors.confirmPassword) || hasLivePasswordMismatch}
-                autoComplete="new-password"
-                className={inputClass}
-                maxLength={128}
-                name="confirmPassword"
-                onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}
-                placeholder="Repeat your password"
-                required
-                type="password"
-                value={formData.confirmPassword}
-              />
+              <div className="relative">
+                <input
+                  aria-invalid={Boolean(errors.confirmPassword) || hasLivePasswordMismatch}
+                  autoComplete="new-password"
+                  className={`${inputClass} pr-9`}
+                  maxLength={128}
+                  name="confirmPassword"
+                  onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}
+                  placeholder="Repeat your password"
+                  required
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={formData.confirmPassword}
+                />
+                <button
+                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#6b7280]"
+                  onClick={() => setShowConfirmPassword((v) => !v)}
+                  tabIndex={-1}
+                  type="button"
+                >
+                  {showConfirmPassword ? (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
               {hasLivePasswordMismatch ? <p className={errorClass}>Passwords don&apos;t match.</p> : null}
               {!hasLivePasswordMismatch && errors.confirmPassword ? <p className={errorClass}>{errors.confirmPassword}</p> : null}
             </label>
