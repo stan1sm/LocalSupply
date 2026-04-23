@@ -143,6 +143,7 @@ export default function MarketplaceDashboardPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [substitutions, setSubstitutions] = useState<Record<string, Substitution[] | null>>({})
   const [loadingSubstitutions, setLoadingSubstitutions] = useState<Set<string>>(new Set())
+  const [hiddenProductIds, setHiddenProductIds] = useState<Set<string>>(new Set())
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   const deferredSearchQuery = useDeferredValue(searchQuery)
@@ -290,7 +291,7 @@ export default function MarketplaceDashboardPage() {
     return () => observer.disconnect()
   }, [loadMore])
 
-  const filteredProducts = sortProducts(products, sortBy)
+  const filteredProducts = sortProducts(products.filter((p) => !hiddenProductIds.has(p.id)), sortBy)
 
   const cartSubtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const estimatedDelivery = cartSubtotal > 0 ? 49 : 0
@@ -554,11 +555,8 @@ export default function MarketplaceDashboardPage() {
                               alt={product.name}
                               className="h-full w-full object-contain p-4 transition duration-300 group-hover:scale-105"
                               src={productImageSrc(product.imageUrl) ?? ''}
-                              onError={(e) => {
-                                const target = e.currentTarget
-                                target.style.display = 'none'
-                                const placeholder = target.parentElement?.querySelector('.img-placeholder')
-                                if (placeholder) (placeholder as HTMLElement).style.display = 'flex'
+                              onError={() => {
+                                setHiddenProductIds((prev) => new Set([...prev, product.id]))
                               }}
                             />
                           ) : null}
