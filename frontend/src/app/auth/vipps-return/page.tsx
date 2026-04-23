@@ -1,11 +1,18 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
-
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function VippsReturnPage() {
+const Spinner = () => (
+  <main className="flex min-h-screen items-center justify-center bg-[#f3f4f6]">
+    <div className="text-center">
+      <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[#d5ded1] border-t-[#FF5B24]" />
+      <p className="text-sm font-medium text-[#374740]">Completing Vipps sign in…</p>
+    </div>
+  </main>
+)
+
+function VippsReturnContent() {
   const router = useRouter()
   const params = useSearchParams()
 
@@ -15,8 +22,7 @@ export default function VippsReturnPage() {
     const error = params.get('error')
 
     if (error || !token || !userRaw) {
-      const reason = error ?? 'vipps_failed'
-      router.replace(`/login?error=${reason}`)
+      router.replace(`/login?error=${error ?? 'vipps_failed'}`)
       return
     }
 
@@ -35,12 +41,13 @@ export default function VippsReturnPage() {
     }
   }, [params, router])
 
+  return <Spinner />
+}
+
+export default function VippsReturnPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f3f4f6]">
-      <div className="text-center">
-        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[#d5ded1] border-t-[#FF5B24]" />
-        <p className="text-sm font-medium text-[#374740]">Completing Vipps sign in…</p>
-      </div>
-    </main>
+    <Suspense fallback={<Spinner />}>
+      <VippsReturnContent />
+    </Suspense>
   )
 }
