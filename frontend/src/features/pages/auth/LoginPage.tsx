@@ -130,7 +130,24 @@ export default function LoginPage() {
           <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/register">Create one</Link>
         </p>
 
-        <form className="mt-6 space-y-4" noValidate onSubmit={handleSubmit}>
+        <a
+          href={buildApiUrl('/api/auth/vipps')}
+          className="mt-6 flex w-full items-center justify-center gap-3 rounded-xl border-2 border-[#FF5B24] bg-white px-4 py-2.5 text-sm font-semibold text-[#FF5B24] transition hover:bg-[#fff4f1]"
+        >
+          <svg viewBox="0 0 56 56" className="h-5 w-5 shrink-0" fill="none" aria-hidden="true">
+            <circle cx="28" cy="28" r="28" fill="#FF5B24" />
+            <path d="M17 20h5.6l5.2 10.4L33.8 20H40l-12.2 22L17 20Z" fill="#fff" />
+          </svg>
+          Continue with Vipps
+        </a>
+
+        <div className="relative mt-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-[#e5ece2]" />
+          <span className="text-xs text-[#9ca3af]">or</span>
+          <div className="h-px flex-1 bg-[#e5ece2]" />
+        </div>
+
+        <form className="mt-5 space-y-4" noValidate onSubmit={handleSubmit}>
           <label className={labelClass}>
             Email
             <input

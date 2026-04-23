@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto'
 import { Router } from 'express'
 import { buildEmailVerifiedRedirectUrl, sendPasswordResetEmail, sendUserVerificationEmail } from '../lib/email.js'
 import { signBuyerToken } from '../lib/jwt.js'
@@ -6,6 +7,7 @@ import { hashPassword, verifyPassword } from '../lib/password.js'
 import { requireBuyerAuth } from '../middleware/requireBuyerAuth.js'
 import { validateUserEmailPayload, validateUserLoginPayload, validateUserRegistrationPayload } from '../lib/validation.js'
 import { generateEmailVerificationToken, generatePasswordResetToken, hashEmailVerificationToken, hashPasswordResetToken, isValidEmailVerificationToken, isValidPasswordResetToken } from '../lib/verification.js'
+import { buildAuthorizationUrl, exchangeCode, getUserInfo } from '../lib/vippsLogin.js'
 
 const authRouter = Router()
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
@@ -587,6 +589,107 @@ authRouter.post('/reset-password', async (req, res) => {
   } catch (error) {
     console.error('Reset password error', error)
     res.status(503).json({ message: 'Unable to reset password right now.' })
+  }
+})
+
+// ── Vipps Login ──────────────────────────────────────────────────────────────
+
+function parseCookies(header: string | undefined): Record<string, string> {
+  if (!header) return {}
+  return Object.fromEntries(
+    header.split(';').map((pair) => {
+      const eq = pair.indexOf('=')
+      if (eq < 0) return [pair.trim(), '']
+      return [pair.slice(0, eq).trim(), decodeURIComponent(pair.slice(eq + 1).trim())]
+    }),
+  )
+}
+
+// GET /api/auth/vipps — kick off OAuth flow
+authRouter.get('/vipps', (req, res) => {
+  const state = randomBytes(16).toString('hex')
+  const baseUrl = getRequestBaseUrl(req) ?? `https://${req.get('host')}`
+  const redirectUri = `${baseUrl}/api/auth/vipps/callback`
+  const authUrl = buildAuthorizationUrl(state, redirectUri)
+
+  const isSecure = req.get('x-forwarded-proto') === 'https' || req.protocol === 'https'
+  const cookieFlags = `HttpOnly; SameSite=Lax; Max-Age=600; Path=/${isSecure ? '; Secure' : ''}`
+  res.setHeader('Set-Cookie', `vipps_state=${state}; ${cookieFlags}`)
+  res.redirect(authUrl)
+})
+
+// GET /api/auth/vipps/callback — Vipps redirects here after auth
+authRouter.get('/vipps/callback', async (req, res) => {
+  const frontendUrl = process.env.FRONTEND_BASE_URL ?? 'http://localhost:3000'
+  const { code, state, error } = req.query as Record<string, string>
+
+  if (error || !code || !state) {
+    res.redirect(`${frontendUrl}/login?error=vipps_denied`)
+    return
+  }
+
+  const cookies = parseCookies(req.headers.cookie)
+  if (state !== cookies.vipps_state) {
+    res.redirect(`${frontendUrl}/login?error=vipps_state`)
+    return
+  }
+
+  // Clear state cookie
+  res.setHeader('Set-Cookie', 'vipps_state=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/')
+
+  try {
+    const baseUrl = getRequestBaseUrl(req) ?? `https://${req.get('host')}`
+    const redirectUri = `${baseUrl}/api/auth/vipps/callback`
+    const accessToken = await exchangeCode(code, redirectUri)
+    const userInfo = await getUserInfo(accessToken)
+
+    if (!userInfo.sub) throw new Error('No sub in Vipps userinfo')
+
+    const prisma = getPrismaClient()
+    let user = await prisma.user.findUnique({ where: { vippsSub: userInfo.sub } })
+
+    if (!user && userInfo.email) {
+      const byEmail = await prisma.user.findUnique({ where: { email: userInfo.email } })
+      if (byEmail) {
+        user = await prisma.user.update({
+          where: { id: byEmail.id },
+          data: {
+            vippsSub: userInfo.sub,
+            vippsPhoneNumber: userInfo.phone_number ?? null,
+            emailVerified: true,
+          },
+        })
+      }
+    }
+
+    if (!user) {
+      const firstName = userInfo.given_name ?? userInfo.name?.split(' ')[0] ?? 'Vipps'
+      const lastName = userInfo.family_name ?? userInfo.name?.split(' ').slice(1).join(' ') ?? 'User'
+      const email = userInfo.email ?? `${userInfo.sub}@vipps.noemail`
+      user = await prisma.user.create({
+        data: {
+          firstName,
+          lastName,
+          email,
+          emailVerified: true,
+          vippsSub: userInfo.sub,
+          vippsPhoneNumber: userInfo.phone_number ?? null,
+        },
+      })
+    }
+
+    const token = signBuyerToken(user.id)
+    const userParam = encodeURIComponent(JSON.stringify({
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+    }))
+
+    res.redirect(`${frontendUrl}/auth/vipps-return?token=${token}&user=${userParam}`)
+  } catch (err) {
+    console.error('Vipps callback failed', err)
+    res.redirect(`${frontendUrl}/login?error=vipps_failed`)
   }
 })
 
