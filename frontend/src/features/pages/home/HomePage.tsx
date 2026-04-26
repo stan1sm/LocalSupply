@@ -111,7 +111,7 @@ export default function HomePage() {
       <section className="mx-auto w-full max-w-6xl px-4 pb-12 pt-5 sm:px-6 lg:px-8">
         <header className="flex items-center justify-between rounded-xl border border-[#e5e7eb] bg-white/95 px-4 py-3 shadow-sm backdrop-blur-sm">
           <Link className="inline-flex items-center gap-2.5 text-[15px] font-bold text-[#1f2937] transition hover:text-[#2f9f4f]" href="/">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#2f9f4f] text-xs font-bold text-white">LS</span>
+            <img src="/icons/localsupply-64.png" alt="LocalSupply" className="h-8 w-8 shrink-0 rounded-lg" />
             <span>LocalSupply</span>
           </Link>
 
@@ -287,7 +287,7 @@ export default function HomePage() {
         <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 text-sm text-[#4b5563] sm:px-6 md:grid-cols-4 lg:px-8">
           <div className="md:col-span-2">
             <p className="inline-flex items-center gap-2 font-bold text-[#1f2937]">
-              <span className="grid h-6 w-6 place-items-center rounded-lg bg-[#2f9f4f] text-[10px] font-bold text-white">LS</span>
+              <img src="/icons/localsupply-32.png" alt="LocalSupply" className="h-6 w-6 rounded-lg" />
               LocalSupply
             </p>
             <p className="mt-2 max-w-md leading-relaxed">
