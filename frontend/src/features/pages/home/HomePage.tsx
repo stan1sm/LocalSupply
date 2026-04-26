@@ -296,18 +296,16 @@ export default function HomePage() {
           </div>
           <div>
             <h3 className="font-semibold text-[#111827]">Company</h3>
-            <ul className="mt-2 space-y-1.5 text-[#4b5563]">
-              <li>About</li>
-              <li>Careers</li>
-              <li>Blog</li>
+            <ul className="mt-2 space-y-1.5">
+              <li><Link className="transition hover:text-[#2f9f4f]" href="/about">About</Link></li>
+              <li><Link className="transition hover:text-[#2f9f4f]" href="/supplier/register">For suppliers</Link></li>
             </ul>
           </div>
           <div>
-            <h3 className="font-semibold text-[#111827]">Support</h3>
-            <ul className="mt-2 space-y-1.5 text-[#4b5563]">
-              <li>Help Center</li>
-              <li>Contact</li>
-              <li>Status</li>
+            <h3 className="font-semibold text-[#111827]">Legal</h3>
+            <ul className="mt-2 space-y-1.5">
+              <li><Link className="transition hover:text-[#2f9f4f]" href="/privacy-policy">Privacy Policy</Link></li>
+              <li><Link className="transition hover:text-[#2f9f4f]" href="/cookie-policy">Cookie Policy</Link></li>
             </ul>
           </div>
         </div>
