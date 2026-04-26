@@ -119,9 +119,14 @@ export default function LoginPage() {
             <span aria-hidden="true">←</span>
             <span>Back to homepage</span>
           </button>
-          <Link className="text-xs font-semibold text-[#1f7b3a] underline underline-offset-2 hover:no-underline" href="/supplier/login">
-            Supplier login
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link className="rounded-full bg-[#2f9f4f] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#25813f]" href="/register">
+              Create account
+            </Link>
+            <Link className="text-xs font-semibold text-[#1f7b3a] underline underline-offset-2 hover:no-underline" href="/supplier/login">
+              Supplier login
+            </Link>
+          </div>
         </div>
 
         <h2 className="text-xl font-bold text-[#1b2a1f]">Welcome back</h2>

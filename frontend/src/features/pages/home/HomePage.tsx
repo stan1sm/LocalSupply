@@ -152,6 +152,12 @@ export default function HomePage() {
                   Login
                 </Link>
                 <Link
+                  className="rounded-full bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#25813f]"
+                  href="/register"
+                >
+                  Register
+                </Link>
+                <Link
                   className="hidden rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a] sm:inline-block"
                   href="/supplier/login"
                 >
