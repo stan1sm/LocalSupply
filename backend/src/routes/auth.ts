@@ -528,28 +528,26 @@ authRouter.post('/forgot-password', async (req, res) => {
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
 
+  if (email) {
+    try {
+      const prisma = getPrismaClient()
+      const user = await prisma.user.findUnique({ where: { email } })
+      if (user && user.emailVerified) {
+        const { token, tokenHash } = generatePasswordResetToken()
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { passwordResetTokenHash: tokenHash, passwordResetTokenExpiresAt: expiresAt },
+        })
+        await sendPasswordResetEmail({ email: user.email, firstName: user.firstName, resetToken: token })
+      }
+    } catch (error) {
+      console.error('Forgot password error', error)
+    }
+  }
+
   // Always return success to prevent email enumeration
   res.json({ message: 'If an account exists for this email, a password reset link has been sent.' })
-
-  if (!email) return
-
-  try {
-    const prisma = getPrismaClient()
-    const user = await prisma.user.findUnique({ where: { email } })
-    if (!user || !user.emailVerified) return
-
-    const { token, tokenHash } = generatePasswordResetToken()
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { passwordResetTokenHash: tokenHash, passwordResetTokenExpiresAt: expiresAt },
-    })
-
-    await sendPasswordResetEmail({ email: user.email, firstName: user.firstName, resetToken: token })
-  } catch (error) {
-    console.error('Forgot password error', error)
-  }
 })
 
 // POST /api/auth/reset-password
