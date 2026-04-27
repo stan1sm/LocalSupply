@@ -605,5 +605,16 @@ suppliersRouter.post('/login', async (req, res) => {
   }
 })
 
+suppliersRouter.delete('/account', requireSupplierAuth, async (req, res) => {
+  const supplierId = res.locals.supplierId as string
+  try {
+    await getPrismaClient().supplier.delete({ where: { id: supplierId } })
+    res.status(204).end()
+  } catch (error) {
+    console.error('Supplier account deletion failed', error)
+    res.status(503).json({ message: 'Unable to delete account right now.' })
+  }
+})
+
 export default suppliersRouter
 

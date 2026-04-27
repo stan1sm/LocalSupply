@@ -237,7 +237,7 @@ export default function BuyerSettingsPage() {
       .then((data: Order[]) => { if (Array.isArray(data)) setOrders(data) })
       .catch(() => {})
       .finally(() => setOrdersLoading(false))
-  }, [activeTab, buyer])
+  }, [activeTab, buyer, orders.length])
 
   // GeoNorge autocomplete
   useEffect(() => {

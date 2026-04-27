@@ -249,6 +249,9 @@ export default function SupplierSettingsPage() {
   const [successMessage, setSuccessMessage] = useState('')
   const [activeTab, setActiveTab] = useState<Tab>('profile')
   const [token, setToken] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const isDirty = useMemo(() => {
     if (!profile || !savedProfile) return false
@@ -390,6 +393,30 @@ export default function SupplierSettingsPage() {
         </div>
       </main>
     )
+  }
+
+  async function handleDeleteAccount() {
+    if (!token) return
+    setIsDeleting(true)
+    setDeleteError('')
+    try {
+      const resp = await fetch(buildApiUrl('/api/suppliers/account'), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!resp.ok) {
+        const data = (await resp.json().catch(() => ({}))) as { message?: string }
+        setDeleteError(data.message ?? 'Unable to delete account right now.')
+        setIsDeleting(false)
+        return
+      }
+      window.localStorage.removeItem(SUPPLIER_STORAGE_KEY)
+      window.localStorage.removeItem(SUPPLIER_TOKEN_KEY)
+      window.location.href = '/'
+    } catch {
+      setDeleteError('Unable to delete account right now.')
+      setIsDeleting(false)
+    }
   }
 
   return (
@@ -829,6 +856,43 @@ export default function SupplierSettingsPage() {
               </div>
             </form>
           </div>
+        {/* Delete account */}
+        <div className="rounded-[28px] border border-red-200 bg-white/95 p-6 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+          <h3 className="text-base font-bold text-red-700">Delete account</h3>
+          <p className="mt-1 text-sm text-[#6b7b70]">
+            Permanently delete your supplier account, all your products, and all associated data. This cannot be undone.
+          </p>
+          {deleteError && <p className="mt-2 text-sm text-red-600">{deleteError}</p>}
+          {!showDeleteConfirm ? (
+            <button
+              className="mt-4 rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+              onClick={() => setShowDeleteConfirm(true)}
+              type="button"
+            >
+              Delete my account
+            </button>
+          ) : (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <p className="w-full text-sm font-semibold text-red-700">Are you sure? This is permanent.</p>
+              <button
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+                disabled={isDeleting}
+                onClick={handleDeleteAccount}
+                type="button"
+              >
+                {isDeleting ? 'Deleting…' : 'Yes, delete my account'}
+              </button>
+              <button
+                className="rounded-xl border border-[#d4ddcf] px-4 py-2 text-sm font-semibold text-[#374151] transition hover:bg-[#f9fbf8]"
+                disabled={isDeleting}
+                onClick={() => setShowDeleteConfirm(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
         </section>
       </div>
     </main>

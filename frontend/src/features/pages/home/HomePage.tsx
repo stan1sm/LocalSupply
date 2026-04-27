@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
 const BUYER_STORAGE_KEY = 'localsupply-user'
+const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
+const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 
 const howItWorks = [
   {
@@ -82,18 +84,24 @@ const smartCartFeatures = [
 
 export default function HomePage() {
   const [loggedInName, setLoggedInName] = useState<string | null>(null)
+  const [supplierName, setSupplierName] = useState<string | null>(null)
 
   useEffect(() => {
     function readStorage() {
       try {
-        const stored = window.localStorage.getItem(BUYER_STORAGE_KEY)
-        if (stored) {
-          const parsed = JSON.parse(stored) as { firstName?: string; id?: string }
-          if (parsed?.id && parsed?.firstName) setLoggedInName(parsed.firstName)
-          else setLoggedInName(null)
-        } else {
-          setLoggedInName(null)
+        const buyerRaw = window.localStorage.getItem(BUYER_STORAGE_KEY)
+        if (buyerRaw) {
+          const parsed = JSON.parse(buyerRaw) as { firstName?: string; id?: string }
+          if (parsed?.id && parsed?.firstName) { setLoggedInName(parsed.firstName); setSupplierName(null); return }
         }
+        setLoggedInName(null)
+        const supplierRaw = window.localStorage.getItem(SUPPLIER_STORAGE_KEY)
+        const supplierToken = window.localStorage.getItem(SUPPLIER_TOKEN_KEY)
+        if (supplierRaw && supplierToken) {
+          const parsed = JSON.parse(supplierRaw) as { businessName?: string; id?: string }
+          if (parsed?.id && parsed?.businessName) { setSupplierName(parsed.businessName); return }
+        }
+        setSupplierName(null)
       } catch { /* ignore */ }
     }
     readStorage()
@@ -104,6 +112,12 @@ export default function HomePage() {
   function handleLogout() {
     window.localStorage.removeItem(BUYER_STORAGE_KEY)
     setLoggedInName(null)
+  }
+
+  function handleSupplierLogout() {
+    window.localStorage.removeItem(SUPPLIER_STORAGE_KEY)
+    window.localStorage.removeItem(SUPPLIER_TOKEN_KEY)
+    setSupplierName(null)
   }
 
   return (
@@ -118,49 +132,40 @@ export default function HomePage() {
           <nav className="flex items-center gap-2">
             {loggedInName ? (
               <>
-                <Link
-                  className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]"
-                  href="/marketplace/dashboard"
-                >
+                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/marketplace/dashboard">
                   My Marketplace
                 </Link>
-                <Link
-                  className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]"
-                  href="/settings"
-                >
+                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/settings">
                   Settings
                 </Link>
-                <button
-                  onClick={handleLogout}
-                  className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
-                >
+                <button onClick={handleLogout} className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600">
+                  Log out
+                </button>
+              </>
+            ) : supplierName ? (
+              <>
+                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/supplier">
+                  My Dashboard
+                </Link>
+                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/supplier/settings">
+                  Settings
+                </Link>
+                <button onClick={handleSupplierLogout} className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600">
                   Log out
                 </button>
               </>
             ) : (
               <>
-                <Link
-                  className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]"
-                  href="/marketplace/dashboard"
-                >
+                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/marketplace/dashboard">
                   Marketplace
                 </Link>
-                <Link
-                  className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]"
-                  href="/login"
-                >
+                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/login">
                   Login
                 </Link>
-                <Link
-                  className="rounded-full bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#25813f]"
-                  href="/register"
-                >
+                <Link className="rounded-full bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#25813f]" href="/register">
                   Register
                 </Link>
-                <Link
-                  className="hidden rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a] sm:inline-block"
-                  href="/supplier/login"
-                >
+                <Link className="hidden rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a] sm:inline-block" href="/supplier/login">
                   Supplier login
                 </Link>
               </>
