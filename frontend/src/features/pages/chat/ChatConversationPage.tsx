@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
+import SupplierSidebar from '../../components/SupplierSidebar'
 
 const BUYER_TOKEN_KEY = 'localsupply-token'
 const BUYER_USER_KEY = 'localsupply-user'
@@ -223,39 +224,7 @@ export default function ChatConversationPage({
         : 'mx-auto flex w-full max-w-3xl flex-col gap-4'
       }>
         {isSupplierView && supplierSession && (
-          <aside className="rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
-            <div className="px-2 pb-4">
-              <a className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#2f9f4f] hover:text-[#1f2937]" href="/">
-                <span aria-hidden="true">←</span><span>LocalSupply</span>
-              </a>
-              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-[#2f9f4f]">Supplier</p>
-              <h2 className="mt-2 text-xl font-bold text-[#1f2b22]">{supplierSession.businessName}</h2>
-              <p className="mt-1 text-xs text-[#6d7b70]">{supplierSession.address}</p>
-            </div>
-            <nav className="space-y-1">
-              {[
-                { id: 'dashboard', label: 'Dashboard',      icon: 'D', href: '/supplier' },
-                { id: 'products',  label: 'Products',       icon: 'P', href: '/supplier/dashboard' },
-                { id: 'orders',    label: 'Orders',         icon: 'O', href: '/supplier/orders' },
-                { id: 'chats',     label: 'Chats',          icon: 'H', href: '/chat' },
-                { id: 'settings',  label: 'Store settings', icon: 'S', href: '/supplier/settings' },
-              ].map((item) => (
-                <a
-                  key={item.id}
-                  aria-current={item.id === 'chats' ? 'page' : undefined}
-                  className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-semibold transition ${
-                    item.id === 'chats' ? 'bg-[#f0f4ef] text-[#1f2b22]' : 'text-[#4f5d52] hover:bg-[#f6faf5] hover:text-[#1f2b22]'
-                  }`}
-                  href={item.href}
-                >
-                  <span className="grid h-7 w-7 place-items-center rounded-lg border border-[#d6dfd2] bg-white text-xs font-bold text-[#5a675d]">
-                    {item.icon}
-                  </span>
-                  {item.label}
-                </a>
-              ))}
-            </nav>
-          </aside>
+          <SupplierSidebar activeId="chats" supplier={supplierSession} />
         )}
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">

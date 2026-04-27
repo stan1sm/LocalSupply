@@ -66,7 +66,7 @@ describe('MarketplaceDashboardPage', () => {
     expect(productFetchUrl).not.toContain('category=')
 
     expect(screen.getByRole('heading', { name: 'Fresh grocery search across Norwegian stores' })).toBeInTheDocument()
-    expect(screen.getByRole('navigation', { name: 'Marketplace navigation' })).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Buyer navigation' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /My Cart$/ })).toBeInTheDocument()
     expect(screen.getByText('Your cart is empty')).toBeInTheDocument()
     expect(screen.getByText('100+ imported products available')).toBeInTheDocument()

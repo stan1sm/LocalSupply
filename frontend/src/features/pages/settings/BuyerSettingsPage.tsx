@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
+import BuyerSidebar from '../../components/BuyerSidebar'
 
 const BUYER_STORAGE_KEY = 'localsupply-user'
 const TOKEN_KEY = 'localsupply-token'
@@ -63,12 +64,6 @@ type Order = {
   items: OrderItem[]
 }
 
-const navItems = [
-  { label: 'Marketplace', href: '/marketplace/dashboard' },
-  { label: 'Cart', href: '/cart' },
-  { label: 'Orders', href: '/orders' },
-  { label: 'Settings', href: '/settings' },
-]
 
 const tabs: { id: Tab; label: string }[] = [
   { id: 'profile', label: 'Profile' },
@@ -473,38 +468,20 @@ export default function BuyerSettingsPage() {
   const labelCls = 'mb-1 block text-xs font-medium text-gray-700'
 
   return (
-    <main className="min-h-screen bg-[#f3f4f6]">
-      <header className="border-b border-[#dfe5da] bg-white px-4 py-3 shadow-sm">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
-          <a href="/marketplace/dashboard" className="text-sm font-bold text-[#1f7b3a]">LocalSupply</a>
-          <nav className="flex items-center gap-4">
-            {navItems.map((item) => (
-              <a key={item.href} href={item.href} className={`text-sm font-medium ${item.href === '/settings' ? 'text-[#1f7b3a]' : 'text-gray-500 hover:text-gray-800'}`}>
-                {item.label}
-              </a>
-            ))}
-            <button
-              onClick={() => {
-                try { window.localStorage.removeItem(BUYER_STORAGE_KEY); window.localStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ }
-                window.location.href = '/login'
-              }}
-              className="text-sm font-medium text-red-500 hover:text-red-700"
-              type="button"
-            >
-              Sign out
-            </button>
-          </nav>
-        </div>
-      </header>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto grid w-full max-w-[1200px] gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <BuyerSidebar activeId="settings" />
 
-      <div className="mx-auto max-w-2xl px-4 py-10">
-        <div className="mb-6">
-          <h1 className="mb-1 text-2xl font-bold text-gray-900">Account settings</h1>
-          <p className="text-sm text-gray-500">{buyer.firstName} {buyer.lastName} &middot; {buyer.email}</p>
-        </div>
+        <section>
+          <div className="mb-6 rounded-[28px] border border-[#dce5d7] bg-white/95 px-6 py-5 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Settings</p>
+            <h1 className="mt-1 text-2xl font-bold text-[#1f2b22]">Account settings</h1>
+            <p className="mt-1 text-sm text-[#617166]">{buyer.firstName} {buyer.lastName} &middot; {buyer.email}</p>
+          </div>
 
+          <div className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur px-6 py-6">
         {/* Tab nav */}
-        <div className="mb-6 flex gap-1 rounded-xl border border-[#dfe5da] bg-white p-1">
+        <div className="mb-6 flex gap-1 rounded-xl border border-[#dfe5da] bg-[#f7faf6] p-1">
           {tabs.map((t) => (
             <button
               key={t.id}
@@ -912,6 +889,8 @@ export default function BuyerSettingsPage() {
             </div>
           </section>
         )}
+          </div>
+        </section>
       </div>
     </main>
   )
