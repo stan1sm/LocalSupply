@@ -97,7 +97,7 @@ export default function SupplierOverviewPage() {
       setErrorMessage('')
       try {
         const token = typeof window !== 'undefined' ? window.localStorage.getItem(SUPPLIER_TOKEN_KEY) : null
-        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {}
+        const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
         const [ordersRes, productsRes] = await Promise.all([
           fetch(buildApiUrl(`/api/orders/supplier/${encodeURIComponent(supplierId)}`), { headers: authHeaders }),
           fetch(buildApiUrl(`/api/suppliers/${encodeURIComponent(supplierId)}/products`)),
