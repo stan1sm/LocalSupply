@@ -5,6 +5,7 @@ import { buildApiUrl } from '../../../lib/api'
 import BuyerSidebar from '../../components/BuyerSidebar'
 
 const BUYER_STORAGE_KEY = 'localsupply-user'
+const BUYER_TOKEN_KEY = 'localsupply-token'
 
 type BuyerSession = {
   id: string
@@ -110,7 +111,10 @@ export default function BuyerOrdersPage() {
     async function loadOrders() {
       setErrorMessage('')
       try {
-        const response = await fetch(buildApiUrl(`/api/orders/buyer/${encodeURIComponent(buyerId)}`))
+        const token = typeof window !== 'undefined' ? window.localStorage.getItem(BUYER_TOKEN_KEY) : null
+        const response = await fetch(buildApiUrl(`/api/orders/buyer/${encodeURIComponent(buyerId)}`), {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
         const payload = (await response.json().catch(() => ({}))) as OrderSummary[] | { message?: string }
 
         if (!response.ok) {

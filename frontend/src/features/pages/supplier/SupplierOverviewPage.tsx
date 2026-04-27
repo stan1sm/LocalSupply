@@ -35,6 +35,7 @@ type ProductSummary = {
 }
 
 const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
+const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 
 function asNumber(value: number | string) {
   return typeof value === 'number' ? value : Number(value)
@@ -95,8 +96,10 @@ export default function SupplierOverviewPage() {
     async function loadData() {
       setErrorMessage('')
       try {
+        const token = typeof window !== 'undefined' ? window.localStorage.getItem(SUPPLIER_TOKEN_KEY) : null
+        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {}
         const [ordersRes, productsRes] = await Promise.all([
-          fetch(buildApiUrl(`/api/orders/supplier/${encodeURIComponent(supplierId)}`)),
+          fetch(buildApiUrl(`/api/orders/supplier/${encodeURIComponent(supplierId)}`), { headers: authHeaders }),
           fetch(buildApiUrl(`/api/suppliers/${encodeURIComponent(supplierId)}/products`)),
         ])
 

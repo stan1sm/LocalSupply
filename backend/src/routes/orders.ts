@@ -4,6 +4,7 @@ import { getPrismaClient } from '../lib/prisma.js'
 import type { OrderStatus } from '../generated/prisma/enums.js'
 import { createDelivery, parseAddressString } from '../lib/woltDrive.js'
 import { requireSupplierAuth } from '../middleware/requireSupplierAuth.js'
+import { requireBuyerAuth } from '../middleware/requireBuyerAuth.js'
 
 const ordersRouter = Router()
 
@@ -16,10 +17,10 @@ type CreateOrderItemInput = {
   quantity: number
 }
 
-ordersRouter.post('/', async (req, res) => {
+ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
 
-  const buyerId = typeof body.buyerId === 'string' ? body.buyerId.trim() : ''
+  const buyerId = res.locals.buyerId as string
   const supplierIdInput = typeof body.supplierId === 'string' ? body.supplierId.trim() : ''
   const notes = typeof body.notes === 'string' ? body.notes.trim() : ''
   const deliveryFee = typeof body.deliveryFee === 'number' && Number.isFinite(body.deliveryFee) ? body.deliveryFee : 0
@@ -58,10 +59,6 @@ ordersRouter.post('/', async (req, res) => {
     })
 
   const errors: Record<string, string> = {}
-
-  if (!buyerId) {
-    errors.buyerId = 'buyerId is required.'
-  }
 
   if (items.length === 0) {
     errors.items = 'Provide at least one order item.'
@@ -334,11 +331,11 @@ ordersRouter.post('/', async (req, res) => {
   }
 })
 
-ordersRouter.get('/buyer/:buyerId', async (req, res) => {
+ordersRouter.get('/buyer/:buyerId', requireBuyerAuth, async (req, res) => {
   const buyerId = String(req.params.buyerId ?? '').trim()
 
-  if (!buyerId) {
-    res.status(400).json({ message: 'buyerId is required.' })
+  if (!buyerId || buyerId !== res.locals.buyerId) {
+    res.status(403).json({ message: 'Forbidden.' })
     return
   }
 
@@ -389,11 +386,11 @@ ordersRouter.get('/buyer/:buyerId', async (req, res) => {
   }
 })
 
-ordersRouter.get('/supplier/:supplierId', async (req, res) => {
+ordersRouter.get('/supplier/:supplierId', requireSupplierAuth, async (req, res) => {
   const supplierId = String(req.params.supplierId ?? '').trim()
 
-  if (!supplierId) {
-    res.status(400).json({ message: 'supplierId is required.' })
+  if (!supplierId || supplierId !== res.locals.supplierId) {
+    res.status(403).json({ message: 'Forbidden.' })
     return
   }
 

@@ -375,9 +375,8 @@ export default function CheckoutPage() {
 
       const response = await fetch(buildApiUrl('/api/orders'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
-          buyerId: buyer.id,
           deliveryFee: deliveryCost,
           deliveryAddress: addressQuery.trim(),
           paymentMethod,

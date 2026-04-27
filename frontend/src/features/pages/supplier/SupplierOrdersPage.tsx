@@ -104,7 +104,10 @@ export default function SupplierOrdersPage() {
     async function loadOrders() {
       setErrorMessage('')
       try {
-        const response = await fetch(buildApiUrl(`/api/orders/supplier/${encodeURIComponent(supplierId)}`))
+        const token = typeof window !== 'undefined' ? window.localStorage.getItem(SUPPLIER_TOKEN_KEY) : null
+        const response = await fetch(buildApiUrl(`/api/orders/supplier/${encodeURIComponent(supplierId)}`), {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
         const payload = (await response.json().catch(() => ({}))) as OrderSummary[] | { message?: string }
         if (!response.ok) throw new Error((payload as { message?: string }).message ?? 'Unable to load orders right now.')
         if (!cancelled && Array.isArray(payload)) setOrders(payload)
