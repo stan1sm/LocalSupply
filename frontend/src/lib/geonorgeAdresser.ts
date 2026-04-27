@@ -24,6 +24,7 @@ type AdresseRow = {
   bokstav: string | null
 }
 
+/** Converts a string to title case (first letter of each word capitalized). */
 function toTitleCase(s: string): string {
   return s
     .toLowerCase()
@@ -32,10 +33,12 @@ function toTitleCase(s: string): string {
     .join(' ')
 }
 
+/** Normalizes a postal place name from the API (typically ALL CAPS) to title case. */
 function formatPoststed(raw: string): string {
   return toTitleCase(raw.trim())
 }
 
+/** Maps a raw API address row to the typed `GeonorgeAdresse` shape, normalizing the postal place name. */
 function mapRow(a: AdresseRow): GeonorgeAdresse {
   return {
     adressetekst: a.adressetekst,
@@ -47,6 +50,10 @@ function mapRow(a: AdresseRow): GeonorgeAdresse {
   }
 }
 
+/**
+ * Searches for Norwegian addresses matching `query`.
+ * Routes through the backend proxy when `API_BASE_URL` is set; otherwise calls Geonorge directly.
+ */
 export async function searchAddresses(query: string, limit = 10): Promise<GeonorgeAdresse[]> {
   const trimmed = query.trim()
   if (trimmed.length === 0) return []

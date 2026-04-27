@@ -35,18 +35,21 @@ export default function LoginPage() {
   const normalizedEmail = formData.email.trim().toLowerCase()
   const hasLiveInvalidEmail = normalizedEmail.length > 0 && !EMAIL_REGEX.test(normalizedEmail)
 
+  /** Sanitizes and stores the email input, clearing any existing field error. */
   function handleEmailChange(value: string) {
     setFormData((prev) => ({ ...prev, email: sanitizeEmailInput(value) }))
     setErrors((prev) => ({ ...prev, email: undefined }))
     setSubmitMessage('')
   }
 
+  /** Caps password length at 128 chars and clears the field error on change. */
   function handlePasswordChange(value: string) {
     setFormData((prev) => ({ ...prev, password: value.slice(0, 128) }))
     setErrors((prev) => ({ ...prev, password: undefined }))
     setSubmitMessage('')
   }
 
+  /** Validates the form client-side, then POSTs to the login API; on success persists the session and redirects. */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return

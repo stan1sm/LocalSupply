@@ -3,6 +3,7 @@ import { getEmbedding } from './aiClient.js'
 
 const DEFAULT_EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
 
+/** Builds a single embedding input string from a product's name, brand, category, and unit. */
 function buildProductEmbeddingInput(product: {
   name: string
   brand: string | null
@@ -19,6 +20,7 @@ function buildProductEmbeddingInput(product: {
   return parts.filter(Boolean).join(' | ')
 }
 
+/** Computes cosine similarity between two equal-length vectors; returns 0 for zero vectors or mismatched lengths. */
 function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0
 
@@ -38,6 +40,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB))
 }
 
+/** Generates an embedding for the given catalog product and upserts it into `ProductEmbedding`. */
 export async function generateAndStoreProductEmbedding(productId: string): Promise<void> {
   const prisma = getPrismaClient()
 
@@ -76,6 +79,11 @@ type SimilarProduct = {
   similarity: number
 }
 
+/**
+ * Returns the most similar catalog products to `productId` by cosine similarity, sorted descending.
+ * Auto-generates the base embedding if it doesn't exist yet.
+ * NOTE: loads all embeddings into memory — only suitable for catalog sizes up to ~100k products.
+ */
 export async function findSimilarProductsForProduct(productId: string, options: { limit?: number } = {}): Promise<SimilarProduct[]> {
   const prisma = getPrismaClient()
   const limit = options.limit ?? 20

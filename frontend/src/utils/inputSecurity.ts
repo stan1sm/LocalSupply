@@ -12,6 +12,7 @@ export const BUSINESS_NAME_REGEX = /^[A-Za-z0-9][A-Za-z0-9 '&().,-]{1,79}$/
 export const PHONE_REGEX = /^\+47[0-9]{8}$/
 export const ADDRESS_REGEX = /^[A-Za-z0-9][A-Za-z0-9 '#&().,\-/]{5,120}$/
 
+/** Strips ASCII control characters (codes < 32 and DEL 127) from a string. */
 function removeControlChars(value: string) {
   return Array.from(value)
     .filter((char) => {
@@ -21,6 +22,7 @@ function removeControlChars(value: string) {
     .join('')
 }
 
+/** Removes control chars and HTML-unsafe chars (`< > \``), collapses runs of whitespace, and truncates to `maxLength`. */
 export function sanitizeTextInput(value: string, maxLength: number) {
   return removeControlChars(value)
     .replace(DISALLOWED_TEXT_REGEX, '')
@@ -28,10 +30,12 @@ export function sanitizeTextInput(value: string, maxLength: number) {
     .slice(0, maxLength)
 }
 
+/** Strips control chars and all whitespace from an email input; caps at 254 chars (RFC 5321 max). */
 export function sanitizeEmailInput(value: string) {
   return removeControlChars(value).replace(/\s+/g, '').slice(0, 254)
 }
 
+/** Strips control chars and any characters not valid in phone notation (digits, `+`, `-`, `.`, spaces, parentheses). */
 export function sanitizePhoneInput(value: string) {
   return removeControlChars(value).replace(/[^0-9()+\-.\s]/g, '').slice(0, 20)
 }
@@ -44,6 +48,7 @@ export type PasswordRequirementStatus = {
   hasSpecial: boolean
 }
 
+/** Returns which password policy requirements the given password currently satisfies. */
 export function getPasswordRequirementStatus(password: string): PasswordRequirementStatus {
   return {
     hasMinLength: password.length >= PASSWORD_MIN_LENGTH,
@@ -54,6 +59,7 @@ export function getPasswordRequirementStatus(password: string): PasswordRequirem
   }
 }
 
+/** Returns a human-readable validation error message if the password violates policy, or `null` if it passes. */
 export function passwordPolicyError(password: string) {
   if (password.length < PASSWORD_MIN_LENGTH) return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`
   if (password.length > 128) return 'Password must be 128 characters or fewer.'

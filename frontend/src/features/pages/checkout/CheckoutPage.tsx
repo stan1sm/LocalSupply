@@ -85,10 +85,12 @@ type WoltError = {
   message: string
 }
 
+/** Formats a number as a kroner string (e.g. "49.00 kr"). */
 function formatCurrency(value: number) {
   return `${value.toFixed(2)} kr`
 }
 
+/** Converts an ETA in minutes to a human-readable label (e.g. "45 mins", "1h 30min"). */
 function etaLabel(minutes: number): string {
   if (minutes < 60) return `${minutes} mins`
   const h = Math.floor(minutes / 60)
@@ -175,6 +177,7 @@ export default function CheckoutPage() {
     }
   }, [isReady, buyer])
 
+  /** Returns the buyer's `Authorization: Bearer` header from localStorage, or an empty object if not found. */
   function getAuthHeader(): Record<string, string> {
     try {
       const token = window.localStorage.getItem('localsupply-token')
@@ -337,29 +340,35 @@ export default function CheckoutPage() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  /** Populates the address field with a Geonorge autocomplete result and hides the suggestions list. */
   function selectAddress(addr: GeoNorgeAddress) {
     setAddressQuery(`${addr.adressetekst}, ${addr.postnummer} ${addr.poststed}`)
     setShowSuggestions(false)
   }
 
+  /** Returns cart items that are not stocked in the given store (matched by name). */
   function getUnavailableItems(store: MatchedStore): CartItem[] {
     const matchedNames = new Set(store.items.map((i) => i.name.toLowerCase()))
     return cartItems.filter((ci) => !matchedNames.has(ci.name.toLowerCase()))
   }
 
   // Effective delivery cost/eta for a store — uses Wolt if available
+  /** Returns the live Wolt delivery fee if available, otherwise the store's static estimate. */
   function effectiveDeliveryCost(store: MatchedStore): number {
     return woltEstimate ? woltEstimate.fee : store.deliveryCost
   }
 
+  /** Returns a formatted ETA string using the live Wolt estimate if available. */
   function effectiveEta(store: MatchedStore): string {
     return woltEstimate ? etaLabel(woltEstimate.etaMinutes) : store.eta
   }
 
+  /** Computes the order total (subtotal + effective delivery), rounded to 2 decimal places. */
   function effectiveTotal(store: MatchedStore): number {
     return Math.round((store.subtotal + effectiveDeliveryCost(store)) * 100) / 100
   }
 
+  /** Validates the delivery address and POSTs the order; on success redirects to tracking or order history. */
   async function handlePlaceOrder() {
     if (!selectedStore || !buyer || isPlacing) return
     if (!addressQuery.trim()) {

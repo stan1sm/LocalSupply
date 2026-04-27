@@ -43,6 +43,7 @@ type OrderSummary = {
   items: OrderItem[]
 }
 
+/** Maps a Wolt delivery status code to a buyer-friendly label. */
 function woltStatusLabel(status: string): string {
   switch (status.toUpperCase()) {
     case 'CREATED': return 'Delivery arranged'
@@ -58,6 +59,7 @@ function woltStatusLabel(status: string): string {
   }
 }
 
+/** Formats a number or Decimal value as a kroner string (e.g. "149.00 kr"). */
 function formatCurrency(value: number | string) {
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) {
@@ -66,6 +68,7 @@ function formatCurrency(value: number | string) {
   return `${n.toFixed(2)} kr`
 }
 
+/** Formats an ISO date string as a short locale datetime string. */
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value

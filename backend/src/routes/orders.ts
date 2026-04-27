@@ -24,7 +24,7 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
   const supplierIdInput = typeof body.supplierId === 'string' ? body.supplierId.trim() : ''
   const notes = typeof body.notes === 'string' ? body.notes.trim() : ''
   const deliveryFee = typeof body.deliveryFee === 'number' && Number.isFinite(body.deliveryFee) ? body.deliveryFee : 0
-  // storeCode is required when catalog items are included so prices can be validated server-side
+  // storeCode is required when catalog items are included so prices can be looked up server-side (never trusted from client)
   const storeCode = typeof body.storeCode === 'string' ? body.storeCode.trim() : ''
   const VALID_PAYMENT_METHODS = ['vipps', 'card', 'invoice'] as const
   type PaymentMethodValue = typeof VALID_PAYMENT_METHODS[number]

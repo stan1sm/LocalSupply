@@ -45,12 +45,14 @@ type OrderSummary = {
 const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
 const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 
+/** Formats a numeric or Prisma Decimal value as a kroner string (e.g. "149.00 kr"). */
 function formatCurrency(value: number | string) {
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) return `${value} kr`
   return `${n.toFixed(2)} kr`
 }
 
+/** Formats an ISO date string as a locale-aware short datetime (e.g. "Apr 27, 2026, 14:30"). */
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -63,6 +65,7 @@ function formatDate(value: string) {
   })
 }
 
+/** Returns the Tailwind badge class and human-readable label for an order status string. */
 function statusStyle(status: string): { badge: string; label: string } {
   switch (status) {
     case 'CONFIRMED': return { badge: 'bg-[#dcf5e2] text-[#1a5e30]', label: 'Confirmed' }
@@ -123,6 +126,7 @@ export default function SupplierOrdersPage() {
     return () => { cancelled = true }
   }, [supplier])
 
+  /** PATCHes the order status and updates local state on success; shows a toast for both success and failure. */
   async function handleUpdateStatus(orderId: string, status: string) {
     if (!supplier || updatingId) return
     setUpdatingId(orderId)

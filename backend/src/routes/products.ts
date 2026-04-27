@@ -11,6 +11,7 @@ const PLACEHOLDER_IMAGE_URLS = [
   'https://res.cloudinary.com/norgesgruppen/image/upload/Product/404.jpg',
 ]
 
+/** Returns true for known CDN placeholder/404 images that should be treated as "no image". */
 function isPlaceholderImage(url: string | null | undefined): boolean {
   if (!url || url.trim() === '') return true
   if (PLACEHOLDER_IMAGE_URLS.includes(url)) return true
@@ -91,6 +92,7 @@ function asNumber(value: unknown): number | null {
   return null
 }
 
+/** Formats a price as a NOK string (e.g. "12.50 kr"), or null when price is null. */
 function formatPrice(price: number | null) {
   if (price === null) {
     return null
@@ -99,6 +101,7 @@ function formatPrice(price: number | null) {
   return `${price.toFixed(2)} kr`
 }
 
+/** Returns a unit price string (e.g. "2.50 kr/100g") if data is available, otherwise the product's unit label. */
 function formatUnitInfo(currentUnitPrice: number | null, currentUnitPriceUnit: string | null, fallbackUnit: string | null) {
   if (currentUnitPrice !== null && currentUnitPriceUnit) {
     return `${currentUnitPrice.toFixed(2)} kr/${currentUnitPriceUnit}`
@@ -111,6 +114,7 @@ function normalizeText(value: string | null | undefined) {
   return (value ?? '').toLowerCase()
 }
 
+/** Translates a frontend category id (e.g. "dairy") to a Prisma `category IN [...]` filter. */
 function buildCategoryFilter(categoryId: string) {
   if (!categoryId || categoryId === 'all') {
     return undefined
@@ -126,6 +130,7 @@ function buildCategoryFilter(categoryId: string) {
   }
 }
 
+/** Returns a Prisma OR filter matching the search string against product name, brand, GTIN, and category. */
 function buildSearchFilter(search: string) {
   if (!search || search.length < 3) {
     return undefined
@@ -141,6 +146,7 @@ function buildSearchFilter(search: string) {
   }
 }
 
+/** Maps a frontend `sort` query param to a Prisma orderBy clause for catalog product prices. */
 function buildOrderBy(sort: string) {
   switch (sort) {
     case 'price-asc':
@@ -156,6 +162,11 @@ function buildOrderBy(sort: string) {
   }
 }
 
+/**
+ * Computes a relevance score for a product against a set of search terms.
+ * Rewards word-boundary matches in name (+50), name starts-with (+30), brand matches (+15),
+ * plus bonuses for having an image (+20) and a price (+10).
+ */
 function scoreRelevance(product: NormalizedProduct, searchTerms: string[]): number {
   let score = 0
   const nameLower = (product.name ?? '').toLowerCase()
@@ -185,6 +196,7 @@ function scoreRelevance(product: NormalizedProduct, searchTerms: string[]): numb
   return score
 }
 
+/** Re-sorts a product list by relevance score for `query`; returns unsorted when the query is too short. */
 function rankByRelevance(products: NormalizedProduct[], query: string): NormalizedProduct[] {
   if (!query || query.length < 2) return products
 
@@ -201,6 +213,7 @@ function rankByRelevance(products: NormalizedProduct[], query: string): Normaliz
   })
 }
 
+/** Maps a joined `catalogProductPrice + catalogProduct` row to the `NormalizedProduct` shape returned by the API. */
 function toMarketplaceProduct(row: {
   id: string
   storeName: string

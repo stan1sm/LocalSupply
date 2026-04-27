@@ -81,16 +81,19 @@ const STATUS_STYLES: Record<string, string> = {
   CANCELLED: 'bg-red-50 text-red-600 border-red-200',
 }
 
+/** Formats raw card number input as groups of four digits (e.g. "4111 1111 1111 1111"), max 16 digits. */
 function formatCardNumber(raw: string) {
   return raw.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim()
 }
 
+/** Formats raw expiry input as MM/YY (e.g. "12/26"), max 4 digits. */
 function formatExpiry(raw: string) {
   const digits = raw.replace(/\D/g, '').slice(0, 4)
   if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`
   return digits
 }
 
+/** Returns the card network name ("Visa", "Mastercard", "Amex") based on the card number prefix. */
 function detectCardType(number: string): string {
   const digits = number.replace(/\s/g, '')
   if (/^4/.test(digits)) return 'Visa'
@@ -99,10 +102,12 @@ function detectCardType(number: string): string {
   return ''
 }
 
+/** Returns true if the stripped card number is exactly 16 digits. */
 function validateCardNumber(number: string): boolean {
   return /^\d{16}$/.test(number.replace(/\s/g, ''))
 }
 
+/** Returns true if the expiry is in MM/YY format, the month is valid, and the card has not expired. */
 function validateExpiry(expiry: string): boolean {
   if (!/^\d{2}\/\d{2}$/.test(expiry)) return false
   const [mm, yy] = expiry.split('/').map(Number)
@@ -111,18 +116,22 @@ function validateExpiry(expiry: string): boolean {
   return new Date(2000 + yy, mm, 0) >= now
 }
 
+/** Returns true if the CVV is 3 or 4 digits. */
 function validateCvv(cvv: string): boolean {
   return /^\d{3,4}$/.test(cvv)
 }
 
+/** Converts a number or string to a two-decimal-place string. */
 function fmt(n: number | string) {
   return Number(n).toFixed(2)
 }
 
+/** Converts an uppercase order status like "IN_TRANSIT" to a readable label like "In transit". */
 function statusLabel(s: string) {
   return s.charAt(0) + s.slice(1).toLowerCase().replace('_', ' ')
 }
 
+/** Formats an ISO date string as a short calendar date (e.g. "27 Apr 2026"). */
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
@@ -196,6 +205,7 @@ export default function BuyerSettingsPage() {
     setIsReady(true)
   }, [])
 
+  /** Returns the `Authorization: Bearer <token>` header from localStorage, or an empty object if not found. */
   function getAuthHeader(): Record<string, string> {
     try {
       const token = window.localStorage.getItem(TOKEN_KEY)
@@ -259,6 +269,7 @@ export default function BuyerSettingsPage() {
 
   // ── Profile ──────────────────────────────────────────────────────────────────
 
+  /** PATCHes the buyer's display name and updates localStorage on success. */
   async function handleSaveProfile() {
     if (!buyer || isSavingProfile) return
     if (!profileFirstName.trim() || !profileLastName.trim()) {
@@ -288,11 +299,13 @@ export default function BuyerSettingsPage() {
 
   // ── Addresses ────────────────────────────────────────────────────────────────
 
+  /** Populates the address query field with a selected Geonorge autocomplete result and hides the suggestions list. */
   function selectNewAddr(addr: GeoNorgeAddress) {
     setNewAddrQuery(`${addr.adressetekst}, ${addr.postnummer} ${addr.poststed}`)
     setShowAddrSuggestions(false)
   }
 
+  /** POSTs a new delivery address and appends it to the local list; handles the `isDefault` flag by un-defaulting others. */
   async function handleSaveAddress() {
     if (!buyer || isSavingAddr) return
     const trimmed = newAddrQuery.trim()
@@ -323,6 +336,7 @@ export default function BuyerSettingsPage() {
     }
   }
 
+  /** PATCHes an address to be the default and marks all others as non-default in local state. */
   async function handleSetDefaultAddress(id: string) {
     const res = await fetch(buildApiUrl(`/api/auth/addresses/${id}`), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -331,6 +345,7 @@ export default function BuyerSettingsPage() {
     if (res.ok) setAddresses((prev) => prev.map((a) => ({ ...a, isDefault: a.id === id })))
   }
 
+  /** DELETEs an address and promotes the first remaining address to default if the deleted one was the default. */
   async function handleDeleteAddress(id: string) {
     const res = await fetch(buildApiUrl(`/api/auth/addresses/${id}`), { method: 'DELETE', headers: getAuthHeader() })
     if (res.ok || res.status === 204) {
@@ -345,6 +360,7 @@ export default function BuyerSettingsPage() {
 
   // ── Payment methods ───────────────────────────────────────────────────────────
 
+  /** Validates all card fields and populates `cardErrors`; returns true if validation passes. */
   function validateNewCard(): boolean {
     const errors: typeof cardErrors = {}
     if (!newCardName.trim()) errors.name = 'Name is required'
@@ -355,6 +371,7 @@ export default function BuyerSettingsPage() {
     return Object.keys(errors).length === 0
   }
 
+  /** Validates and POSTs a new payment method, storing only the last four digits (never the full card number). */
   async function handleSaveCard() {
     if (!buyer || isSavingCard) return
     if (!validateNewCard()) return
@@ -384,6 +401,7 @@ export default function BuyerSettingsPage() {
     }
   }
 
+  /** PATCHes a payment method to be the default and marks all others as non-default in local state. */
   async function handleSetDefaultPayment(id: string) {
     const res = await fetch(buildApiUrl(`/api/auth/payment-methods/${id}`), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -392,6 +410,7 @@ export default function BuyerSettingsPage() {
     if (res.ok) setPayments((prev) => prev.map((p) => ({ ...p, isDefault: p.id === id })))
   }
 
+  /** DELETEs a payment method and promotes the first remaining one to default if needed. */
   async function handleDeletePayment(id: string) {
     const res = await fetch(buildApiUrl(`/api/auth/payment-methods/${id}`), { method: 'DELETE', headers: getAuthHeader() })
     if (res.ok || res.status === 204) {
@@ -406,6 +425,7 @@ export default function BuyerSettingsPage() {
 
   // ── Orders ────────────────────────────────────────────────────────────────────
 
+  /** Reposts a previous order with its original items as a new PENDING order and prepends it to the list. */
   async function handleReorder(order: Order) {
     if (!buyer || reorderingId) return
     setReorderingId(order.id)
@@ -430,6 +450,7 @@ export default function BuyerSettingsPage() {
 
   // ── Security ──────────────────────────────────────────────────────────────────
 
+  /** Validates the current and new passwords, then PATCHes the account password endpoint. */
   async function handleChangePassword() {
     if (isSavingPw) return
     setPwMsg(null)

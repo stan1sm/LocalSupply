@@ -57,6 +57,10 @@ export type WoltDeliveryFailure = {
 
 export type WoltDeliveryResult = WoltDeliverySuccess | WoltDeliveryFailure
 
+/**
+ * Calls the Wolt DaaS fee endpoint and returns the delivery cost (in NOK) and ETA.
+ * Returns a failure result if Wolt is not configured or the address is outside the delivery area.
+ */
 export async function getDeliveryEstimate(params: {
   pickup: WoltAddress
   dropoff: WoltAddress
@@ -101,6 +105,10 @@ export async function getDeliveryEstimate(params: {
   }
 }
 
+/**
+ * Creates a Wolt delivery order and returns the delivery id and tracking URL.
+ * Contact details for both pickup and dropoff are required by the Wolt API.
+ */
 export async function createDelivery(params: {
   orderId: string
   pickup: WoltAddress & { contactName: string; contactPhone: string }
@@ -157,6 +165,7 @@ export async function createDelivery(params: {
   }
 }
 
+/** Converts a `WoltAddress` to the address payload shape expected by the Wolt API. */
 function buildAddressPayload(addr: WoltAddress): Record<string, unknown> {
   const payload: Record<string, unknown> = { street: addr.street, city: addr.city }
   if (addr.lat !== undefined) payload.lat = addr.lat
@@ -164,6 +173,7 @@ function buildAddressPayload(addr: WoltAddress): Record<string, unknown> {
   return payload
 }
 
+/** Maps a Wolt error code to a human-readable message suitable for display to the buyer. */
 export function labelForErrorCode(code: string): string {
   switch (code) {
     case 'DELIVERY_AREA_CLOSED': return 'Wolt delivery is closed in this area right now.'
@@ -186,6 +196,7 @@ export function parseAddressString(address: string): WoltAddress {
   return { street, city }
 }
 
+/** Maps a Wolt delivery status string to an internal order status; returns null for unknown/no-op statuses. */
 export function woltStatusToOrderStatus(woltStatus: string): 'CONFIRMED' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED' | null {
   switch (woltStatus.toUpperCase()) {
     case 'CREATED':
@@ -206,6 +217,7 @@ export function woltStatusToOrderStatus(woltStatus: string): 'CONFIRMED' | 'IN_T
   }
 }
 
+/** Returns a human-readable label for a Wolt delivery status, e.g. "On the way to you". */
 export function woltStatusLabel(woltStatus: string): string {
   switch (woltStatus.toUpperCase()) {
     case 'CREATED': return 'Delivery arranged'

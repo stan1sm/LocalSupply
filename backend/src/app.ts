@@ -28,6 +28,7 @@ const allowVercelPreviews = (process.env.CORS_ALLOW_VERCEL_PREVIEWS ?? 'true').t
 const allowedOrigins = new Set([...localDevOrigins, ...configuredOrigins])
 
 const corsOptions: CorsOptions = {
+  /** Allows requests from configured origins, all *.vercel.app previews (if enabled), and non-browser clients. */
   origin(origin, callback) {
     // Allow non-browser clients (curl, server-to-server, health checks).
     if (!origin) {

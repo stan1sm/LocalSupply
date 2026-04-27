@@ -10,6 +10,7 @@ app.listen(port, () => {
 
 const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000
 
+/** Runs a full catalog sync and logs the outcome; errors are caught so the interval keeps running. */
 async function runScheduledSync() {
   try {
     console.log('Running scheduled catalog sync...')

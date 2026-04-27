@@ -51,6 +51,7 @@ const UNIT_SUGGESTIONS = [
   'per pakke', 'per brett', 'per pose', 'per flaske', 'per bundle',
 ]
 
+/** Displays a live character count that turns amber near the limit and red when it is reached. */
 function CharCount({ value, max }: { value: string; max: number }) {
   const len = value.length
   const near = len > max * 0.85
@@ -61,6 +62,7 @@ function CharCount({ value, max }: { value: string; max: number }) {
   )
 }
 
+/** Renders a live product listing preview so the supplier can see how the card will look before submitting. */
 function ProductPreviewCard({
   name, description, unit, price, imagePreview,
 }: {
@@ -163,11 +165,13 @@ export default function SupplierDashboardPage() {
     return () => { cancelled = true }
   }, [supplier])
 
+  /** Updates a single product form field and clears its validation error. */
   function handleFormChange<K extends keyof ProductForm>(field: K, value: ProductForm[K]) {
     setForm((prev) => ({ ...prev, [field]: value }))
     setFormErrors((prev) => ({ ...prev, [field]: undefined }))
   }
 
+  /** Validates the selected image (type and size), sets a data-URL preview, or clears the image on rejection. */
   function handleImageChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) {
@@ -196,12 +200,14 @@ export default function SupplierDashboardPage() {
     reader.readAsDataURL(file)
   }
 
+  /** Resets the image file, preview, and the hidden file input element. */
   function clearImage() {
     setImageFile(null)
     setImagePreview(null)
     if (imageInputRef.current) imageInputRef.current.value = ''
   }
 
+  /** Validates the product form, then POSTs to the supplier's product endpoint (multipart when an image is included). */
   async function handleCreateProduct(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!supplier) return

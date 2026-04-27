@@ -37,16 +37,19 @@ type ProductSummary = {
 const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
 const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 
+/** Coerces a Prisma Decimal or string to a JS number. */
 function asNumber(value: number | string) {
   return typeof value === 'number' ? value : Number(value)
 }
 
+/** Formats a number or Decimal value as a kroner string (e.g. "149.00 kr"). */
 function formatCurrency(value: number | string) {
   const n = asNumber(value)
   if (!Number.isFinite(n)) return `${value} kr`
   return `${n.toFixed(2)} kr`
 }
 
+/** Formats an ISO date string as a short locale datetime (e.g. "Apr 27, 14:30"). */
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -58,6 +61,7 @@ function formatDate(value: string) {
   })
 }
 
+/** Returns true when two Date objects refer to the same calendar day. */
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }

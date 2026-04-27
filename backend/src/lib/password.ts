@@ -3,6 +3,7 @@ import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:cry
 const SCRYPT_KEY_LENGTH = 64
 const HASH_HEX_REGEX = /^[a-f0-9]+$/i
 
+/** Promisifies Node's callback-based `scrypt` with a 64-byte output key. */
 function scrypt(password: string, salt: string) {
   return new Promise<Buffer>((resolve, reject) => {
     scryptCallback(password, salt, SCRYPT_KEY_LENGTH, (error, derivedKey) => {
@@ -16,6 +17,10 @@ function scrypt(password: string, salt: string) {
   })
 }
 
+/**
+ * Hashes a password with scrypt + random 16-byte salt (and optional `PASSWORD_PEPPER` env var).
+ * Returns a string in the format `scrypt$<salt>$<hex-hash>`.
+ */
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString('hex')
   const pepper = process.env.PASSWORD_PEPPER ?? ''
@@ -25,6 +30,10 @@ export async function hashPassword(password: string) {
   return `scrypt$${salt}$${derivedKey.toString('hex')}`
 }
 
+/**
+ * Verifies a plaintext password against a stored scrypt hash.
+ * Uses `timingSafeEqual` to prevent timing attacks; returns false for any malformed hash.
+ */
 export async function verifyPassword(password: string, passwordHash: string) {
   const [algorithm, salt, storedHash] = passwordHash.split('$')
 

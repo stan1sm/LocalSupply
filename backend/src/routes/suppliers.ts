@@ -475,6 +475,7 @@ suppliersRouter.put('/:supplierId/profile', requireSupplierAuth, async (req, res
 
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
 
+  // Trims and truncates a string field, returning null for empty or non-string values.
   function asString(value: unknown, maxLength: number): string | null {
     if (typeof value !== 'string') return null
     const trimmed = value.trim()

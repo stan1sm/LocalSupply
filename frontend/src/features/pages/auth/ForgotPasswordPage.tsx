@@ -19,6 +19,7 @@ export default function ForgotPasswordPage() {
   const normalizedEmail = email.trim().toLowerCase()
   const hasLiveInvalidEmail = normalizedEmail.length > 0 && !EMAIL_REGEX.test(normalizedEmail)
 
+  /** POSTs the email to the forgot-password API (always shows the success state to avoid user enumeration). */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return

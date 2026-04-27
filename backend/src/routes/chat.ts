@@ -6,6 +6,7 @@ const chatRouter = Router()
 
 type AuthedLocals = { userId: string; userType: 'buyer' | 'supplier' }
 
+/** Extracts and verifies the Bearer token from the Authorization header; accepts both buyer and supplier JWTs. */
 function resolveAuth(authHeader: string | undefined): AuthedLocals | null {
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : ''
   if (!token) return null

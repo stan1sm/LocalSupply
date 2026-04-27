@@ -5,6 +5,7 @@ type AiProviderConfig = {
   chatModel: string
 }
 
+/** Reads AI provider settings from env vars; throws if API key is missing. */
 function getConfig(): AiProviderConfig {
   const apiKey = process.env.AI_API_KEY ?? process.env.OPENAI_API_KEY ?? ''
   const baseUrl = (process.env.AI_BASE_URL ?? 'https://api.openai.com').replace(/\/+$/, '')
@@ -22,6 +23,7 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/** Retries `fn` up to `maxAttempts` times with linear back-off starting at `baseDelayMs`. */
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, baseDelayMs = 400): Promise<T> {
   let lastError: unknown
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -35,6 +37,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, baseDelayMs =
   throw lastError
 }
 
+/** POSTs JSON to the configured AI base URL and returns the parsed response; retries on failure. */
 async function callJsonApi<T>(path: string, body: unknown): Promise<T> {
   const { baseUrl, apiKey } = getConfig()
 
@@ -57,6 +60,7 @@ async function callJsonApi<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
+/** Returns a single embedding vector for `text` using the configured embedding model. */
 export async function getEmbedding(text: string): Promise<number[]> {
   const { embeddingModel } = getConfig()
 
@@ -71,6 +75,10 @@ export async function getEmbedding(text: string): Promise<number[]> {
   return data.data[0].embedding
 }
 
+/**
+ * Returns embedding vectors for an array of texts in a single batched request.
+ * Results are returned in the same order as the input, regardless of API response order.
+ */
 export async function getEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return []
   if (texts.length === 1) return [await getEmbedding(texts[0]!)]
@@ -99,6 +107,11 @@ type JsonSchemaSpec = {
   schema: Record<string, unknown>
 }
 
+/**
+ * Calls the chat completions API and parses the response as JSON.
+ * Optionally enforces a strict JSON schema via the `jsonSchema` option.
+ * Returns both the parsed result and the raw API response.
+ */
 export async function completeJson<T>(options: {
   systemPrompt: string
   userPrompt: string

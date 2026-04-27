@@ -31,6 +31,7 @@ const DEFAULT_HOURS: WeeklyHours = {
   sun: { open: false, start: '09:00', end: '13:00' },
 }
 
+/** Parses a JSON-encoded `WeeklyHours` string from the DB, falling back to sensible defaults if missing or malformed. */
 function parseHours(raw: string | null | undefined): WeeklyHours {
   if (!raw) return { ...DEFAULT_HOURS }
   try {
@@ -75,6 +76,7 @@ const TABS: { id: Tab; label: string; description: string }[] = [
   { id: 'ordering', label: 'Ordering',       description: 'Marketplace visibility and order settings.' },
 ]
 
+/** An accessible toggle switch (role="switch") that calls `onChange` with the new boolean when clicked. */
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button
@@ -100,6 +102,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   )
 }
 
+/** Displays a live character counter that turns amber near the limit and red when it is reached. */
 function CharCount({ value, max }: { value: string | null | undefined; max: number }) {
   const len = (value ?? '').length
   const near = len > max * 0.85
@@ -115,6 +118,7 @@ const inputClass =
 const labelClass = 'block text-xs font-semibold text-[#6b7b70]'
 const hintClass = 'mt-0.5 text-[10px] text-[#9ca3af]'
 
+/** Renders a labeled horizontal rule used to separate settings sections. */
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3 py-1">
@@ -124,6 +128,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   )
 }
 
+/** Reusable image upload field that POSTs directly to `uploadUrl` and calls `onUploaded` with the returned URL. */
 function ImageUploadField({
   label,
   hint,
@@ -145,6 +150,7 @@ function ImageUploadField({
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
 
+  /** Uploads the file to `uploadUrl` and notifies the parent with the returned image URL. */
   async function handleFile(file: File) {
     setUploading(true)
     setUploadError('')
@@ -303,18 +309,21 @@ export default function SupplierSettingsPage() {
     return () => { cancelled = true }
   }, [session])
 
+  /** Updates a single profile field in local state and clears any status messages. */
   function updateField<K extends keyof SupplierProfile>(field: K, value: SupplierProfile[K]) {
     setProfile((prev) => (prev ? { ...prev, [field]: value } : prev))
     setErrorMessage('')
     setSuccessMessage('')
   }
 
+  /** Merges a partial schedule patch into the given day's opening hours. */
   function updateDay(day: DayKey, patch: Partial<DaySchedule>) {
     setHours((prev) => ({ ...prev, [day]: { ...prev[day], ...patch } }))
     setErrorMessage('')
     setSuccessMessage('')
   }
 
+  /** PUTs the full profile (including serialized opening hours) to the supplier profile endpoint. */
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!session || !profile || isSaving) return

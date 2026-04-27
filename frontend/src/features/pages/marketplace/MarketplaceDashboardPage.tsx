@@ -6,6 +6,7 @@ import { ToastContainer } from '../../components/Toast'
 import { useToast } from '../../components/useToast'
 import BuyerSidebar from '../../components/BuyerSidebar'
 
+/** Resolves a product image URL: prefixes relative paths with the API base, or passes through absolute URLs. */
 function productImageSrc(url: string | null): string | null {
   if (!url) return null
   return url.startsWith('/') ? buildApiUrl(url) : url
@@ -88,10 +89,12 @@ const DEFAULT_STORE_OPTIONS: StoreOption[] = [
   { value: 'all', label: 'All stores' },
 ]
 
+/** Formats a number as a Norwegian-style kroner string (e.g. "12.50 kr"). */
 function formatCurrency(value: number) {
   return `${value.toFixed(2)} kr`
 }
 
+/** Returns a sorted copy of `products` according to `sortBy`; returns an unsorted copy for the default "relevance" option. */
 function sortProducts(products: Product[], sortBy: string) {
   const next = [...products]
 
@@ -284,6 +287,7 @@ export default function MarketplaceDashboardPage() {
   const cartTotal = cartSubtotal + estimatedDelivery
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
 
+  /** Adds, updates, or removes a product in the cart; ignores products with no price. */
   function updateQuantity(product: Product, nextQuantity: number) {
     if (product.price === null) {
       return
@@ -322,15 +326,18 @@ export default function MarketplaceDashboardPage() {
     })
   }
 
+  /** Returns the current cart quantity for a product, or 0 if not in the cart. */
   function getProductQuantity(productId: string) {
     return cartItems.find((item) => item.id === productId)?.quantity ?? 0
   }
 
+  /** Navigates to checkout if the cart is non-empty. */
   function handleProceedToCheckout() {
     if (cartItems.length === 0) return
     window.location.href = '/checkout'
   }
 
+  /** Fetches cheaper substitution suggestions for a cart item (no-op if already loaded or loading). */
   async function fetchSubstitutions(itemId: string) {
     if (substitutions[itemId] !== undefined || loadingSubstitutions.has(itemId)) return
     setLoadingSubstitutions((prev) => new Set(prev).add(itemId))
@@ -345,6 +352,7 @@ export default function MarketplaceDashboardPage() {
     }
   }
 
+  /** Replaces a cart item with a cheaper substitution and clears the substitution panel for that item. */
   function swapCartItem(oldItemId: string, suggestion: Substitution, quantity: number) {
     setCartItems((current) =>
       current.map((item) =>

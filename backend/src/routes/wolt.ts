@@ -5,6 +5,10 @@ import { getPrismaClient } from '../lib/prisma.js'
 
 const woltRouter = Router()
 
+/**
+ * Verifies the HMAC-SHA256 signature on a Wolt webhook request.
+ * In non-production environments the check is skipped when `WOLT_WEBHOOK_SECRET` is unset.
+ */
 function verifyWoltSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean {
   const secret = process.env.WOLT_WEBHOOK_SECRET
   if (!secret) {

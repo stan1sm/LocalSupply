@@ -51,24 +51,28 @@ export default function RegisterPage() {
     formData.confirmPassword !== formData.password
   const passwordRequirements = getPasswordRequirementStatus(formData.password)
 
+  /** Sanitizes a name field and clears its validation error. */
   function handleTextChange(field: 'firstName' | 'lastName', value: string) {
     setFormData((prev) => ({ ...prev, [field]: sanitizeTextInput(value, 50) }))
     setErrors((prev) => ({ ...prev, [field]: undefined }))
     setSubmitMessage('')
   }
 
+  /** Sanitizes the email input and clears the email validation error. */
   function handleEmailChange(value: string) {
     setFormData((prev) => ({ ...prev, email: sanitizeEmailInput(value) }))
     setErrors((prev) => ({ ...prev, email: undefined }))
     setSubmitMessage('')
   }
 
+  /** Caps a password field at 128 chars and clears its validation error. */
   function handlePasswordChange(field: 'password' | 'confirmPassword', value: string) {
     setFormData((prev) => ({ ...prev, [field]: value.slice(0, 128) }))
     setErrors((prev) => ({ ...prev, [field]: undefined }))
     setSubmitMessage('')
   }
 
+  /** Validates all fields client-side, then POSTs to the register API; on success redirects to the email-check page. */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return

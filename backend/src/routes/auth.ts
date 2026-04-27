@@ -14,6 +14,7 @@ const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
 const EMAIL_NOT_VERIFIED_MESSAGE = 'Please verify your email before signing in.'
 const RESEND_VERIFICATION_MESSAGE = 'If an unverified account exists for this email, a verification email has been sent.'
 
+/** Reconstructs the request's base URL using `x-forwarded-proto`/`x-forwarded-host` headers when behind a proxy. */
 function getRequestBaseUrl(req: { protocol: string; get(name: string): string | undefined }) {
   const forwardedProto = req.get('x-forwarded-proto')?.split(',')[0]?.trim()
   const host = req.get('x-forwarded-host') ?? req.get('host')
@@ -26,6 +27,7 @@ function getRequestBaseUrl(req: { protocol: string; get(name: string): string | 
   return `${protocol}://${host}`
 }
 
+/** Returns true for Norwegian mobile/landline numbers, with or without +47/0047 prefix. */
 function isValidNorwegianPhone(phone: string): boolean {
   // 8 digits starting with 2-9
   if (/^[2-9]\d{7}$/.test(phone)) return true
@@ -592,6 +594,7 @@ authRouter.post('/reset-password', async (req, res) => {
 
 // ── Vipps Login ──────────────────────────────────────────────────────────────
 
+/** Parses the raw `Cookie` request header into a key/value map. */
 function parseCookies(header: string | undefined): Record<string, string> {
   if (!header) return {}
   return Object.fromEntries(

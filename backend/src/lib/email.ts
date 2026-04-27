@@ -19,6 +19,7 @@ function getBackendBaseUrl() {
   return (process.env.BACKEND_BASE_URL ?? 'http://localhost:3001').trim().replace(/\/+$/, '')
 }
 
+/** Returns the configured frontend base URL, used for constructing links in emails. */
 export function getFrontendBaseUrl() {
   return (process.env.FRONTEND_BASE_URL ?? 'http://localhost:3000').trim().replace(/\/+$/, '')
 }
@@ -29,6 +30,7 @@ function buildVerificationUrl(token: string) {
   return url.toString()
 }
 
+/** Builds an email verification URL using an explicit base URL instead of the env var — used in forwarded-host scenarios. */
 export function buildVerificationUrlFromBaseUrl(token: string, baseUrl: string) {
   const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, '')
   const url = new URL('/api/auth/verify-email', normalizedBaseUrl)
@@ -40,6 +42,7 @@ function allowVerificationFallback() {
   return (process.env.EMAIL_VERIFICATION_ALLOW_FALLBACK ?? 'false').toLowerCase() === 'true'
 }
 
+/** Builds the frontend redirect URL for the email-verified landing page, with an optional error `status` param. */
 export function buildEmailVerifiedRedirectUrl(status: 'success' | 'invalid' = 'success') {
   const url = new URL('/email-verified', getFrontendBaseUrl())
   if (status !== 'success') {
@@ -67,6 +70,7 @@ type SendParams = {
   html: string
 }
 
+/** Sends an email via Resend; silently returns (no-op) when the Resend client is not configured. */
 async function send(params: SendParams): Promise<void> {
   const resend = getResendClient()
   if (!resend) return
@@ -93,6 +97,7 @@ type OrderNotificationInput = {
   notes: string | null
 }
 
+/** Sends a new-order notification email to the supplier; errors are logged but not re-thrown. */
 export async function sendSupplierOrderEmail({
   supplierEmail,
   supplierName,
@@ -162,6 +167,7 @@ type BuyerOrderStatusInput = {
   paymentMethod?: string
 }
 
+/** Notifies the buyer when their order is confirmed or cancelled; includes payment method details for confirmed orders. */
 export async function sendBuyerOrderStatusEmail({
   buyerEmail,
   buyerName,
@@ -219,6 +225,7 @@ export async function sendBuyerOrderStatusEmail({
   }
 }
 
+/** Sends an approval email to a supplier whose account has been verified by an admin. */
 export async function sendSupplierVerificationApprovedEmail({
   email,
   businessName,
@@ -256,6 +263,7 @@ export async function sendSupplierVerificationApprovedEmail({
   }
 }
 
+/** Sends a rejection email to a supplier; optionally includes the admin-provided reason. */
 export async function sendSupplierVerificationRejectedEmail({
   email,
   businessName,
@@ -291,6 +299,7 @@ export async function sendSupplierVerificationRejectedEmail({
   }
 }
 
+/** Sends a password-reset email containing a 1-hour expiry link to `email`. */
 export async function sendPasswordResetEmail({
   email,
   firstName,
@@ -330,6 +339,11 @@ export async function sendPasswordResetEmail({
   }
 }
 
+/**
+ * Sends a verification email to a newly registered buyer.
+ * Falls back to returning the verification URL in the response when `EMAIL_VERIFICATION_ALLOW_FALLBACK=true`
+ * and Resend is unavailable — useful in dev/staging environments.
+ */
 export async function sendUserVerificationEmail({
   email,
   firstName,

@@ -94,6 +94,7 @@ type IntentCartResponse = {
 const CART_STORAGE_KEY = 'localsupply-marketplace-cart'
 const BUYER_STORAGE_KEY = 'localsupply-user'
 
+/** Formats a number as a kroner string (e.g. "49.00 kr"). */
 function formatCurrency(value: number) {
   return `${value.toFixed(2)} kr`
 }
@@ -132,6 +133,7 @@ export default function MyCartPage() {
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems))
   }, [cartItems])
 
+  /** POSTs current cart items to the match API and updates the store comparison result. */
   const runMatch = useCallback(async (items: CartItem[]) => {
     if (items.length === 0) {
       setMatchResult(null)
@@ -166,6 +168,7 @@ export default function MyCartPage() {
     runMatch(cartItems)
   }, [cartItems, runMatch])
 
+  /** Reads the buyer ID from localStorage; returns null if not found or unparsable. */
   function getBuyerIdFromStorage(): string | null {
     try {
       const storedBuyer = typeof window !== 'undefined' ? window.localStorage.getItem(BUYER_STORAGE_KEY) : null
@@ -180,6 +183,7 @@ export default function MyCartPage() {
     }
   }
 
+  /** Increments or decrements a cart item's quantity, removing it if the quantity reaches 0. */
   function updateQuantity(itemId: string, delta: number) {
     setCartItems((current) =>
       current
@@ -192,6 +196,7 @@ export default function MyCartPage() {
     )
   }
 
+  /** Swaps a cart item for a substitution suggestion and clears the substitutions panel for the old item. */
   function replaceCartItem(oldPriceId: string, suggestion: SubstitutionSuggestion) {
     setCartItems((current) =>
       current.map((item) =>
@@ -214,6 +219,7 @@ export default function MyCartPage() {
     })
   }
 
+  /** Fetches substitution suggestions for a cart item; redirects to login if no buyer session exists. */
   async function loadSubstitutions(priceId: string) {
     if (!priceId || loadingSubFor[priceId]) return
 
@@ -245,6 +251,7 @@ export default function MyCartPage() {
     }
   }
 
+  /** Sends the free-text meal intent to the AI cart planner and replaces the current cart with the result. */
   async function planIntentCart() {
     const text = intentText.trim()
     if (!text) return
@@ -312,6 +319,7 @@ export default function MyCartPage() {
     }
   }
 
+  /** Clears all cart items and resets the store match state. */
   function clearCart() {
     setCartItems([])
     setMatchResult(null)

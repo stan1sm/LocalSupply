@@ -21,6 +21,7 @@ type ConversationSummary = {
   messages: { content: string; senderType: string; createdAt: string }[]
 }
 
+/** Returns a relative time label ("Just now", "5m ago", "2h ago", or a short date for older messages). */
 function formatRelative(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60000)

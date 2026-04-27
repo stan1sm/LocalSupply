@@ -16,6 +16,7 @@ export type VippsUserInfo = {
   phone_number?: string
 }
 
+/** Builds the Vipps OAuth2 authorization URL with the required scopes and CSRF state parameter. */
 export function buildAuthorizationUrl(state: string, redirectUri: string): string {
   const params = new URLSearchParams({
     response_type: 'code',
@@ -27,6 +28,7 @@ export function buildAuthorizationUrl(state: string, redirectUri: string): strin
   return `${AUTH_ENDPOINT}?${params.toString()}`
 }
 
+/** Exchanges a Vipps authorization code for an access token using HTTP Basic auth (client_id:secret). */
 export async function exchangeCode(code: string, redirectUri: string): Promise<string> {
   const credentials = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')
   const body = new URLSearchParams({
@@ -53,6 +55,7 @@ export async function exchangeCode(code: string, redirectUri: string): Promise<s
   return data.access_token
 }
 
+/** Fetches the authenticated user's profile from the Vipps userinfo endpoint. */
 export async function getUserInfo(accessToken: string): Promise<VippsUserInfo> {
   const response = await fetch(USERINFO_ENDPOINT, {
     headers: { Authorization: `Bearer ${accessToken}` },

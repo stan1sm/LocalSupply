@@ -143,6 +143,10 @@ Set essential=true for all main ingredients and key flavourings (tacokrydder, hv
 ═══ LANGUAGE ═══
 The user's request can be in ANY language. Always understand it correctly. Ingredient names must always be Norwegian.`
 
+/**
+ * Sends a free-text meal or shopping request to the LLM and returns a structured recipe.
+ * The recipe title language follows the `language` parameter; ingredient names are always Norwegian.
+ */
 async function generateRecipe(text: string, language: 'en' | 'no'): Promise<Recipe> {
   const titleLanguage = language === 'no' ? 'Norwegian' : 'English'
 
@@ -173,11 +177,13 @@ Generate the ingredient list. Write the title in ${titleLanguage}. Return valid 
   }
 }
 
+/** Validates the LLM-provided packageCount (1–5 integer) and falls back to a heuristic if invalid. */
 function normalizePackageCount(raw: unknown, amount: string): number {
   if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= 5) return raw
   return fallbackPackageCount(amount)
 }
 
+/** Derives a package count from an amount string (e.g. "800g" → 2, "3 stk" → 3) when the LLM value is unusable. */
 function fallbackPackageCount(amount: string): number {
   const match = amount.match(/(\d+(?:[.,]\d+)?)\s*([a-zA-ZæøåÆØÅ]*)/)
   if (!match) return 1
@@ -192,6 +198,7 @@ function fallbackPackageCount(amount: string): number {
   return 1
 }
 
+/** Cleans and deduplicates LLM-produced search terms; falls back to splitting the ingredient name if the array is malformed. */
 function normalizeSearchTerms(raw: unknown, ingredientName: string): string[] {
   if (Array.isArray(raw)) {
     const cleaned = raw
@@ -203,6 +210,7 @@ function normalizeSearchTerms(raw: unknown, ingredientName: string): string[] {
   return buildFallbackSearchTerms(ingredientName)
 }
 
+/** Builds basic search terms from an ingredient name by splitting on whitespace and commas. */
 function buildFallbackSearchTerms(ingredientName: string): string[] {
   const terms: string[] = [ingredientName.toLowerCase()]
   const words = ingredientName
@@ -215,6 +223,11 @@ function buildFallbackSearchTerms(ingredientName: string): string[] {
   return terms.slice(0, 8)
 }
 
+/**
+ * Converts a free-text meal or shopping request into a structured `MealPlanSpec`
+ * with per-ingredient search terms and quantities ready for catalog matching.
+ * `_catalogCategories` is reserved for future filtering and is currently unused.
+ */
 export async function planMealFromText(
   text: string,
   language: 'en' | 'no' = 'en',

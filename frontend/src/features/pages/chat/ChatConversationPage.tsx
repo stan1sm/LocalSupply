@@ -28,10 +28,12 @@ type ConversationDetail = {
   supplier: { id: string; businessName: string; email: string }
 }
 
+/** Formats an ISO timestamp as a local HH:MM time string. */
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
+/** Returns "Today" for today's date, or a short "Apr 27" string for earlier dates. */
 function formatDate(iso: string) {
   const d = new Date(iso)
   const today = new Date()
@@ -43,6 +45,7 @@ function formatDate(iso: string) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+/** Reads the active session from localStorage; prefers buyer credentials, then supplier. Returns null if neither is found. */
 function getAuth(): { token: string; role: 'buyer' | 'supplier'; userId: string } | null {
   const buyerToken = window.localStorage.getItem(BUYER_TOKEN_KEY)
   const buyerRaw = window.localStorage.getItem(BUYER_USER_KEY)
@@ -164,6 +167,7 @@ export default function ChatConversationPage({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /** POSTs the current input as a new message; restores the input on failure so the text is not lost. */
   async function sendMessage() {
     const auth = getAuth()
     if (!input.trim() || isSending || !convId || !auth) return
@@ -193,6 +197,7 @@ export default function ChatConversationPage({
     }
   }
 
+  /** Submits the message on Enter (without Shift) to match common chat UX conventions. */
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()

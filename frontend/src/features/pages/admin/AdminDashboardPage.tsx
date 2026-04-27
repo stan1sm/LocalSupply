@@ -54,10 +54,12 @@ const STATUS_COLORS: Record<string, string> = {
   UNVERIFIED: 'bg-gray-100 text-gray-600',
 }
 
+/** Formats an ISO date string as a Norwegian short date (e.g. "27. apr. 2026"). */
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('no-NO', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+/** Formats a number or Decimal value as a kroner string. */
 function formatCurrency(value: number | string) {
   const n = Number(value)
   return Number.isFinite(n) ? `${n.toFixed(2)} kr` : `${value} kr`
@@ -88,6 +90,7 @@ export default function AdminDashboardPage() {
     checkAuth()
   }, [router])
 
+  /** Returns the admin `Authorization: Bearer` header from localStorage. */
   function getAuthHeader(): Record<string, string> {
     try {
       const token = window.localStorage.getItem('localsupply-admin-token')
@@ -117,11 +120,13 @@ export default function AdminDashboardPage() {
     loadData()
   }, [admin])
 
+  /** Clears the admin session from localStorage and redirects to the login page. */
   function handleLogout() {
     window.localStorage.removeItem(ADMIN_STORAGE_KEY)
     router.push('/admin/login')
   }
 
+  /** PATCHes a supplier with the given fields and merges the API response back into local state. */
   async function updateSupplier(id: string, patch: Record<string, unknown>) {
     setActionMessage('')
     try {
@@ -138,6 +143,7 @@ export default function AdminDashboardPage() {
     } catch { setActionMessage('Update failed.') }
   }
 
+  /** Prompts for confirmation, then DELETEs the supplier and removes it from local state. */
   async function deleteSupplier(id: string) {
     if (!window.confirm('Delete this supplier? This cannot be undone.')) return
     try {
@@ -146,6 +152,7 @@ export default function AdminDashboardPage() {
     } catch { setActionMessage('Delete failed.') }
   }
 
+  /** Prompts for confirmation, then DELETEs the user and removes them from local state. */
   async function deleteUser(id: string) {
     if (!window.confirm('Delete this user? This cannot be undone.')) return
     try {

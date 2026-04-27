@@ -57,6 +57,7 @@ export type CatalogSyncResult = {
   storesSynced: string[]
 }
 
+/** Strips trailing slashes from a URL string, defaulting to the Kassal API base. */
 function normalizeBaseUrl(value: string | undefined) {
   return (value ?? KASSAL_DEFAULT_API_BASE_URL).trim().replace(/\/+$/, '')
 }
@@ -69,10 +70,12 @@ function getKassalApiBaseUrl() {
   return normalizeBaseUrl(process.env.KASSAL_API_BASE_URL)
 }
 
+/** Casts `value` to a trimmed string, returning null for empty or non-string values. */
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
 
+/** Safely coerces `value` to a finite number, handling comma-decimal strings; returns null on failure. */
 function asNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value
@@ -99,6 +102,7 @@ function getConfiguredRequestDelayMs(value: number | undefined) {
   return DEFAULT_REQUEST_DELAY_MS
 }
 
+/** Parses `value` into a valid Date, returning null for invalid or missing input. */
 function asDate(value: unknown): Date | null {
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? null : value
@@ -157,6 +161,7 @@ function extractUnit(record: Record<string, unknown>) {
   return weightUnit
 }
 
+/** Maps a raw Kassal API product record to a `SyncableCatalogEntry`; returns null if the record lacks an id or name. */
 function normalizeCatalogEntry(product: unknown): SyncableCatalogEntry | null {
   if (!product || typeof product !== 'object') {
     return null
@@ -204,6 +209,7 @@ function normalizeCatalogEntry(product: unknown): SyncableCatalogEntry | null {
   }
 }
 
+/** Normalises a string to lowercase ASCII with single spaces, used as a stable catalog key component. */
 function normalizeLookupToken(value: string | null | undefined) {
   return (value ?? '')
     .normalize('NFKD')
@@ -214,6 +220,7 @@ function normalizeLookupToken(value: string | null | undefined) {
     .replace(/\s+/g, ' ')
 }
 
+/** Returns a stable catalog key: `gtin:<ean>` when available, otherwise a `fallback:<name>|<brand>|<unit>|<category>` hash. */
 function buildCatalogKey(entry: SyncableCatalogEntry) {
   if (entry.gtin) {
     return `gtin:${normalizeLookupToken(entry.gtin)}`
@@ -227,6 +234,7 @@ function buildCatalogKey(entry: SyncableCatalogEntry) {
   return `fallback:${namePart}|${brandPart}|${unitPart}|${categoryPart}`
 }
 
+/** Keeps `nextValue` if it is longer than `currentValue` or if `currentValue` is null/empty. */
 function mergePreferredValue(currentValue: string | null, nextValue: string | null) {
   if (!currentValue && nextValue) {
     return nextValue
@@ -239,6 +247,10 @@ function mergePreferredValue(currentValue: string | null, nextValue: string | nu
   return currentValue
 }
 
+/**
+ * Merges a new catalog entry into an existing `CatalogProductInput`, preferring longer/more-specific values.
+ * Creates a fresh input object when `currentValue` is null.
+ */
 function mergeCatalogProductInput(currentValue: CatalogProductInput | null, entry: SyncableCatalogEntry): CatalogProductInput {
   if (!currentValue) {
     return {
@@ -273,6 +285,10 @@ function buildSyncProductsUrl(page: number, pageSize: number) {
   return url
 }
 
+/**
+ * Fetches a paginated Kassal API URL with retry logic.
+ * Respects the `Retry-After` header on 429 responses and backs off exponentially on 5xx errors.
+ */
 async function fetchKassalJson(url: URL, options: { logger?: LoggerLike; requestDelayMs: number }) {
   const apiKey = getKassalApiKey()
   if (!apiKey) {
@@ -327,6 +343,7 @@ async function fetchKassalJson(url: URL, options: { logger?: LoggerLike; request
   throw new Error('Kassal request retries exhausted.')
 }
 
+/** Returns true if the API response has a `links.next` URL or if the page was full (suggesting more pages exist). */
 function hasNextPage(payload: unknown, itemsLength: number, pageSize: number) {
   const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
   const links = record.links && typeof record.links === 'object' ? (record.links as Record<string, unknown>) : {}
@@ -347,6 +364,7 @@ function getHeader(response: Response, name: string) {
   return response.headers.get(name) ?? response.headers.get(name.toLowerCase())
 }
 
+/** Parses the `Retry-After` header (seconds integer or HTTP-date) and returns a wait duration in milliseconds. */
 function parseRetryAfterMs(response: Response) {
   const retryAfterHeader = getHeader(response, 'retry-after')
 
@@ -367,6 +385,7 @@ function parseRetryAfterMs(response: Response) {
   return Math.max(DEFAULT_RATE_LIMIT_DELAY_MS, retryAt.getTime() - Date.now())
 }
 
+/** Upserts a catalog product by its stable `catalogKey`; returns the record's id. */
 async function upsertCatalogProduct(catalogKey: string, nextValue: CatalogProductInput) {
   const prisma = getPrismaClient()
 
@@ -397,6 +416,7 @@ async function upsertCatalogProduct(catalogKey: string, nextValue: CatalogProduc
   })
 }
 
+/** Upserts a per-store price row for a catalog product, keyed by (catalogProductId, storeCode). */
 async function upsertCatalogPrice(catalogProductId: string, entry: SyncableCatalogEntry) {
   const prisma = getPrismaClient()
 
@@ -430,6 +450,11 @@ async function upsertCatalogPrice(catalogProductId: string, entry: SyncableCatal
   })
 }
 
+/**
+ * Paginates through the Kassal product catalog and upserts all products and per-store prices into the DB.
+ * Deduplicates catalog products across stores using a stable catalog key (GTIN or name/brand/unit fallback).
+ * Throws if no rows were imported on a fresh run (startPage === 1).
+ */
 export async function syncCatalog(options: CatalogSyncOptions = {}): Promise<CatalogSyncResult> {
   const logger = options.logger ?? console
   const pageSize = Math.max(1, Math.min(100, options.pageSize ?? KASSAL_DEFAULT_SYNC_PAGE_SIZE))

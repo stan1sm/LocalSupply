@@ -25,6 +25,7 @@ export default function ResetPasswordPage() {
   const hasLiveMismatch = confirmPassword.length > 0 && password !== confirmPassword
   const passwordRequirements = getPasswordRequirementStatus(password)
 
+  /** Validates the new password and token, then POSTs to reset-password; on success switches to the confirmation view. */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return

@@ -33,6 +33,7 @@ const defaultDeliveryEstimate: StoreDeliveryEstimate = {
 const DEFAULT_EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
 
 
+/** Returns the cosine similarity between two equal-length embedding vectors (0 if either is zero). */
 function cosineSimilarity(a: number[], b: number[]): number {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) return 0
 
@@ -52,10 +53,12 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB))
 }
 
+/** Returns the static delivery cost and ETA for a known store code, falling back to defaults. */
 function getDeliveryEstimate(storeCode: string): StoreDeliveryEstimate {
   return storeDeliveryEstimates[storeCode] ?? defaultDeliveryEstimate
 }
 
+/** Coerces Prisma Decimal, string, or number to a JS number; returns null if not finite. */
 function asNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
@@ -79,6 +82,7 @@ function asNumber(value: unknown): number | null {
   return null
 }
 
+/** Returns a human-readable unit-price string (e.g. "12.50 kr/kg"), or falls back to the product's unit label. */
 function formatUnitInfo(currentUnitPrice: number | null, currentUnitPriceUnit: string | null, fallbackUnit: string | null) {
   if (currentUnitPrice !== null && currentUnitPriceUnit) {
     return `${currentUnitPrice.toFixed(2)} kr/${currentUnitPriceUnit}`

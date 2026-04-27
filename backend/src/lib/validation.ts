@@ -72,10 +72,12 @@ type SupplierLoginValidationResult =
   | { ok: true; data: SupplierLoginInput }
   | { ok: false; errors: SupplierLoginErrors }
 
+/** Coerces `value` to a trimmed string, returning an empty string for non-string inputs. */
 function asTrimmedString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+/** Returns which password complexity requirements are met for the given password. */
 function getPasswordRequirementStatus(password: string) {
   return {
     hasUppercase: PASSWORD_UPPERCASE_REGEX.test(password),
@@ -85,6 +87,7 @@ function getPasswordRequirementStatus(password: string) {
   }
 }
 
+/** Returns a user-facing error message if the password fails any policy rule, or null if it passes. */
 function passwordPolicyError(password: string) {
   if (password.length < PASSWORD_MIN_LENGTH) return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`
   if (password.length > 128) return 'Password must be 128 characters or fewer.'
@@ -97,6 +100,7 @@ function passwordPolicyError(password: string) {
   return null
 }
 
+/** Validates and normalises a buyer registration request body; returns field-level errors on failure. */
 export function validateUserRegistrationPayload(payload: unknown): ValidationResult {
   const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
 
@@ -143,6 +147,7 @@ export function validateUserRegistrationPayload(payload: unknown): ValidationRes
   return { ok: true, data }
 }
 
+/** Validates a buyer login request body (email + password). */
 export function validateUserLoginPayload(payload: unknown): LoginValidationResult {
   const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
 
@@ -169,6 +174,7 @@ export function validateUserLoginPayload(payload: unknown): LoginValidationResul
   return { ok: true, data }
 }
 
+/** Validates a single-field email payload (used for forgot-password / resend-verification flows). */
 export function validateUserEmailPayload(payload: unknown): EmailValidationResult {
   const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
 
@@ -189,6 +195,7 @@ export function validateUserEmailPayload(payload: unknown): EmailValidationResul
   return { ok: true, data }
 }
 
+/** Validates a supplier registration request body, including Norwegian phone number format. */
 export function validateSupplierRegistrationPayload(payload: unknown): SupplierRegistrationValidationResult {
   const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
 
@@ -240,6 +247,7 @@ export function validateSupplierRegistrationPayload(payload: unknown): SupplierR
   return { ok: true, data }
 }
 
+/** Validates a supplier login request body (business email + password). */
 export function validateSupplierLoginPayload(payload: unknown): SupplierLoginValidationResult {
   const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
 

@@ -76,6 +76,7 @@ const signOutIcon = (
   </svg>
 )
 
+/** Clears buyer session data from localStorage and redirects to the login page. */
 function handleSignOut() {
   try {
     window.localStorage.removeItem('localsupply-user')

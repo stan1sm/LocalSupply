@@ -7,6 +7,10 @@ const globalForPrisma = globalThis as typeof globalThis & {
   prisma?: PrismaClient
 }
 
+/**
+ * Creates a PrismaClient backed by a pg connection pool.
+ * The pool is stored on `globalThis` so it is reused across hot-reloads in development.
+ */
 function createPrismaClient() {
   const datasourceUrl = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? process.env.POSTGRES_PRISMA_URL
 
@@ -21,6 +25,7 @@ function createPrismaClient() {
   return new PrismaClient({ adapter })
 }
 
+/** Returns the singleton PrismaClient instance, creating it on first call. */
 export function getPrismaClient() {
   if (!globalForPrisma.prisma) {
     globalForPrisma.prisma = createPrismaClient()
