@@ -1,3 +1,8 @@
+/**
+ * @module ChatConversationPage
+ * Individual chat conversation page supporting both buyer and supplier perspectives with auto-scroll.
+ */
+
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -9,8 +14,23 @@ const BUYER_USER_KEY = 'localsupply-user'
 const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 const SUPPLIER_SESSION_KEY = 'localsupply-supplier'
 
+/**
+ * Minimal supplier session data used for sidebar rendering in supplier view.
+ * @property id - Supplier identifier.
+ * @property businessName - Registered business name.
+ * @property address - Physical address.
+ */
 type SupplierSession = { id: string; businessName: string; address: string }
 
+/**
+ * A single chat message within a conversation.
+ * @property id - Unique message identifier.
+ * @property conversationId - Parent conversation ID.
+ * @property senderType - Whether the sender is a buyer or supplier.
+ * @property senderId - ID of the sender.
+ * @property content - Message text content.
+ * @property createdAt - ISO timestamp of when the message was sent.
+ */
 type Message = {
   id: string
   conversationId: string
@@ -20,6 +40,14 @@ type Message = {
   createdAt: string
 }
 
+/**
+ * Full conversation detail including participant records.
+ * @property id - Conversation identifier.
+ * @property buyerId - ID of the participating buyer.
+ * @property supplierId - ID of the participating supplier.
+ * @property buyer - Buyer profile data.
+ * @property supplier - Supplier profile data.
+ */
 type ConversationDetail = {
   id: string
   buyerId: string
@@ -28,10 +56,20 @@ type ConversationDetail = {
   supplier: { id: string; businessName: string; email: string }
 }
 
+/**
+ * Formats an ISO timestamp as a locale time string (HH:MM).
+ * @param iso - ISO 8601 timestamp string.
+ * @returns Formatted time string.
+ */
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
+/**
+ * Formats an ISO timestamp as "Today" or a short locale date string.
+ * @param iso - ISO 8601 timestamp string.
+ * @returns "Today" if the date is today, otherwise a short date like "May 1".
+ */
 function formatDate(iso: string) {
   const d = new Date(iso)
   const today = new Date()
@@ -43,6 +81,10 @@ function formatDate(iso: string) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+/**
+ * Reads buyer or supplier auth credentials from localStorage and returns the active session.
+ * @returns Auth object with token, role, and userId, or null if neither session exists.
+ */
 function getAuth(): { token: string; role: 'buyer' | 'supplier'; userId: string } | null {
   const buyerToken = window.localStorage.getItem(BUYER_TOKEN_KEY)
   const buyerRaw = window.localStorage.getItem(BUYER_USER_KEY)
@@ -64,6 +106,12 @@ function getAuth(): { token: string; role: 'buyer' | 'supplier'; userId: string 
   return null
 }
 
+/**
+ * Renders a real-time chat conversation between a buyer and a supplier.
+ * Auto-scrolls to the latest message and groups messages by date separator.
+ * @param conversationId - ID of an existing conversation to load.
+ * @param supplierId - Supplier ID used to open or create a conversation with that supplier.
+ */
 export default function ChatConversationPage({
   conversationId,
   supplierId,
@@ -164,6 +212,7 @@ export default function ChatConversationPage({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /** Posts the current input message to the conversation and appends it to the local message list. */
   async function sendMessage() {
     const auth = getAuth()
     if (!input.trim() || isSending || !convId || !auth) return
@@ -193,6 +242,10 @@ export default function ChatConversationPage({
     }
   }
 
+  /**
+   * Submits the message on Enter key press (without Shift).
+   * @param e - The keyboard event from the message input.
+   */
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()

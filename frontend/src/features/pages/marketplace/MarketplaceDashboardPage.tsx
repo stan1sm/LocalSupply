@@ -1,3 +1,8 @@
+/**
+ * @module MarketplaceDashboardPage
+ * Main marketplace page with product search, category/store filtering, infinite scroll, and a cart sidebar with AI substitutions.
+ */
+
 'use client'
 
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
@@ -6,11 +11,33 @@ import { ToastContainer } from '../../components/Toast'
 import { useToast } from '../../components/useToast'
 import BuyerSidebar from '../../components/BuyerSidebar'
 
+/**
+ * Resolves a product image URL, prefixing relative paths with the API base URL.
+ * @param url - Raw image URL from the product record, or null.
+ * @returns Absolute URL string, or null if the input is null.
+ */
 function productImageSrc(url: string | null): string | null {
   if (!url) return null
   return url.startsWith('/') ? buildApiUrl(url) : url
 }
 
+/**
+ * A marketplace product from the catalog or a local supplier.
+ * @property brand - Brand name, or null.
+ * @property category - Product category slug, or null.
+ * @property description - Product description, or null.
+ * @property ean - EAN barcode, or null.
+ * @property id - Unique price ID.
+ * @property imageUrl - Product image URL, or null.
+ * @property name - Display name.
+ * @property price - Unit price in Norwegian krone, or null.
+ * @property priceText - Formatted price text (e.g. "12.90 kr/stk"), or null.
+ * @property store - Store code, or null.
+ * @property unitInfo - Unit description (e.g. "500 g"), or null.
+ * @property url - Deep-link to the product in the source store, or null.
+ * @property source - Product origin: "catalog" (Wolt) or "supplier" (local).
+ * @property supplierId - Supplier ID for supplier-sourced products.
+ */
 type Product = {
   brand: string | null
   category: string | null
@@ -28,6 +55,14 @@ type Product = {
   supplierId?: string
 }
 
+/**
+ * API response envelope for the product search endpoint.
+ * @property items - Array of products on this page.
+ * @property message - Error message, if any.
+ * @property page - Current page number.
+ * @property pageSize - Number of items per page.
+ * @property total - Total matching products count.
+ */
 type ProductResponse = {
   items?: Product[]
   message?: string
@@ -36,6 +71,16 @@ type ProductResponse = {
   total?: number
 }
 
+/**
+ * A cart item stored in localStorage.
+ * @property id - Price ID (cart key).
+ * @property imageUrl - Product image URL, or null.
+ * @property name - Product display name.
+ * @property price - Unit price in krone.
+ * @property quantity - Quantity added to cart.
+ * @property store - Store code, or null.
+ * @property unitInfo - Unit description, or null.
+ */
 type CartItem = {
   id: string
   imageUrl: string | null
@@ -46,6 +91,19 @@ type CartItem = {
   unitInfo: string | null
 }
 
+/**
+ * An AI-generated substitution suggestion for a cart item.
+ * @property priceId - Price ID of the suggested substitute.
+ * @property name - Substitute product name.
+ * @property brand - Brand name, or null.
+ * @property imageUrl - Product image URL, or null.
+ * @property unit - Unit description, or null.
+ * @property storeName - Store where the substitute is available.
+ * @property price - Unit price of the substitute.
+ * @property savingsAmount - Absolute savings vs the original.
+ * @property savingsPercentage - Relative savings as a percentage, or null.
+ * @property reason - Explanation for the substitution.
+ */
 type Substitution = {
   priceId: string
   name: string
@@ -59,12 +117,21 @@ type Substitution = {
   reason: string
 }
 
+/**
+ * A category filter option.
+ * @property id - Category slug used as the filter value.
+ * @property label - Human-readable label displayed in the UI.
+ */
 type CategoryOption = {
   id: string
   label: string
 }
 
-
+/**
+ * A store filter option.
+ * @property label - Human-readable store name.
+ * @property value - Store code used as the filter value.
+ */
 type StoreOption = {
   label: string
   value: string
@@ -88,10 +155,21 @@ const DEFAULT_STORE_OPTIONS: StoreOption[] = [
   { value: 'all', label: 'All stores' },
 ]
 
+/**
+ * Formats a numeric value as a Norwegian krone string.
+ * @param value - Numeric amount.
+ * @returns String with two decimal places and "kr" suffix.
+ */
 function formatCurrency(value: number) {
   return `${value.toFixed(2)} kr`
 }
 
+/**
+ * Returns a sorted copy of the product array according to the selected sort option.
+ * @param products - Products to sort.
+ * @param sortBy - Sort key: "price-asc", "price-desc", "name-asc", "store-asc", or default (no-op).
+ * @returns New sorted array.
+ */
 function sortProducts(products: Product[], sortBy: string) {
   const next = [...products]
 
@@ -113,6 +191,10 @@ function sortProducts(products: Product[], sortBy: string) {
   }
 }
 
+/**
+ * Marketplace dashboard with product search, filtering, infinite scroll, and a cart sidebar
+ * that shows AI substitution suggestions for saved items.
+ */
 export default function MarketplaceDashboardPage() {
   const { toasts, addToast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
@@ -284,6 +366,11 @@ export default function MarketplaceDashboardPage() {
   const cartTotal = cartSubtotal + estimatedDelivery
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
 
+  /**
+   * Adds, updates, or removes a product in the cart based on the desired quantity.
+   * @param product - The marketplace product to update.
+   * @param nextQuantity - Target quantity; 0 removes the item.
+   */
   function updateQuantity(product: Product, nextQuantity: number) {
     if (product.price === null) {
       return
@@ -322,15 +409,25 @@ export default function MarketplaceDashboardPage() {
     })
   }
 
+  /**
+   * Returns the quantity of a product currently in the cart.
+   * @param productId - Price ID of the product.
+   * @returns Current quantity, or 0 if not in cart.
+   */
   function getProductQuantity(productId: string) {
     return cartItems.find((item) => item.id === productId)?.quantity ?? 0
   }
 
+  /** Navigates to the checkout page if the cart contains at least one item. */
   function handleProceedToCheckout() {
     if (cartItems.length === 0) return
     window.location.href = '/checkout'
   }
 
+  /**
+   * Lazily fetches AI substitution suggestions for a cart item and caches the result.
+   * @param itemId - Price ID of the cart item to find substitutes for.
+   */
   async function fetchSubstitutions(itemId: string) {
     if (substitutions[itemId] !== undefined || loadingSubstitutions.has(itemId)) return
     setLoadingSubstitutions((prev) => new Set(prev).add(itemId))
@@ -345,6 +442,12 @@ export default function MarketplaceDashboardPage() {
     }
   }
 
+  /**
+   * Replaces a cart item with an AI-suggested substitute, clearing its substitutions cache.
+   * @param oldItemId - Price ID of the item to replace.
+   * @param suggestion - The AI substitute to swap in.
+   * @param quantity - Quantity to carry over to the new item.
+   */
   function swapCartItem(oldItemId: string, suggestion: Substitution, quantity: number) {
     setCartItems((current) =>
       current.map((item) =>

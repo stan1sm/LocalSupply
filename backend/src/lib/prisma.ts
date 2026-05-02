@@ -1,3 +1,8 @@
+/**
+ * @module prisma
+ * Provides a singleton PrismaClient instance backed by a shared pg connection pool.
+ */
+
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { PrismaClient } from '../generated/prisma/client.js'
@@ -21,6 +26,10 @@ function createPrismaClient() {
   return new PrismaClient({ adapter })
 }
 
+/**
+ * Returns the singleton PrismaClient, creating it on first call using a shared pg connection pool.
+ * @returns {PrismaClient} The application-wide Prisma client instance.
+ */
 export function getPrismaClient() {
   if (!globalForPrisma.prisma) {
     globalForPrisma.prisma = createPrismaClient()

@@ -1,3 +1,8 @@
+/**
+ * @module ForgotPasswordPage
+ * Forgot-password form that sends a password-reset link to the user's email address.
+ */
+
 'use client'
 
 import { type FormEvent, useState } from 'react'
@@ -9,6 +14,10 @@ import { EMAIL_REGEX, sanitizeEmailInput } from '../../../utils/inputSecurity'
 const inputClass =
   'w-full rounded-lg border border-[#d6ddd2] bg-[#f9fbf8] px-3 py-2 text-sm text-[#1f2937] outline-none transition placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#2f9f4f]/20'
 
+/**
+ * Forgot-password page with email input.
+ * Shows a success message after the reset-link request is submitted regardless of whether the email exists.
+ */
 export default function ForgotPasswordPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -19,6 +28,10 @@ export default function ForgotPasswordPage() {
   const normalizedEmail = email.trim().toLowerCase()
   const hasLiveInvalidEmail = normalizedEmail.length > 0 && !EMAIL_REGEX.test(normalizedEmail)
 
+  /**
+   * Validates the email and POSTs the forgot-password request; transitions to the success state on completion.
+   * @param event - The form submit event.
+   */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return

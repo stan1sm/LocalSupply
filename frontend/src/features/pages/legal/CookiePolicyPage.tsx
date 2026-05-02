@@ -1,3 +1,8 @@
+/**
+ * @module CookiePolicyPage
+ * Static cookie policy page detailing how LocalSupply uses cookies and tracking technologies.
+ */
+
 import Link from 'next/link'
 
 const section = 'mt-6'
@@ -5,6 +10,7 @@ const h2 = 'text-lg font-bold text-[#111827]'
 const p = 'mt-2 leading-relaxed text-[#4b5563]'
 const ul = 'mt-2 list-disc pl-5 space-y-1 text-[#4b5563]'
 
+/** Static cookie policy page covering cookie categories, purposes, and user opt-out options. */
 export default function CookiePolicyPage() {
   return (
     <main className="min-h-screen bg-[#f3f4f6] text-[#1f2937]">

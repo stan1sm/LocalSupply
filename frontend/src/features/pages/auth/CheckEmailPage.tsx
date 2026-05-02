@@ -1,9 +1,23 @@
+/**
+ * @module CheckEmailPage
+ * Post-registration confirmation screen prompting the user to verify their email address.
+ */
+
 import Link from 'next/link'
 
+/**
+ * Props for the CheckEmailPage component.
+ * @property verificationPreviewUrl - Optional dev-mode link to preview the verification email.
+ */
 type CheckEmailPageProps = {
   verificationPreviewUrl?: string
 }
 
+/**
+ * Displays an email-sent confirmation message after successful registration.
+ * In development, renders a direct verification preview link when provided.
+ * @param props - {@link CheckEmailPageProps}
+ */
 export default function CheckEmailPage({ verificationPreviewUrl }: CheckEmailPageProps) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f3f4f6] px-4 py-8">

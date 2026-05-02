@@ -1,8 +1,20 @@
+/**
+ * @module chatServer
+ * Attaches a WebSocket server to an HTTP server for real-time buyer–supplier messaging.
+ */
+
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'http'
 import { verifyBuyerToken, verifySupplierToken } from './jwt.js'
 import { getPrismaClient } from './prisma.js'
 
+/**
+ * Internal metadata stored for each connected WebSocket client.
+ * @property {WebSocket} ws - The raw WebSocket connection.
+ * @property {string} userId - The authenticated user's ID (buyer ID or supplier ID).
+ * @property {'buyer' | 'supplier'} userType - Whether the client authenticated as a buyer or supplier.
+ * @property {Set<string>} conversations - Set of conversation IDs the client has joined.
+ */
 type ClientMeta = {
   ws: WebSocket
   userId: string
@@ -31,6 +43,11 @@ function broadcast(conversationId: string, payload: unknown) {
   }
 }
 
+/**
+ * Attaches a WebSocket chat server to an existing HTTP server, handling auth, room joining, and message broadcasting.
+ * @param {Server} server - The Node.js HTTP server instance to attach the WebSocket server to.
+ * @returns {void}
+ */
 export function attachChatServer(server: Server) {
   const wss = new WebSocketServer({ server })
 

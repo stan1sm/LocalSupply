@@ -1,3 +1,8 @@
+/**
+ * @module LoginPage
+ * Buyer login page with Vipps OAuth and email/password authentication.
+ */
+
 'use client'
 
 import { type FormEvent, useState } from 'react'
@@ -6,8 +11,24 @@ import { useRouter } from 'next/navigation'
 import { buildApiUrl } from '../../../lib/api'
 import { EMAIL_REGEX, passwordPolicyError, sanitizeEmailInput } from '../../../utils/inputSecurity'
 
+/**
+ * Form field values for the login form.
+ * @property email - The buyer's email address.
+ * @property password - The buyer's password.
+ */
 type LoginFormData = { email: string; password: string }
+
+/** Per-field validation error messages for the login form. */
 type LoginFormErrors = Partial<Record<keyof LoginFormData, string>>
+
+/**
+ * API response shape from the /api/auth/login endpoint.
+ * @property token - JWT on successful login.
+ * @property user - Authenticated user record on success.
+ * @property email - Returned email when verification is required (HTTP 403).
+ * @property message - Error description on failure.
+ * @property errors - Field-level validation errors.
+ */
 type LoginApiResponse = {
   token?: string
   user?: { id: string; firstName: string; lastName: string; email: string }
@@ -23,6 +44,10 @@ const inputClass =
 const labelClass = 'block space-y-1 text-xs font-medium text-[#2e3b31]'
 const errorClass = 'text-[10px] text-[#c53030]'
 
+/**
+ * Buyer login page supporting Vipps OAuth and email/password sign-in.
+ * Redirects to /email-not-verified if the account exists but email is unverified.
+ */
 export default function LoginPage() {
   const router = useRouter()
   const [formData, setFormData] = useState<LoginFormData>({ email: '', password: '' })
@@ -35,18 +60,30 @@ export default function LoginPage() {
   const normalizedEmail = formData.email.trim().toLowerCase()
   const hasLiveInvalidEmail = normalizedEmail.length > 0 && !EMAIL_REGEX.test(normalizedEmail)
 
+  /**
+   * Sanitises and updates the email field, clearing any prior email validation error.
+   * @param value - Raw value from the email input.
+   */
   function handleEmailChange(value: string) {
     setFormData((prev) => ({ ...prev, email: sanitizeEmailInput(value) }))
     setErrors((prev) => ({ ...prev, email: undefined }))
     setSubmitMessage('')
   }
 
+  /**
+   * Updates the password field (capped at 128 characters), clearing any prior password error.
+   * @param value - Raw value from the password input.
+   */
   function handlePasswordChange(value: string) {
     setFormData((prev) => ({ ...prev, password: value.slice(0, 128) }))
     setErrors((prev) => ({ ...prev, password: undefined }))
     setSubmitMessage('')
   }
 
+  /**
+   * Validates fields and submits login credentials; stores the session token on success.
+   * @param event - The form submit event.
+   */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return

@@ -1,18 +1,38 @@
+/**
+ * @module EmailNotVerifiedPage
+ * Shown when a user attempts to sign in with an unverified email; allows resending the verification email.
+ */
+
 'use client'
 
 import { useState } from 'react'
 import Link from 'next/link'
 import { buildApiUrl } from '../../../lib/api'
 
+/**
+ * Props for the EmailNotVerifiedPage component.
+ * @property email - The unverified email address to resend verification to.
+ */
 type EmailNotVerifiedPageProps = { email?: string }
+
+/**
+ * API response shape for the resend-verification endpoint.
+ * @property message - Informational or error message from the server.
+ * @property verificationPreviewUrl - Dev-mode preview URL for the verification email.
+ */
 type ResendVerificationResponse = { message?: string; verificationPreviewUrl?: string }
 
+/**
+ * Informs the user that their email is unverified and provides a button to resend the confirmation link.
+ * @param props - {@link EmailNotVerifiedPageProps}
+ */
 export default function EmailNotVerifiedPage({ email = '' }: EmailNotVerifiedPageProps) {
   const [submitMessage, setSubmitMessage] = useState('')
   const [submitIsError, setSubmitIsError] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [verificationPreviewUrl, setVerificationPreviewUrl] = useState<string | null>(null)
 
+  /** Calls the resend-verification endpoint and displays a success or error message to the user. */
   async function handleResend() {
     if (!email || isSubmitting) return
     setIsSubmitting(true)

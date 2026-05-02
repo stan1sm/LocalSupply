@@ -1,3 +1,8 @@
+/**
+ * @module aiClient
+ * Provides a thin, retry-capable client for OpenAI-compatible embedding and chat-completion APIs.
+ */
+
 type AiProviderConfig = {
   baseUrl: string
   apiKey: string
@@ -57,6 +62,11 @@ async function callJsonApi<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
+/**
+ * Returns a single embedding vector for the given text using the configured embedding model.
+ * @param {string} text - The input text to embed.
+ * @returns {Promise<number[]>} A floating-point vector representing the text embedding.
+ */
 export async function getEmbedding(text: string): Promise<number[]> {
   const { embeddingModel } = getConfig()
 
@@ -71,6 +81,11 @@ export async function getEmbedding(text: string): Promise<number[]> {
   return data.data[0].embedding
 }
 
+/**
+ * Returns embedding vectors for a batch of texts, preserving input order.
+ * @param {string[]} texts - The array of input texts to embed.
+ * @returns {Promise<number[][]>} An array of embedding vectors in the same order as the input.
+ */
 export async function getEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return []
   if (texts.length === 1) return [await getEmbedding(texts[0]!)]
@@ -89,16 +104,36 @@ export async function getEmbeddings(texts: string[]): Promise<number[][]> {
   return sorted.map((item) => item.embedding)
 }
 
+/**
+ * The parsed and raw result of a JSON chat-completion request.
+ * @template T The expected shape of the parsed JSON response.
+ * @property {T} result - The JSON payload parsed from the model's response content.
+ * @property {unknown} raw - The raw API response object, useful for debugging or inspecting usage metadata.
+ */
 type JsonChatResponse<T> = {
   result: T
   raw: unknown
 }
 
+/**
+ * Describes a named JSON Schema to enforce structured output from the chat model.
+ * @property {string} name - The schema name passed to the model's `json_schema` response format.
+ * @property {Record<string, unknown>} schema - The JSON Schema definition object.
+ */
 type JsonSchemaSpec = {
   name: string
   schema: Record<string, unknown>
 }
 
+/**
+ * Sends a chat-completion request that returns a parsed JSON object of type `T`.
+ * @template T The expected shape of the JSON value returned by the model.
+ * @param {{ systemPrompt: string; userPrompt: string; jsonSchema?: JsonSchemaSpec }} options - Completion options.
+ * @param {string} options.systemPrompt - The system-role message sent to the model.
+ * @param {string} options.userPrompt - The user-role message sent to the model.
+ * @param {JsonSchemaSpec} [options.jsonSchema] - Optional strict JSON Schema; when omitted the model is asked for free-form `json_object` output.
+ * @returns {Promise<JsonChatResponse<T>>} An object containing the parsed result and the raw API response.
+ */
 export async function completeJson<T>(options: {
   systemPrompt: string
   userPrompt: string

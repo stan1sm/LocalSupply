@@ -1,3 +1,7 @@
+/**
+ * @module email
+ * Sends transactional emails (verification, order notifications, account status) via the Resend API with an optional fallback mode for local development.
+ */
 import { Resend } from 'resend'
 
 type VerificationEmailInput = {
@@ -7,6 +11,16 @@ type VerificationEmailInput = {
   verificationBaseUrl?: string
 }
 
+/**
+ * The outcome of a verification email send attempt.
+ *
+ * Discriminated union on the `mode` field:
+ * - `'email'` — the email was dispatched successfully via Resend; `verificationUrl` is absent.
+ * - `'fallback'` — Resend is not configured or delivery failed and `EMAIL_VERIFICATION_ALLOW_FALLBACK` is `true`; `verificationUrl` is the raw link to be returned to the caller instead.
+ *
+ * @property {'email' | 'fallback'} mode - Indicates how verification was handled.
+ * @property {string} [verificationUrl] - Present only in `'fallback'` mode; the verification URL the caller should surface to the user.
+ */
 export type VerificationDeliveryResult =
   | { mode: 'email'; verificationUrl?: undefined }
   | { mode: 'fallback'; verificationUrl: string }
@@ -19,6 +33,10 @@ function getBackendBaseUrl() {
   return (process.env.BACKEND_BASE_URL ?? 'http://localhost:3001').trim().replace(/\/+$/, '')
 }
 
+/**
+ * Returns the configured frontend base URL, defaulting to `http://localhost:3000` when `FRONTEND_BASE_URL` is not set.
+ * @returns {string} The trimmed, trailing-slash-free frontend base URL.
+ */
 export function getFrontendBaseUrl() {
   return (process.env.FRONTEND_BASE_URL ?? 'http://localhost:3000').trim().replace(/\/+$/, '')
 }
@@ -29,6 +47,12 @@ function buildVerificationUrl(token: string) {
   return url.toString()
 }
 
+/**
+ * Builds a backend email-verification URL using a caller-supplied base URL instead of the `BACKEND_BASE_URL` environment variable.
+ * @param {string} token - The verification token to embed as a query parameter.
+ * @param {string} baseUrl - The base URL to use; trailing slashes are stripped before appending the path.
+ * @returns {string} The complete verification URL with the token as `?token=<token>`.
+ */
 export function buildVerificationUrlFromBaseUrl(token: string, baseUrl: string) {
   const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, '')
   const url = new URL('/api/auth/verify-email', normalizedBaseUrl)
@@ -40,6 +64,11 @@ function allowVerificationFallback() {
   return (process.env.EMAIL_VERIFICATION_ALLOW_FALLBACK ?? 'false').toLowerCase() === 'true'
 }
 
+/**
+ * Builds the frontend URL to redirect users to after email verification completes.
+ * @param {'success' | 'invalid'} [status='success'] - The verification outcome; a `status` query parameter is appended for any value other than `'success'`.
+ * @returns {string} The full redirect URL pointing to the frontend `/email-verified` page.
+ */
 export function buildEmailVerifiedRedirectUrl(status: 'success' | 'invalid' = 'success') {
   const url = new URL('/email-verified', getFrontendBaseUrl())
   if (status !== 'success') {
@@ -93,6 +122,21 @@ type OrderNotificationInput = {
   notes: string | null
 }
 
+/**
+ * Sends a new-order notification email to the supplier, including an itemised summary and a dashboard link.
+ * @param {OrderNotificationInput} params - All data required to compose the order notification.
+ * @param {string} params.supplierEmail - The recipient supplier email address.
+ * @param {string} params.supplierName - The supplier's display name used in the greeting.
+ * @param {string} params.orderId - The full order ID; the last six characters are displayed as the short reference.
+ * @param {string} params.buyerName - The buyer's name shown in the email body.
+ * @param {string} params.deliveryAddress - The human-readable delivery address.
+ * @param {{ name: string; quantity: number; unitPrice: number }[]} params.items - The ordered line items.
+ * @param {number} params.subtotal - Order subtotal in NOK (kr).
+ * @param {number} params.deliveryFee - Delivery fee in NOK (kr).
+ * @param {number} params.total - Grand total in NOK (kr).
+ * @param {string | null} params.notes - Optional buyer notes; omitted from the email when `null`.
+ * @returns {Promise<void>} Resolves when the send attempt completes; delivery failures are logged but not re-thrown.
+ */
 export async function sendSupplierOrderEmail({
   supplierEmail,
   supplierName,
@@ -162,6 +206,18 @@ type BuyerOrderStatusInput = {
   paymentMethod?: string
 }
 
+/**
+ * Sends an order confirmation or cancellation email to the buyer, including a payment-method note when the order is confirmed.
+ * @param {BuyerOrderStatusInput} params - All data required to compose the status email.
+ * @param {string} params.buyerEmail - The recipient buyer email address.
+ * @param {string} params.buyerName - The buyer's display name used in the greeting.
+ * @param {string} params.orderId - The full order ID; the last six characters are displayed as the short reference.
+ * @param {'CONFIRMED' | 'CANCELLED'} params.status - The new order status that triggered the notification.
+ * @param {string} params.supplierName - The supplier's name shown in the email body.
+ * @param {number} params.total - Grand total in NOK (kr).
+ * @param {string} [params.paymentMethod] - Optional payment method (`'invoice'`, `'vipps'`, or `'card'`); controls the payment instructions line.
+ * @returns {Promise<void>} Resolves when the send attempt completes; delivery failures are logged but not re-thrown.
+ */
 export async function sendBuyerOrderStatusEmail({
   buyerEmail,
   buyerName,
@@ -219,6 +275,13 @@ export async function sendBuyerOrderStatusEmail({
   }
 }
 
+/**
+ * Sends an account-approval email to a supplier whose application has been accepted, with a link to the supplier login page.
+ * @param {{ email: string; businessName: string }} params - The supplier's email address and business name.
+ * @param {string} params.email - The recipient email address.
+ * @param {string} params.businessName - The business name used in the email greeting.
+ * @returns {Promise<void>} Resolves when the send attempt completes; delivery failures are logged but not re-thrown.
+ */
 export async function sendSupplierVerificationApprovedEmail({
   email,
   businessName,
@@ -256,6 +319,14 @@ export async function sendSupplierVerificationApprovedEmail({
   }
 }
 
+/**
+ * Sends an account-rejection email to a supplier whose application was not approved, optionally including the rejection reason.
+ * @param {{ email: string; businessName: string; reason: string | null }} params - The supplier's email, business name, and optional rejection reason.
+ * @param {string} params.email - The recipient email address.
+ * @param {string} params.businessName - The business name used in the email greeting.
+ * @param {string | null} params.reason - Optional human-readable reason for rejection; omitted from the email when `null`.
+ * @returns {Promise<void>} Resolves when the send attempt completes; delivery failures are logged but not re-thrown.
+ */
 export async function sendSupplierVerificationRejectedEmail({
   email,
   businessName,
@@ -291,6 +362,14 @@ export async function sendSupplierVerificationRejectedEmail({
   }
 }
 
+/**
+ * Sends a password-reset email containing a time-limited link (1 hour) to the specified user.
+ * @param {{ email: string; firstName: string; resetToken: string }} params - The user's email, first name, and reset token.
+ * @param {string} params.email - The recipient email address.
+ * @param {string} params.firstName - The user's first name used in the greeting.
+ * @param {string} params.resetToken - The password-reset token appended as `?token=<token>` to the reset URL.
+ * @returns {Promise<void>} Resolves when the send attempt completes; delivery failures are logged but not re-thrown.
+ */
 export async function sendPasswordResetEmail({
   email,
   firstName,
@@ -330,6 +409,15 @@ export async function sendPasswordResetEmail({
   }
 }
 
+/**
+ * Sends an email-verification message to a newly registered user, falling back to returning the raw verification URL when Resend is unavailable and fallback mode is enabled.
+ * @param {VerificationEmailInput} params - The verification email inputs.
+ * @param {string} params.email - The recipient email address.
+ * @param {string} params.firstName - The user's first name used in the greeting.
+ * @param {string} params.verificationToken - The token embedded in the verification link.
+ * @param {string} [params.verificationBaseUrl] - Optional override for the backend base URL when constructing the verification link.
+ * @returns {Promise<VerificationDeliveryResult>} An object indicating whether the email was sent (`mode: 'email'`) or the raw URL is returned (`mode: 'fallback'`).
+ */
 export async function sendUserVerificationEmail({
   email,
   firstName,

@@ -1,3 +1,8 @@
+/**
+ * @module SupplierDashboardPage
+ * Supplier product management page for adding new products with image upload and viewing the product list.
+ */
+
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -6,6 +11,14 @@ import { ToastContainer } from '../../components/Toast'
 import { useToast } from '../../components/useToast'
 import SupplierSidebar from '../../components/SupplierSidebar'
 
+/**
+ * Authenticated supplier session read from localStorage.
+ * @property id - Supplier identifier.
+ * @property businessName - Registered business name.
+ * @property contactName - Primary contact person.
+ * @property email - Business email address.
+ * @property address - Physical address.
+ */
 type Supplier = {
   id: string
   businessName: string
@@ -14,6 +27,17 @@ type Supplier = {
   address: string
 }
 
+/**
+ * A supplier product record returned by the API.
+ * @property id - Product identifier.
+ * @property name - Product display name.
+ * @property description - Product description, or null.
+ * @property unit - Unit description (e.g. "per kg").
+ * @property price - Unit price in krone.
+ * @property stockQty - Current stock quantity.
+ * @property imageUrl - Product image URL, or null.
+ * @property isActive - Whether the product is publicly listed.
+ */
 type Product = {
   id: string
   name: string
@@ -30,6 +54,14 @@ const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 const ACCEPT_IMAGES = 'image/jpeg,image/png,image/webp,image/gif'
 const MAX_IMAGE_MB = 5
 
+/**
+ * Form field values for the create-product form.
+ * @property name - Product display name.
+ * @property description - Product description text.
+ * @property unit - Unit description (e.g. "per kg").
+ * @property price - Price input as a string (parsed before submission).
+ * @property stockQty - Stock quantity input as a string (parsed before submission).
+ */
 type ProductForm = {
   name: string
   description: string
@@ -109,6 +141,10 @@ function ProductPreviewCard({
   )
 }
 
+/**
+ * Supplier product management page with a create-product form (including image upload and live preview)
+ * and a list of existing products.
+ */
 export default function SupplierDashboardPage() {
   const [supplier, setSupplier] = useState<Supplier | null>(null)
   const [products, setProducts] = useState<Product[]>([])
@@ -163,11 +199,20 @@ export default function SupplierDashboardPage() {
     return () => { cancelled = true }
   }, [supplier])
 
+  /**
+   * Updates a product form field and clears its validation error.
+   * @param field - The form field key to update.
+   * @param value - The new field value.
+   */
   function handleFormChange<K extends keyof ProductForm>(field: K, value: ProductForm[K]) {
     setForm((prev) => ({ ...prev, [field]: value }))
     setFormErrors((prev) => ({ ...prev, [field]: undefined }))
   }
 
+  /**
+   * Validates and stores the selected product image file, generating a data-URL preview.
+   * @param event - The file input change event.
+   */
   function handleImageChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) {
@@ -196,12 +241,17 @@ export default function SupplierDashboardPage() {
     reader.readAsDataURL(file)
   }
 
+  /** Resets the image file state and clears the file input element. */
   function clearImage() {
     setImageFile(null)
     setImagePreview(null)
     if (imageInputRef.current) imageInputRef.current.value = ''
   }
 
+  /**
+   * Validates the product form and submits it (with optional image) to the create-product API endpoint.
+   * @param event - The form submit event.
+   */
   async function handleCreateProduct(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!supplier) return

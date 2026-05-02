@@ -1,3 +1,8 @@
+/**
+ * @module AdminLoginPage
+ * Admin login form that authenticates via email and password and stores the session in localStorage.
+ */
+
 'use client'
 
 import { type FormEvent, useState } from 'react'
@@ -6,6 +11,10 @@ import { buildApiUrl } from '../../../lib/api'
 
 const ADMIN_STORAGE_KEY = 'localsupply-admin'
 
+/**
+ * Admin login page component.
+ * Submits credentials to the admin auth endpoint and persists the session token on success.
+ */
 export default function AdminLoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -13,6 +22,10 @@ export default function AdminLoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  /**
+   * Handles form submission: POSTs credentials to the admin login endpoint and stores the session on success.
+   * @param e - The form submit event.
+   */
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')

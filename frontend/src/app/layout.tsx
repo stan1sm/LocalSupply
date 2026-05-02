@@ -1,7 +1,16 @@
+/**
+ * @module routes/layout
+ * Root layout for the Next.js App Router — sets global metadata, favicon assets, and the HTML shell.
+ */
+
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import './globals.css'
 
+/**
+ * Global metadata applied to all routes.
+ * Includes page title, description, and multi-resolution favicon assets.
+ */
 export const metadata: Metadata = {
   title: 'LocalSupply',
   description: 'LocalSupply marketplace',
@@ -16,6 +25,10 @@ export const metadata: Metadata = {
   },
 }
 
+/**
+ * Root layout component wrapping all pages in an HTML document with a single `<body>`.
+ * @param children - The active page content rendered inside the body.
+ */
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en">

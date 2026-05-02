@@ -1,3 +1,14 @@
+/**
+ * @module SupplierSidebar
+ * Navigation sidebar component for the supplier-facing area of the application.
+ */
+
+/**
+ * Minimal supplier identity data displayed in the sidebar header.
+ *
+ * @property {string} businessName - The registered trading name of the supplier.
+ * @property {string} address - The physical address shown beneath the business name.
+ */
 type SupplierInfo = { businessName: string; address: string }
 
 const navItems = [
@@ -50,6 +61,21 @@ const settingsIcon = (
   </svg>
 )
 
+/**
+ * Sidebar navigation for authenticated suppliers.
+ *
+ * Displays the supplier's business name and address in the header, followed by
+ * navigation links for Dashboard, Products, Orders, and Chats. A Store Settings
+ * link appears in the footer section. The currently active item is highlighted
+ * and receives `aria-current="page"`.
+ *
+ * @param {Object} props - Component props.
+ * @param {string} props.activeId - The `id` of the navigation item that should be marked active
+ *   (e.g. `'dashboard'`, `'products'`, `'orders'`, `'settings'`).
+ * @param {SupplierInfo} props.supplier - Identity data for the logged-in supplier,
+ *   used to populate the business name and address in the sidebar header.
+ * @returns {JSX.Element} The rendered sidebar `<aside>` element.
+ */
 export default function SupplierSidebar({
   activeId,
   supplier,

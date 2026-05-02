@@ -1,9 +1,22 @@
+/**
+ * @module SupplierSettingsPage
+ * Supplier store settings page with tabs for Store profile, Branding, Hours, and Ordering.
+ */
+
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 import SupplierSidebar from '../../components/SupplierSidebar'
 
+/**
+ * Authenticated supplier session read from localStorage.
+ * @property id - Supplier identifier.
+ * @property businessName - Registered business name.
+ * @property contactName - Primary contact person.
+ * @property email - Business email address.
+ * @property address - Physical address.
+ */
 type SupplierSession = {
   id: string
   businessName: string
@@ -12,8 +25,18 @@ type SupplierSession = {
   address: string
 }
 
+/** A day-of-week key for the weekly schedule object. */
 type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
+
+/**
+ * Opening schedule for a single day.
+ * @property open - Whether the store is open on this day.
+ * @property start - Opening time in "HH:MM" format.
+ * @property end - Closing time in "HH:MM" format.
+ */
 type DaySchedule = { open: boolean; start: string; end: string }
+
+/** A full weekly schedule, keyed by {@link DayKey}. */
 type WeeklyHours = Record<DayKey, DaySchedule>
 
 const DAY_KEYS: DayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
@@ -31,6 +54,12 @@ const DEFAULT_HOURS: WeeklyHours = {
   sun: { open: false, start: '09:00', end: '13:00' },
 }
 
+/**
+ * Parses a JSON-serialised {@link WeeklyHours} string into a full weekly schedule,
+ * falling back to {@link DEFAULT_HOURS} for any missing or malformed data.
+ * @param raw - JSON string or null/undefined.
+ * @returns Parsed weekly schedule merged with defaults.
+ */
 function parseHours(raw: string | null | undefined): WeeklyHours {
   if (!raw) return { ...DEFAULT_HOURS }
   try {
@@ -42,6 +71,28 @@ function parseHours(raw: string | null | undefined): WeeklyHours {
   return { ...DEFAULT_HOURS }
 }
 
+/**
+ * Full supplier profile record including branding, hours, and ordering settings.
+ * Extends {@link SupplierSession} with store customisation fields.
+ * @property logoUrl - URL of the store logo image, or null.
+ * @property heroImageUrl - URL of the banner/hero image, or null.
+ * @property tagline - Short promotional tagline, or null.
+ * @property description - Long store description, or null.
+ * @property storeType - Store category label (e.g. "Bakery"), or null.
+ * @property badgeText - Custom badge text displayed on the store card, or null.
+ * @property brandColor - Hex brand colour for UI accents, or null.
+ * @property serviceRadiusKm - Maximum delivery radius in kilometres, or null.
+ * @property openingHours - JSON-serialised {@link WeeklyHours}, or null.
+ * @property openingHoursNote - Free-text note about opening hours, or null.
+ * @property websiteUrl - Business website URL, or null.
+ * @property instagramUrl - Instagram profile URL, or null.
+ * @property facebookUrl - Facebook page URL, or null.
+ * @property preferredContactMethod - Preferred contact channel (e.g. "email"), or null.
+ * @property orderNotesHint - Hint text shown to buyers in the order notes field, or null.
+ * @property showInMarketplace - Whether the store is visible in the public marketplace.
+ * @property acceptDirectOrders - Whether the store accepts direct orders.
+ * @property minimumOrderAmount - Minimum order value in krone, or null.
+ */
 type SupplierProfile = SupplierSession & {
   logoUrl?: string | null
   heroImageUrl?: string | null
@@ -66,6 +117,7 @@ type SupplierProfile = SupplierSession & {
 const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
 const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 
+/** Active tab in the supplier settings navigation. */
 type Tab = 'profile' | 'branding' | 'hours' | 'ordering'
 
 const TABS: { id: Tab; label: string; description: string }[] = [
@@ -238,6 +290,10 @@ function ImageUploadField({
   )
 }
 
+/**
+ * Supplier settings page with four tabs: Store Profile, Branding, Hours, and Ordering.
+ * All changes are held locally until the form is saved via the PUT /api/suppliers/:id/profile endpoint.
+ */
 export default function SupplierSettingsPage() {
   const [session, setSession] = useState<SupplierSession | null>(null)
   const [profile, setProfile] = useState<SupplierProfile | null>(null)
@@ -303,18 +359,32 @@ export default function SupplierSettingsPage() {
     return () => { cancelled = true }
   }, [session])
 
+  /**
+   * Updates a single field in the local profile draft state.
+   * @param field - The SupplierProfile key to update.
+   * @param value - The new value for the field.
+   */
   function updateField<K extends keyof SupplierProfile>(field: K, value: SupplierProfile[K]) {
     setProfile((prev) => (prev ? { ...prev, [field]: value } : prev))
     setErrorMessage('')
     setSuccessMessage('')
   }
 
+  /**
+   * Applies a partial update to a single day's opening schedule in the local hours draft.
+   * @param day - The day key to update.
+   * @param patch - Partial schedule overrides (e.g. `{ open: true }`).
+   */
   function updateDay(day: DayKey, patch: Partial<DaySchedule>) {
     setHours((prev) => ({ ...prev, [day]: { ...prev[day], ...patch } }))
     setErrorMessage('')
     setSuccessMessage('')
   }
 
+  /**
+   * PUTs the current profile and hours draft to the API and synchronises the saved state on success.
+   * @param event - The form submit event.
+   */
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!session || !profile || isSaving) return
@@ -396,6 +466,7 @@ export default function SupplierSettingsPage() {
     )
   }
 
+  /** Sends a delete request for the supplier account and clears the local session on success. */
   async function handleDeleteAccount() {
     if (!token) return
     setIsDeleting(true)

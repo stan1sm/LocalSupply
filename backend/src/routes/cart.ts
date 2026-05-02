@@ -1,15 +1,34 @@
+/**
+ * @module routes/cart
+ * Express router for cart operations. All routes are mounted under /api/cart.
+ */
+
 import { Router } from 'express'
 import { getPrismaClient } from '../lib/prisma.js'
 import { planMealFromText } from '../lib/intentCartPlanner.js'
 import { getEmbeddings } from '../lib/aiClient.js'
 
+/** Express router providing cart matching and AI-powered intent planning endpoints. */
 const cartRouter = Router()
 
+/**
+ * Represents a single item submitted by the client for cart operations.
+ * @typedef {Object} CartItemInput
+ * @property {string} priceId - The CatalogProductPrice record ID.
+ * @property {number} quantity - Number of units requested (must be > 0).
+ */
 type CartItemInput = {
   priceId: string
   quantity: number
 }
 
+/**
+ * Delivery cost and ETA information for a specific store chain.
+ * @typedef {Object} StoreDeliveryEstimate
+ * @property {number} deliveryCost - Flat delivery fee in NOK.
+ * @property {string} etaLabel - Human-readable ETA string (e.g. "45 mins").
+ * @property {number} etaMinutes - Estimated delivery time in minutes.
+ */
 type StoreDeliveryEstimate = {
   deliveryCost: number
   etaLabel: string
@@ -33,6 +52,13 @@ const defaultDeliveryEstimate: StoreDeliveryEstimate = {
 const DEFAULT_EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
 
 
+/**
+ * Computes the cosine similarity between two numeric vectors.
+ * Returns 0 if either vector is empty, mismatched in length, or has zero magnitude.
+ * @param {number[]} a - First embedding vector.
+ * @param {number[]} b - Second embedding vector.
+ * @returns {number} Similarity score in the range [0, 1].
+ */
 function cosineSimilarity(a: number[], b: number[]): number {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) return 0
 
@@ -52,10 +78,22 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB))
 }
 
+/**
+ * Returns the delivery estimate for a known store chain, falling back to a
+ * default estimate when the store code is not recognised.
+ * @param {string} storeCode - Uppercase store chain identifier (e.g. "MENY_NO").
+ * @returns {StoreDeliveryEstimate} Delivery cost and ETA for the store.
+ */
 function getDeliveryEstimate(storeCode: string): StoreDeliveryEstimate {
   return storeDeliveryEstimates[storeCode] ?? defaultDeliveryEstimate
 }
 
+/**
+ * Safely coerces an unknown Prisma Decimal/string/number value to a finite JS number.
+ * Handles comma-separated decimals (e.g. Norwegian locale "12,50").
+ * @param {unknown} value - Raw value from the database or request body.
+ * @returns {number | null} Finite numeric value, or null if conversion fails.
+ */
 function asNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
@@ -79,6 +117,14 @@ function asNumber(value: unknown): number | null {
   return null
 }
 
+/**
+ * Formats a human-readable unit price string (e.g. "19.90 kr/kg").
+ * Falls back to the product's generic unit label when a per-unit price is unavailable.
+ * @param {number | null} currentUnitPrice - Numeric per-unit price, or null if not available.
+ * @param {string | null} currentUnitPriceUnit - Unit label for the per-unit price (e.g. "kg", "l").
+ * @param {string | null} fallbackUnit - Generic unit string from the catalog product to use as fallback.
+ * @returns {string | null} Formatted unit info string, or null when no data is available.
+ */
 function formatUnitInfo(currentUnitPrice: number | null, currentUnitPriceUnit: string | null, fallbackUnit: string | null) {
   if (currentUnitPrice !== null && currentUnitPriceUnit) {
     return `${currentUnitPrice.toFixed(2)} kr/${currentUnitPriceUnit}`
@@ -86,6 +132,23 @@ function formatUnitInfo(currentUnitPrice: number | null, currentUnitPriceUnit: s
   return fallbackUnit
 }
 
+/**
+ * Compares prices for a basket of items across all store chains in the catalog
+ * and returns a ranked list of stores. The best match is the store that stocks the
+ * most requested items at the lowest combined subtotal + delivery cost.
+ *
+ * Request body items reference CatalogProductPrice IDs so the same underlying
+ * catalog product can be price-compared across every available store.
+ *
+ * @route {POST} /api/cart/match
+ * @access {public}
+ * @param req.body.items {CartItemInput[]} Array of `{ priceId, quantity }` objects.
+ * @returns {200} `{ bestMatch, savings, stores, totalCartItems }` — `stores` is sorted
+ *   by items-available descending, then total-cost ascending. `savings` is the
+ *   difference in total price between the cheapest and most expensive store.
+ * @returns {400} When the items array is missing or empty after validation.
+ * @returns {503} On unexpected database errors.
+ */
 cartRouter.post('/match', async (req, res) => {
   const rawItems: unknown[] = Array.isArray(req.body?.items) ? req.body.items : []
 
@@ -223,6 +286,32 @@ cartRouter.post('/match', async (req, res) => {
   }
 })
 
+/**
+ * AI-powered intent-to-cart planning. Accepts a free-text description (e.g.
+ * "dinner for 4 people — pasta bolognese") and returns a ready-to-use cart
+ * pre-filled with matching catalog products from the cheapest eligible store.
+ *
+ * Pipeline (7 steps):
+ *  1. LLM (`planMealFromText`) parses the text into a structured ingredient list.
+ *  2. Each ingredient name + synonyms is embedded via the configured AI embedding model.
+ *  3. Per-ingredient text search against CatalogProduct (name / brand / category).
+ *  4. Batch-fetch stored product embeddings for all candidate IDs.
+ *  5. Rank candidates per ingredient by cosine similarity; keep top 10 above the
+ *     0.25 threshold (falls back to raw text-match order when embeddings are absent).
+ *  6. Batch-fetch all CatalogProductPrice rows for top products across every store.
+ *  7. Score each store cart by required-ingredients fulfilled, then total items,
+ *     then lowest total-cost including delivery; return the winner.
+ *
+ * @route {POST} /api/cart/intent
+ * @access {public}
+ * @param req.body.text {string} Free-text meal or shopping description (required).
+ * @param req.body.language {"en"|"no"} Language hint passed to the LLM planner (default "en").
+ * @returns {200} `{ items, explanation, storeChoice, totalPrice }` — `items` are ready
+ *   to add to the cart; `explanation` is a human-readable summary array; `storeChoice`
+ *   includes store name, subtotal, deliveryCost, total, and ETA.
+ * @returns {400} When `text` is missing or empty.
+ * @returns {503} On LLM or database errors.
+ */
 cartRouter.post('/intent', async (req, res) => {
   const text = typeof req.body?.text === 'string' ? req.body.text.trim() : ''
   const language = req.body?.language === 'no' ? 'no' : 'en'

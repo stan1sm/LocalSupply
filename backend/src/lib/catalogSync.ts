@@ -1,3 +1,8 @@
+/**
+ * @module catalogSync
+ * Fetches product listings from the Kassal grocery API and upserts them into the local CatalogProduct and CatalogProductPrice tables.
+ */
+
 import { getPrismaClient } from './prisma.js'
 
 const KASSAL_DEFAULT_API_BASE_URL = 'https://kassal.app/api/v1'
@@ -41,6 +46,14 @@ type CachedCatalogProduct = {
 
 type LoggerLike = Pick<Console, 'error' | 'info' | 'warn'>
 
+/**
+ * Configuration options for a catalog synchronisation run.
+ * @property {LoggerLike} [logger] - Logger instance to use; defaults to `console`.
+ * @property {number} [maxPages] - Maximum number of API pages to fetch; defaults to unlimited.
+ * @property {number} [pageSize] - Number of listings per page (clamped to 1–100); defaults to 100.
+ * @property {number} [requestDelayMs] - Milliseconds to wait between successful API requests; falls back to the `CATALOG_SYNC_REQUEST_DELAY_MS` env variable or 1 750 ms.
+ * @property {number} [startPage] - Page number to begin fetching from; defaults to 1.
+ */
 export type CatalogSyncOptions = {
   logger?: LoggerLike
   maxPages?: number
@@ -49,6 +62,14 @@ export type CatalogSyncOptions = {
   startPage?: number
 }
 
+/**
+ * Summary statistics returned after a completed catalog synchronisation run.
+ * @property {number} fetchedListings - Total number of raw product listings received from the API.
+ * @property {number} importedPrices - Total number of distinct (product, store) price records upserted.
+ * @property {number} importedProducts - Total number of unique catalog products upserted.
+ * @property {number} pagesSynced - Number of API pages that were fetched successfully.
+ * @property {string[]} storesSynced - Sorted list of store codes encountered during the run.
+ */
 export type CatalogSyncResult = {
   fetchedListings: number
   importedPrices: number
@@ -430,6 +451,19 @@ async function upsertCatalogPrice(catalogProductId: string, entry: SyncableCatal
   })
 }
 
+/**
+ * Synchronises the Kassal grocery product catalog into the database.
+ *
+ * Paginates through the Kassal `/products` endpoint, normalises each raw listing into a
+ * `SyncableCatalogEntry`, deduplicates products by a catalog key (GTIN when available,
+ * otherwise a normalised name/brand/unit/category composite), upserts `CatalogProduct` and
+ * `CatalogProductPrice` rows for every listing, and returns aggregate statistics when done.
+ * Throws if the API key is missing, if a non-retriable HTTP error is encountered, or if the
+ * first page yields no importable rows.
+ *
+ * @param {CatalogSyncOptions} [options={}] - Optional configuration overrides for this run.
+ * @returns {Promise<CatalogSyncResult>} Aggregate statistics describing the completed sync.
+ */
 export async function syncCatalog(options: CatalogSyncOptions = {}): Promise<CatalogSyncResult> {
   const logger = options.logger ?? console
   const pageSize = Math.max(1, Math.min(100, options.pageSize ?? KASSAL_DEFAULT_SYNC_PAGE_SIZE))

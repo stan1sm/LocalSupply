@@ -1,3 +1,9 @@
+/**
+ * @module routes/suppliers
+ * Express router for supplier registration, authentication, product management,
+ * image uploads, profile management, and marketplace listing.
+ * All routes are mounted under /api/suppliers.
+ */
 import { Router } from 'express'
 import { signSupplierToken } from '../lib/jwt.js'
 import { getPrismaClient } from '../lib/prisma.js'
@@ -10,10 +16,22 @@ import {
 } from '../lib/validation.js'
 import { requireSupplierAuth } from '../middleware/requireSupplierAuth.js'
 
+/** Express router providing supplier authentication, product management, and profile endpoints. */
 const suppliersRouter = Router()
 
 const BRREG_API = 'https://data.brreg.no/enhetsregisteret/api'
 
+/**
+ * Look up a Norwegian organisation number in the Brønnøysund Register Centre
+ * (Brreg) and return company name, address, and active/inactive status flags.
+ * Returns 404 when the organisation number is not found in the registry.
+ *
+ * @route {GET} /verify/:orgnr
+ * @access public
+ * @param orgnr - Exactly 9-digit Norwegian organisation number (whitespace is stripped).
+ * @note Proxies the Brreg Enhetsregisteret API. Returns 502 when the upstream
+ *       registry is unreachable.
+ */
 suppliersRouter.get('/verify/:orgnr', async (req, res) => {
   const orgnr = String(req.params.orgnr ?? '').trim().replace(/\s/g, '')
 
@@ -77,6 +95,14 @@ suppliersRouter.get('/verify/:orgnr', async (req, res) => {
   }
 })
 
+/**
+ * Return all verified suppliers that have opted into marketplace visibility,
+ * ordered by creation date descending. Includes a `productCount` field derived
+ * from the related products relation.
+ *
+ * @route {GET} /
+ * @access public
+ */
 suppliersRouter.get('/', async (_req, res) => {
   try {
     const prisma = getPrismaClient()
@@ -118,6 +144,14 @@ suppliersRouter.get('/', async (_req, res) => {
   }
 })
 
+/**
+ * Return the full public profile for a single supplier, including logo URL,
+ * hero image, opening hours, social links, service area, and product count.
+ *
+ * @route {GET} /:supplierId
+ * @access public
+ * @param supplierId - UUID of the supplier to retrieve.
+ */
 suppliersRouter.get('/:supplierId', async (req, res) => {
   const supplierId = String(req.params.supplierId ?? '').trim()
 
@@ -176,6 +210,14 @@ suppliersRouter.get('/:supplierId', async (req, res) => {
   }
 })
 
+/**
+ * Return all products belonging to the given supplier, ordered by creation
+ * date descending. No authentication required — used by marketplace storefronts.
+ *
+ * @route {GET} /:supplierId/products
+ * @access public
+ * @param supplierId - UUID of the supplier whose products to list.
+ */
 suppliersRouter.get('/:supplierId/products', async (req, res) => {
   const supplierId = String(req.params.supplierId ?? '').trim()
 
@@ -210,6 +252,21 @@ suppliersRouter.get('/:supplierId/products', async (req, res) => {
   }
 })
 
+/**
+ * Create a new product for the authenticated supplier. Accepts an optional
+ * product image via `multipart/form-data` (field name `image`). The
+ * authenticated supplier must match the `:supplierId` path parameter.
+ *
+ * @route {POST} /:supplierId/products
+ * @access authenticated
+ * @param supplierId - UUID of the supplier creating the product.
+ * @param name - Product name, 2–120 characters (body field).
+ * @param unit - Unit of measure, e.g. "kg" or "stk" (body field).
+ * @param price - Price in NOK, must be greater than 0 (body field).
+ * @param stockQty - Non-negative integer stock quantity (body field).
+ * @param image - Optional product image file (multipart field).
+ * @note Image files are stored via the `uploadProductImage` multer middleware.
+ */
 suppliersRouter.post('/:supplierId/products', requireSupplierAuth, (req, res, next) => {
   uploadProductImage.single('image')(req, res, (err: unknown) => {
     if (err) {
@@ -306,6 +363,25 @@ suppliersRouter.post('/:supplierId/products', requireSupplierAuth, (req, res, ne
   }
 })
 
+/**
+ * Register a new supplier account. If an `orgnr` (9-digit Norwegian
+ * organisation number) is provided, it is validated against the Brreg
+ * Enhetsregisteret and the account is marked VERIFIED or REJECTED accordingly.
+ * Accounts without an `orgnr` are created as UNVERIFIED. Returns a signed
+ * supplier JWT on success.
+ *
+ * @route {POST} /register
+ * @access public
+ * @param businessName - Legal or trading name of the business (body field).
+ * @param contactName - Full name of the primary contact person (body field).
+ * @param phoneNumber - Contact phone number (body field).
+ * @param email - Supplier login email; must not already exist as a buyer account (body field).
+ * @param password - Plaintext password to hash and store (body field).
+ * @param address - Business address string (body field).
+ * @param orgnr - Optional 9-digit Norwegian organisation number (body field).
+ * @note Calls the Brreg API when `orgnr` is supplied; Brreg unavailability
+ *       does not block registration — the account is created as UNVERIFIED.
+ */
 suppliersRouter.post('/register', async (req, res) => {
   const validation = validateSupplierRegistrationPayload(req.body)
 
@@ -402,6 +478,17 @@ suppliersRouter.post('/register', async (req, res) => {
   }
 })
 
+/**
+ * Upload or replace the supplier's logo image. Accepts a single image file via
+ * `multipart/form-data` (field name `image`). Updates the `logoUrl` field on
+ * the supplier record and returns the new URL.
+ *
+ * @route {POST} /:supplierId/logo
+ * @access authenticated
+ * @param supplierId - UUID of the supplier whose logo to update.
+ * @param image - Image file to use as the logo (multipart field).
+ * @note File is stored via the `uploadSupplierImage` multer middleware.
+ */
 suppliersRouter.post('/:supplierId/logo', requireSupplierAuth, (req, res, next) => {
   uploadSupplierImage.single('image')(req, res, (err: unknown) => {
     if (err) {
@@ -431,6 +518,17 @@ suppliersRouter.post('/:supplierId/logo', requireSupplierAuth, (req, res, next) 
   }
 })
 
+/**
+ * Upload or replace the supplier's hero/banner image. Accepts a single image
+ * file via `multipart/form-data` (field name `image`). Updates the
+ * `heroImageUrl` field on the supplier record and returns the new URL.
+ *
+ * @route {POST} /:supplierId/banner
+ * @access authenticated
+ * @param supplierId - UUID of the supplier whose banner to update.
+ * @param image - Image file to use as the banner (multipart field).
+ * @note File is stored via the `uploadSupplierImage` multer middleware.
+ */
 suppliersRouter.post('/:supplierId/banner', requireSupplierAuth, (req, res, next) => {
   uploadSupplierImage.single('image')(req, res, (err: unknown) => {
     if (err) {
@@ -460,6 +558,27 @@ suppliersRouter.post('/:supplierId/banner', requireSupplierAuth, (req, res, next
   }
 })
 
+/**
+ * Replace the authenticated supplier's public profile fields in a single
+ * request. All fields are optional; absent or `undefined` fields are removed
+ * from the update so existing values are preserved. String values are trimmed
+ * and clamped to their maximum lengths.
+ *
+ * @route {PUT} /:supplierId/profile
+ * @access authenticated
+ * @param supplierId - UUID of the supplier whose profile to update.
+ * @param tagline - Short marketing tagline, max 160 characters (body field).
+ * @param description - Long-form description, max 4000 characters (body field).
+ * @param storeType - Store category label, max 80 characters (body field).
+ * @param badgeText - Display badge string, max 40 characters (body field).
+ * @param brandColor - CSS colour string, max 32 characters (body field).
+ * @param serviceRadiusKm - Positive integer delivery radius in kilometres (body field).
+ * @param serviceAreas - Free-text service area description, max 400 characters (body field).
+ * @param openingHours - Structured opening hours string, max 2000 characters (body field).
+ * @param showInMarketplace - Boolean; controls marketplace visibility (body field).
+ * @param acceptDirectOrders - Boolean; controls whether direct orders are enabled (body field).
+ * @param minimumOrderAmount - Positive number minimum order value in NOK (body field).
+ */
 suppliersRouter.put('/:supplierId/profile', requireSupplierAuth, async (req, res) => {
   const supplierId = String(req.params.supplierId ?? '').trim()
 
@@ -475,6 +594,13 @@ suppliersRouter.put('/:supplierId/profile', requireSupplierAuth, async (req, res
 
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
 
+  /**
+   * Trims and truncates a string value to `maxLength` characters.
+   * Returns `null` when `value` is not a string or is empty after trimming.
+   *
+   * @param value - Raw input value from the request body.
+   * @param maxLength - Maximum number of characters to retain.
+   */
   function asString(value: unknown, maxLength: number): string | null {
     if (typeof value !== 'string') return null
     const trimmed = value.trim()
@@ -557,6 +683,15 @@ suppliersRouter.put('/:supplierId/profile', requireSupplierAuth, async (req, res
   }
 })
 
+/**
+ * Authenticate a supplier with email and password. Returns a signed supplier
+ * JWT and basic supplier profile fields on success.
+ *
+ * @route {POST} /login
+ * @access public
+ * @param email - Supplier account email (body field).
+ * @param password - Plaintext password to verify against the stored hash (body field).
+ */
 suppliersRouter.post('/login', async (req, res) => {
   const validation = validateSupplierLoginPayload(req.body)
 
@@ -605,6 +740,14 @@ suppliersRouter.post('/login', async (req, res) => {
   }
 })
 
+/**
+ * Permanently delete the authenticated supplier's account and all associated
+ * data (products, images, etc.) cascaded by the database schema. This action
+ * is irreversible.
+ *
+ * @route {DELETE} /account
+ * @access authenticated
+ */
 suppliersRouter.delete('/account', requireSupplierAuth, async (req, res) => {
   const supplierId = res.locals.supplierId as string
   try {

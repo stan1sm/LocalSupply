@@ -1,15 +1,36 @@
+/**
+ * @module SupplierProductsPage
+ * Public product listing page for a single supplier, accessed via /suppliers/[supplierId].
+ */
+
 'use client'
 
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { buildApiUrl } from '../../../lib/api'
 
+/**
+ * Brief supplier info displayed on the product listing page.
+ * @property id - Supplier identifier.
+ * @property businessName - Registered business name.
+ * @property address - Physical address.
+ */
 type Supplier = {
   id: string
   businessName: string
   address: string
 }
 
+/**
+ * A product available at the supplier.
+ * @property id - Product identifier.
+ * @property name - Product display name.
+ * @property description - Product description, or null.
+ * @property unit - Unit description.
+ * @property price - Unit price in krone.
+ * @property stockQty - Current stock quantity.
+ * @property imageUrl - Product image URL, or null.
+ */
 type Product = {
   id: string
   name: string
@@ -22,6 +43,10 @@ type Product = {
 
 const BUYER_STORAGE_KEY = 'localsupply-user'
 
+/**
+ * Public product listing for a single supplier, loaded by supplier ID from the route params.
+ * Supports a `?buy=<productId>` query param to pre-select a product quantity.
+ */
 export default function SupplierProductsPage() {
   const params = useParams<{ supplierId: string }>()
   const supplierId = typeof params?.supplierId === 'string' ? params.supplierId : ''

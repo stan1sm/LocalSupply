@@ -1,5 +1,11 @@
+/**
+ * @module AboutPage
+ * Static about page describing the LocalSupply platform and its mission.
+ */
+
 import Link from 'next/link'
 
+/** Static about page presenting company information and mission statement. */
 export default function AboutPage() {
   return (
     <main className="min-h-screen bg-[#f3f4f6] text-[#1f2937]">

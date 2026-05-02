@@ -1,3 +1,8 @@
+/**
+ * @module BuyerOrdersPage
+ * Buyer order history page showing placed orders with Wolt delivery status and live tracking links.
+ */
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -7,6 +12,13 @@ import BuyerSidebar from '../../components/BuyerSidebar'
 const BUYER_STORAGE_KEY = 'localsupply-user'
 const BUYER_TOKEN_KEY = 'localsupply-token'
 
+/**
+ * Authenticated buyer session read from localStorage.
+ * @property id - Buyer identifier.
+ * @property firstName - Buyer's first name.
+ * @property lastName - Buyer's last name.
+ * @property email - Buyer's email address.
+ */
 type BuyerSession = {
   id: string
   firstName: string
@@ -14,6 +26,15 @@ type BuyerSession = {
   email: string
 }
 
+/**
+ * A line item within a buyer's order.
+ * @property id - Line item identifier.
+ * @property productId - Product catalog ID.
+ * @property name - Product name.
+ * @property unit - Unit description.
+ * @property quantity - Ordered quantity.
+ * @property unitPrice - Price per unit.
+ */
 type OrderItem = {
   id: string
   productId: string
@@ -23,12 +44,32 @@ type OrderItem = {
   unitPrice: number
 }
 
+/**
+ * Brief supplier info included on an order summary.
+ * @property id - Supplier identifier.
+ * @property businessName - Registered business name.
+ * @property address - Physical address.
+ */
 type SupplierSummary = {
   id: string
   businessName: string
   address: string
 }
 
+/**
+ * A buyer's order summary as returned by the orders API.
+ * @property id - Order identifier.
+ * @property status - Current order status.
+ * @property subtotal - Products subtotal before delivery fee.
+ * @property deliveryFee - Delivery fee in krone.
+ * @property total - Grand total.
+ * @property notes - Optional delivery notes, or null.
+ * @property woltTrackingUrl - Live Wolt tracking link, or null.
+ * @property woltStatus - Wolt Drive delivery status code, or null.
+ * @property createdAt - ISO timestamp of order creation.
+ * @property supplier - Fulfilling supplier summary.
+ * @property items - Ordered product lines.
+ */
 type OrderSummary = {
   id: string
   status: string
@@ -43,6 +84,11 @@ type OrderSummary = {
   items: OrderItem[]
 }
 
+/**
+ * Maps a Wolt Drive status code to a human-readable delivery status label.
+ * @param status - Wolt status code string.
+ * @returns Localised status label.
+ */
 function woltStatusLabel(status: string): string {
   switch (status.toUpperCase()) {
     case 'CREATED': return 'Delivery arranged'
@@ -58,6 +104,11 @@ function woltStatusLabel(status: string): string {
   }
 }
 
+/**
+ * Formats a numeric or string value as a Norwegian krone currency string.
+ * @param value - Amount as a number or numeric string.
+ * @returns Formatted string with two decimal places and "kr" suffix.
+ */
 function formatCurrency(value: number | string) {
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) {
@@ -66,6 +117,11 @@ function formatCurrency(value: number | string) {
   return `${n.toFixed(2)} kr`
 }
 
+/**
+ * Formats an ISO date string as a localised date-time string.
+ * @param value - ISO 8601 date string.
+ * @returns Formatted date-time string, or the original value if parsing fails.
+ */
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -78,6 +134,10 @@ function formatDate(value: string) {
   })
 }
 
+/**
+ * Buyer order history page listing all placed orders with item breakdown,
+ * supplier info, Wolt delivery status, and a live tracking link when available.
+ */
 export default function BuyerOrdersPage() {
   const [buyer, setBuyer] = useState<BuyerSession | null>(null)
   const [orders, setOrders] = useState<OrderSummary[]>([])

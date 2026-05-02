@@ -1,5 +1,21 @@
+/**
+ * @module seedSampleCatalog
+ * One-shot script that upserts a small set of hardcoded sample catalog products and their
+ * store prices into the database, useful for local development and demo environments.
+ *
+ * Run with: `npx tsx src/scripts/seedSampleCatalog.ts`
+ *
+ * Each product is keyed by a deterministic `seed:<slugified-name>` catalog key so the
+ * script is idempotent and safe to re-run without creating duplicates.
+ */
 import { getPrismaClient } from '../lib/prisma.js'
 
+/**
+ * Upserts sample catalog products and their associated store price rows, then logs
+ * the total counts of products and prices written.
+ *
+ * @returns Promise<void> — resolves after all upsert operations have completed.
+ */
 async function main() {
   const prisma = getPrismaClient()
 

@@ -1,9 +1,22 @@
+/**
+ * @module SupplierOverviewPage
+ * Supplier dashboard overview showing today's orders, open orders, revenue stats, recent orders, and low-stock alerts.
+ */
+
 'use client'
 
 import { useEffect, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 import SupplierSidebar from '../../components/SupplierSidebar'
 
+/**
+ * Authenticated supplier session read from localStorage.
+ * @property id - Supplier identifier.
+ * @property businessName - Registered business name.
+ * @property contactName - Primary contact person.
+ * @property email - Business email address.
+ * @property address - Physical address.
+ */
 type SupplierSession = {
   id: string
   businessName: string
@@ -12,6 +25,13 @@ type SupplierSession = {
   address: string
 }
 
+/**
+ * Brief buyer info included on an order summary.
+ * @property id - Buyer identifier.
+ * @property firstName - Buyer's first name.
+ * @property lastName - Buyer's last name.
+ * @property email - Buyer's email address.
+ */
 type BuyerSummary = {
   id: string
   firstName: string
@@ -19,6 +39,14 @@ type BuyerSummary = {
   email: string
 }
 
+/**
+ * Abbreviated order record used in the overview stats and recent orders list.
+ * @property id - Order identifier.
+ * @property status - Current order status.
+ * @property total - Grand total amount.
+ * @property createdAt - ISO timestamp of order creation.
+ * @property buyer - Buyer who placed the order.
+ */
 type OrderSummary = {
   id: string
   status: string
@@ -27,6 +55,13 @@ type OrderSummary = {
   buyer: BuyerSummary
 }
 
+/**
+ * Abbreviated product record used in the low-stock inventory highlights.
+ * @property id - Product identifier.
+ * @property name - Product display name.
+ * @property stockQty - Current stock quantity.
+ * @property price - Unit price.
+ */
 type ProductSummary = {
   id: string
   name: string
@@ -37,16 +72,31 @@ type ProductSummary = {
 const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
 const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 
+/**
+ * Coerces a numeric or string value to a JavaScript number.
+ * @param value - Numeric amount or its string representation.
+ * @returns Parsed number.
+ */
 function asNumber(value: number | string) {
   return typeof value === 'number' ? value : Number(value)
 }
 
+/**
+ * Formats a numeric or string value as a Norwegian krone currency string.
+ * @param value - Amount as a number or numeric string.
+ * @returns Formatted string with two decimal places and "kr" suffix.
+ */
 function formatCurrency(value: number | string) {
   const n = asNumber(value)
   if (!Number.isFinite(n)) return `${value} kr`
   return `${n.toFixed(2)} kr`
 }
 
+/**
+ * Formats an ISO date string as a short localised date-time string (no year).
+ * @param value - ISO 8601 date string.
+ * @returns Formatted date-time string, or the original value if parsing fails.
+ */
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -58,10 +108,20 @@ function formatDate(value: string) {
   })
 }
 
+/**
+ * Checks whether two Date objects represent the same calendar day.
+ * @param a - First date.
+ * @param b - Second date.
+ * @returns true if both dates are on the same day.
+ */
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
 
+/**
+ * Supplier overview dashboard showing KPI stats (today's orders, open orders, 7-day and 30-day revenue),
+ * a recent orders list, and a low-stock inventory highlights panel.
+ */
 export default function SupplierOverviewPage() {
   const [supplier, setSupplier] = useState<SupplierSession | null>(null)
   const [orders, setOrders] = useState<OrderSummary[]>([])

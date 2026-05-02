@@ -1,7 +1,24 @@
+/**
+ * @module generateEmbeddings
+ * One-shot script that generates and persists vector embeddings for every catalog product
+ * that does not yet have an embedding for the configured AI model.
+ *
+ * Run with: `npx tsx src/scripts/generateEmbeddings.ts`
+ *
+ * The embedding model is resolved from the `AI_EMBEDDING_MODEL` environment variable
+ * (defaults to `"text-embedding-3-small"`).  Products that already have an embedding
+ * for the target model are skipped so the script is safe to re-run incrementally.
+ */
 import 'dotenv/config'
 import { getPrismaClient } from '../lib/prisma.js'
 import { generateAndStoreProductEmbedding } from '../lib/embeddings.js'
 
+/**
+ * Queries all catalog products without an existing embedding for the target model,
+ * then calls `generateAndStoreProductEmbedding` for each one, logging progress.
+ *
+ * @returns Promise<void> — resolves after all products have been processed.
+ */
 async function main() {
   const prisma = getPrismaClient()
 

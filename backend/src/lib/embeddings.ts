@@ -1,3 +1,8 @@
+/**
+ * @module embeddings
+ * Generates and stores vector embeddings for catalog products, and finds semantically similar products using cosine similarity.
+ */
+
 import { getPrismaClient } from './prisma.js'
 import { getEmbedding } from './aiClient.js'
 
@@ -38,6 +43,16 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB))
 }
 
+/**
+ * Generates a vector embedding for a catalog product and persists it to the `ProductEmbedding` table.
+ *
+ * Looks up the product by `productId`, builds a pipe-delimited embedding input string from its
+ * name, brand, category, and unit fields, calls the AI embedding API, then upserts the resulting
+ * vector under the configured model name.  Throws if the product does not exist.
+ *
+ * @param {string} productId - The ID of the `CatalogProduct` record to embed.
+ * @returns {Promise<void>} Resolves when the embedding has been saved.
+ */
 export async function generateAndStoreProductEmbedding(productId: string): Promise<void> {
   const prisma = getPrismaClient()
 
@@ -71,11 +86,27 @@ export async function generateAndStoreProductEmbedding(productId: string): Promi
   })
 }
 
+/**
+ * A catalog product ranked by its embedding similarity to a reference product.
+ * @property {string} productId - The ID of the similar `CatalogProduct`.
+ * @property {number} similarity - Cosine similarity score in the range [0, 1]; higher is more similar.
+ */
 type SimilarProduct = {
   productId: string
   similarity: number
 }
 
+/**
+ * Returns the most semantically similar catalog products to a given product using stored embeddings.
+ *
+ * Fetches the base product's embedding (generating and storing it first if absent), then scores
+ * every other embedding in the database via cosine similarity, sorts the results descending, and
+ * returns the top `limit` matches.
+ *
+ * @param {string} productId - The ID of the reference `CatalogProduct`.
+ * @param {{ limit?: number }} [options={}] - Optional config; `limit` caps the number of results (default 20).
+ * @returns {Promise<SimilarProduct[]>} Ranked list of similar products, most similar first.
+ */
 export async function findSimilarProductsForProduct(productId: string, options: { limit?: number } = {}): Promise<SimilarProduct[]> {
   const prisma = getPrismaClient()
   const limit = options.limit ?? 20

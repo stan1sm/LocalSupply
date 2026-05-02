@@ -1,3 +1,8 @@
+/**
+ * @module routes/auth
+ * Express router for buyer authentication and account management.
+ * All routes are mounted under /api/auth.
+ */
 import { randomBytes } from 'crypto'
 import { Router } from 'express'
 import { buildEmailVerifiedRedirectUrl, sendPasswordResetEmail, sendUserVerificationEmail } from '../lib/email.js'
@@ -9,11 +14,17 @@ import { validateUserEmailPayload, validateUserLoginPayload, validateUserRegistr
 import { generateEmailVerificationToken, generatePasswordResetToken, hashEmailVerificationToken, hashPasswordResetToken, isValidEmailVerificationToken, isValidPasswordResetToken } from '../lib/verification.js'
 import { buildAuthorizationUrl, exchangeCode, getUserInfo } from '../lib/vippsLogin.js'
 
+/** Express router providing buyer authentication and account management endpoints. */
 const authRouter = Router()
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
 const EMAIL_NOT_VERIFIED_MESSAGE = 'Please verify your email before signing in.'
 const RESEND_VERIFICATION_MESSAGE = 'If an unverified account exists for this email, a verification email has been sent.'
 
+/**
+ * Derives the base URL (scheme + host) from an incoming request, preferring
+ * reverse-proxy headers (`x-forwarded-proto`, `x-forwarded-host`) when present.
+ * Returns `undefined` when no host information is available.
+ */
 function getRequestBaseUrl(req: { protocol: string; get(name: string): string | undefined }) {
   const forwardedProto = req.get('x-forwarded-proto')?.split(',')[0]?.trim()
   const host = req.get('x-forwarded-host') ?? req.get('host')
@@ -26,6 +37,11 @@ function getRequestBaseUrl(req: { protocol: string; get(name: string): string | 
   return `${protocol}://${host}`
 }
 
+/**
+ * Returns `true` when `phone` is a valid Norwegian mobile/landline number.
+ * Accepts bare 8-digit numbers (starting with 2–9) or numbers prefixed with
+ * the country code `+47` or `0047`.
+ */
 function isValidNorwegianPhone(phone: string): boolean {
   // 8 digits starting with 2-9
   if (/^[2-9]\d{7}$/.test(phone)) return true
@@ -34,6 +50,16 @@ function isValidNorwegianPhone(phone: string): boolean {
   return false
 }
 
+/**
+ * Register a new buyer account. Validates the request body, creates a User
+ * record, and sends a verification email. The account cannot be used until
+ * the email address is verified.
+ *
+ * @route {POST} /register
+ * @access public
+ * @note Sends a verification email via Resend/preview transport. If email
+ *       delivery fails the newly created user record is rolled back.
+ */
 authRouter.post('/register', async (req, res) => {
   const validation = validateUserRegistrationPayload(req.body)
 
@@ -117,6 +143,14 @@ authRouter.post('/register', async (req, res) => {
   }
 })
 
+/**
+ * Authenticate a buyer with email and password. Returns a signed JWT on
+ * success. Rejects unverified accounts with a 403 so the client can prompt
+ * the user to verify their email.
+ *
+ * @route {POST} /login
+ * @access public
+ */
 authRouter.post('/login', async (req, res) => {
   const validation = validateUserLoginPayload(req.body)
 
@@ -183,6 +217,13 @@ authRouter.post('/login', async (req, res) => {
   }
 })
 
+/**
+ * Return the authenticated buyer's public profile fields (id, name, email,
+ * accountType).
+ *
+ * @route {GET} /me
+ * @access authenticated
+ */
 authRouter.get('/me', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   try {
@@ -201,6 +242,13 @@ authRouter.get('/me', requireBuyerAuth, async (req, res) => {
   }
 })
 
+/**
+ * Update the authenticated buyer's first and/or last name. Fields that are
+ * omitted from the body are left unchanged.
+ *
+ * @route {PATCH} /profile
+ * @access authenticated
+ */
 authRouter.patch('/profile', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
@@ -230,6 +278,14 @@ authRouter.patch('/profile', requireBuyerAuth, async (req, res) => {
   }
 })
 
+/**
+ * Change the authenticated buyer's password. Requires the current password for
+ * verification before accepting the new one. The new password must be at least
+ * 8 characters.
+ *
+ * @route {PATCH} /password
+ * @access authenticated
+ */
 authRouter.patch('/password', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
@@ -262,6 +318,15 @@ authRouter.patch('/password', requireBuyerAuth, async (req, res) => {
   }
 })
 
+/**
+ * Re-send the email verification link to an unverified account. The response
+ * is always 200 regardless of whether the email exists, to prevent email
+ * enumeration.
+ *
+ * @route {POST} /resend-verification
+ * @access public
+ * @note Sends a verification email when the account exists and is unverified.
+ */
 authRouter.post('/resend-verification', async (req, res) => {
   const validation = validateUserEmailPayload(req.body)
 
@@ -315,6 +380,15 @@ authRouter.post('/resend-verification', async (req, res) => {
   }
 })
 
+/**
+ * Consume a one-time email verification token (passed as `?token=` query
+ * parameter). On success, marks the user as verified and redirects to the
+ * frontend success page. Invalid or already-used tokens redirect to the
+ * invalid-token page.
+ *
+ * @route {GET} /verify-email
+ * @access public
+ */
 authRouter.get('/verify-email', async (req, res) => {
   const token = typeof req.query.token === 'string' ? req.query.token.trim() : ''
 
@@ -354,6 +428,13 @@ authRouter.get('/verify-email', async (req, res) => {
 
 // ── Addresses ────────────────────────────────────────────────────────────────
 
+/**
+ * Return all saved delivery addresses for the authenticated buyer, ordered
+ * by creation date ascending.
+ *
+ * @route {GET} /addresses
+ * @access authenticated
+ */
 authRouter.get('/addresses', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   const prisma = getPrismaClient()
@@ -361,6 +442,15 @@ authRouter.get('/addresses', requireBuyerAuth, async (req, res) => {
   res.json(addresses)
 })
 
+/**
+ * Add a new delivery address for the authenticated buyer. If `isDefault` is
+ * true, or if this is the buyer's first address, the new address becomes the
+ * default and any existing default is cleared. Validates the optional phone
+ * number as a Norwegian number.
+ *
+ * @route {POST} /addresses
+ * @access authenticated
+ */
 authRouter.post('/addresses', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
@@ -389,6 +479,14 @@ authRouter.post('/addresses', requireBuyerAuth, async (req, res) => {
   res.status(201).json(created)
 })
 
+/**
+ * Update an existing delivery address owned by the authenticated buyer.
+ * Partial updates are supported; only supplied fields are changed. Setting
+ * `isDefault: true` clears the previous default.
+ *
+ * @route {PATCH} /addresses/:id
+ * @access authenticated
+ */
 authRouter.patch('/addresses/:id', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   const id = typeof req.params.id === 'string' ? req.params.id : ''
@@ -422,6 +520,14 @@ authRouter.patch('/addresses/:id', requireBuyerAuth, async (req, res) => {
   res.json(updated)
 })
 
+/**
+ * Delete a delivery address owned by the authenticated buyer. If the deleted
+ * address was the default, the oldest remaining address is promoted to
+ * default automatically.
+ *
+ * @route {DELETE} /addresses/:id
+ * @access authenticated
+ */
 authRouter.delete('/addresses/:id', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   const id = typeof req.params.id === 'string' ? req.params.id : ''
@@ -442,6 +548,13 @@ authRouter.delete('/addresses/:id', requireBuyerAuth, async (req, res) => {
 
 // ── Payment methods ───────────────────────────────────────────────────────────
 
+/**
+ * Return all saved payment methods for the authenticated buyer, ordered by
+ * creation date ascending.
+ *
+ * @route {GET} /payment-methods
+ * @access authenticated
+ */
 authRouter.get('/payment-methods', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   const prisma = getPrismaClient()
@@ -449,6 +562,15 @@ authRouter.get('/payment-methods', requireBuyerAuth, async (req, res) => {
   res.json(methods)
 })
 
+/**
+ * Add a new payment method (card metadata) for the authenticated buyer.
+ * Stores display-only card info (cardholder name, last four digits, expiry).
+ * If `isDefault` is true, or if this is the first saved method, the new
+ * entry becomes the default and any existing default is cleared.
+ *
+ * @route {POST} /payment-methods
+ * @access authenticated
+ */
 authRouter.post('/payment-methods', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
@@ -485,6 +607,14 @@ authRouter.post('/payment-methods', requireBuyerAuth, async (req, res) => {
   res.status(201).json(created)
 })
 
+/**
+ * Update a saved payment method owned by the authenticated buyer. Currently
+ * only supports toggling the `isDefault` flag; setting it to true clears the
+ * previous default.
+ *
+ * @route {PATCH} /payment-methods/:id
+ * @access authenticated
+ */
 authRouter.patch('/payment-methods/:id', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   const id = typeof req.params.id === 'string' ? req.params.id : ''
@@ -505,6 +635,14 @@ authRouter.patch('/payment-methods/:id', requireBuyerAuth, async (req, res) => {
   res.json(updated)
 })
 
+/**
+ * Delete a saved payment method owned by the authenticated buyer. If the
+ * deleted method was the default, the oldest remaining method is promoted to
+ * default automatically.
+ *
+ * @route {DELETE} /payment-methods/:id
+ * @access authenticated
+ */
 authRouter.delete('/payment-methods/:id', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   const id = typeof req.params.id === 'string' ? req.params.id : ''
@@ -523,6 +661,16 @@ authRouter.delete('/payment-methods/:id', requireBuyerAuth, async (req, res) => 
   res.status(204).end()
 })
 
+/**
+ * Initiate a password reset flow. If a verified account exists for the
+ * supplied email, a one-time reset token (valid for 1 hour) is generated and
+ * a password reset email is sent. Always responds with 200 to prevent email
+ * enumeration.
+ *
+ * @route {POST} /forgot-password
+ * @access public
+ * @note Sends a password reset email when a matching verified account exists.
+ */
 // POST /api/auth/forgot-password
 authRouter.post('/forgot-password', async (req, res) => {
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
@@ -550,6 +698,15 @@ authRouter.post('/forgot-password', async (req, res) => {
   res.json({ message: 'If an account exists for this email, a password reset link has been sent.' })
 })
 
+/**
+ * Complete a password reset using a token from the reset email. Validates the
+ * token format, checks it against the database, and verifies it has not
+ * expired (1-hour TTL). On success, updates the password hash and invalidates
+ * the token.
+ *
+ * @route {POST} /reset-password
+ * @access public
+ */
 // POST /api/auth/reset-password
 authRouter.post('/reset-password', async (req, res) => {
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
@@ -592,6 +749,10 @@ authRouter.post('/reset-password', async (req, res) => {
 
 // ── Vipps Login ──────────────────────────────────────────────────────────────
 
+/**
+ * Parse a raw `Cookie` header string into a key-value map. Values are
+ * URI-decoded. Returns an empty object when `header` is undefined.
+ */
 function parseCookies(header: string | undefined): Record<string, string> {
   if (!header) return {}
   return Object.fromEntries(
@@ -603,6 +764,16 @@ function parseCookies(header: string | undefined): Record<string, string> {
   )
 }
 
+/**
+ * Initiate the Vipps Login OAuth 2.0 flow. Generates a random CSRF state
+ * token, stores it in an `HttpOnly` cookie, and redirects the browser to the
+ * Vipps authorization endpoint.
+ *
+ * @route {GET} /vipps
+ * @access public
+ * @note Sets a short-lived `vipps_state` cookie (10 min) used to validate the
+ *       callback and prevent CSRF attacks.
+ */
 // GET /api/auth/vipps — kick off OAuth flow
 authRouter.get('/vipps', (req, res) => {
   const state = randomBytes(16).toString('hex')
@@ -616,6 +787,19 @@ authRouter.get('/vipps', (req, res) => {
   res.redirect(authUrl)
 })
 
+/**
+ * Handle the Vipps OAuth callback. Validates the CSRF state cookie, exchanges
+ * the authorization code for an access token, fetches the Vipps user profile,
+ * and upserts the local User record (linking by `vippsSub`, falling back to
+ * email match, or creating a new account). Issues a signed buyer JWT and
+ * redirects the browser to the frontend with token and user info in the query
+ * string.
+ *
+ * @route {GET} /vipps/callback
+ * @access public
+ * @note Clears the `vipps_state` cookie on entry. Redirects to an error page
+ *       on state mismatch, denied scope, or any upstream failure.
+ */
 // GET /api/auth/vipps/callback — Vipps redirects here after auth
 authRouter.get('/vipps/callback', async (req, res) => {
   const frontendUrl = process.env.FRONTEND_BASE_URL ?? 'http://localhost:3000'
@@ -691,6 +875,13 @@ authRouter.get('/vipps/callback', async (req, res) => {
   }
 })
 
+/**
+ * Permanently delete the authenticated buyer's account and all associated
+ * data (cascaded by the database schema). This action is irreversible.
+ *
+ * @route {DELETE} /account
+ * @access authenticated
+ */
 authRouter.delete('/account', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   try {

@@ -1,3 +1,8 @@
+/**
+ * @module intentCartPlanner
+ * Converts a free-text meal or shopping request into a structured ingredient list suitable for automated grocery catalog matching.
+ */
+
 import { completeJson } from './aiClient.js'
 
 type RecipeIngredient = {
@@ -14,6 +19,13 @@ type Recipe = {
   ingredients: RecipeIngredient[]
 }
 
+/**
+ * A single ingredient line item ready for grocery catalog searching.
+ * @property {string} product - Norwegian ingredient name as it appears in grocery stores.
+ * @property {string[]} searchTerms - Alternative Norwegian names and synonyms used for catalog matching.
+ * @property {boolean} required - Whether the dish cannot be made without this ingredient.
+ * @property {number} qty - Number of standard grocery packages to add to the cart (1–5).
+ */
 export type MealIngredient = {
   product: string
   searchTerms: string[]
@@ -21,6 +33,13 @@ export type MealIngredient = {
   qty: number
 }
 
+/**
+ * A fully resolved meal plan ready for cart population.
+ * @property {string} mealType - URL-safe slug derived from the recipe title (e.g. `"pasta_carbonara"`).
+ * @property {number} people - Number of servings the ingredient quantities are scaled for.
+ * @property {string | null} notes - Reserved for future use; always `null`.
+ * @property {MealIngredient[]} ingredients - Ordered list of ingredient line items for the meal.
+ */
 export type MealPlanSpec = {
   mealType: string
   people: number
@@ -215,6 +234,26 @@ function buildFallbackSearchTerms(ingredientName: string): string[] {
   return terms.slice(0, 8)
 }
 
+/**
+ * Converts a free-text meal or shopping request into a structured `MealPlanSpec` for cart building.
+ *
+ * Pipeline:
+ * 1. Calls the AI (`generateRecipe`) with a detailed system prompt that instructs it to return a
+ *    structured JSON recipe using Norwegian grocery ingredient names, search term synonyms, package
+ *    counts, and an essentiality flag for each ingredient.
+ * 2. Normalises and validates every field returned by the AI (package count, search terms, ingredient
+ *    name length) via `normalizePackageCount` / `normalizeSearchTerms` and their fallback helpers.
+ * 3. Maps the validated `RecipeIngredient` array to `MealIngredient` objects and derives a
+ *    URL-safe `mealType` slug from the recipe title.
+ * 4. Returns the assembled `MealPlanSpec`.
+ *
+ * Accepts requests in any language; Norwegian ingredient names are always used in the output.
+ *
+ * @param {string} text - Free-text meal description, recipe name, or shopping list (any language).
+ * @param {'en' | 'no'} [language='en'] - Language for the recipe title in the AI response.
+ * @param {string[]} [_catalogCategories=[]] - Reserved for future catalog-category hinting; currently unused.
+ * @returns {Promise<MealPlanSpec>} Structured meal plan with ingredients ready for catalog matching.
+ */
 export async function planMealFromText(
   text: string,
   language: 'en' | 'no' = 'en',

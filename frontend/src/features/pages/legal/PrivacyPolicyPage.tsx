@@ -1,3 +1,8 @@
+/**
+ * @module PrivacyPolicyPage
+ * Static GDPR privacy policy page covering data collection, usage, retention, and user rights.
+ */
+
 import Link from 'next/link'
 
 const section = 'mt-6'
@@ -5,6 +10,7 @@ const h2 = 'text-lg font-bold text-[#111827]'
 const p = 'mt-2 leading-relaxed text-[#4b5563]'
 const ul = 'mt-2 list-disc pl-5 space-y-1 text-[#4b5563]'
 
+/** Static GDPR privacy policy page explaining personal data handling across the platform. */
 export default function PrivacyPolicyPage() {
   return (
     <main className="min-h-screen bg-[#f3f4f6] text-[#1f2937]">

@@ -1,3 +1,8 @@
+/**
+ * @module BuyerSettingsPage
+ * Multi-tab buyer settings page covering Profile, Addresses, Payment, Orders, and Security.
+ */
+
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -7,8 +12,16 @@ import BuyerSidebar from '../../components/BuyerSidebar'
 const BUYER_STORAGE_KEY = 'localsupply-user'
 const TOKEN_KEY = 'localsupply-token'
 
+/** Active tab in the buyer settings navigation. */
 type Tab = 'profile' | 'addresses' | 'payment' | 'orders' | 'security'
 
+/**
+ * Authenticated buyer session read from localStorage.
+ * @property id - Buyer identifier.
+ * @property firstName - Buyer's first name.
+ * @property lastName - Buyer's last name.
+ * @property email - Buyer's email address.
+ */
 type BuyerSession = {
   id: string
   firstName: string
@@ -16,6 +29,13 @@ type BuyerSession = {
   email: string
 }
 
+/**
+ * An address suggestion from the GeoNorge geocoding API.
+ * @property adressetekst - Full street address text.
+ * @property postnummer - Norwegian postal code.
+ * @property poststed - City or postal area name.
+ * @property kommunenavn - Municipality name.
+ */
 type GeoNorgeAddress = {
   adressetekst: string
   postnummer: string
@@ -23,6 +43,14 @@ type GeoNorgeAddress = {
   kommunenavn: string
 }
 
+/**
+ * A saved delivery address from the buyer's profile.
+ * @property id - Address record identifier.
+ * @property label - Optional display label (e.g. "Home"), or null.
+ * @property address - Full address string.
+ * @property phone - Contact phone for delivery, or null.
+ * @property isDefault - Whether this is the buyer's default address.
+ */
 type SavedAddress = {
   id: string
   label: string | null
@@ -31,6 +59,16 @@ type SavedAddress = {
   isDefault: boolean
 }
 
+/**
+ * A saved payment method (credit/debit card) from the buyer's profile.
+ * @property id - Payment method record identifier.
+ * @property cardholderName - Name on the card.
+ * @property maskedNumber - Masked card number (e.g. "**** **** **** 1234").
+ * @property lastFour - Last four digits of the card number.
+ * @property expiry - Expiry date in "MM/YY" format.
+ * @property cardType - Card network (e.g. "Visa", "Mastercard"), or null.
+ * @property isDefault - Whether this is the buyer's default payment method.
+ */
 type SavedPaymentMethod = {
   id: string
   cardholderName: string
@@ -41,6 +79,15 @@ type SavedPaymentMethod = {
   isDefault: boolean
 }
 
+/**
+ * A line item within a buyer's order (used in the Orders settings tab).
+ * @property id - Line item identifier.
+ * @property productId - Product catalog ID.
+ * @property name - Product name.
+ * @property unit - Unit description.
+ * @property quantity - Ordered quantity.
+ * @property unitPrice - Price per unit.
+ */
 type OrderItem = {
   id: string
   productId: string
@@ -50,6 +97,20 @@ type OrderItem = {
   unitPrice: number | string
 }
 
+/**
+ * A buyer's order record displayed in the Orders settings tab.
+ * @property id - Order identifier.
+ * @property status - Current order status.
+ * @property subtotal - Products subtotal.
+ * @property deliveryFee - Delivery fee.
+ * @property total - Grand total.
+ * @property notes - Delivery notes, or null.
+ * @property woltTrackingUrl - Live Wolt tracking link, or null.
+ * @property woltStatus - Wolt Drive status code, or null.
+ * @property createdAt - ISO timestamp of order creation.
+ * @property supplier - Fulfilling supplier brief.
+ * @property items - Ordered product lines.
+ */
 type Order = {
   id: string
   status: string
@@ -81,16 +142,31 @@ const STATUS_STYLES: Record<string, string> = {
   CANCELLED: 'bg-red-50 text-red-600 border-red-200',
 }
 
+/**
+ * Formats a raw card number string into groups of four, removing non-digits (max 16 digits).
+ * @param raw - Raw card number input.
+ * @returns Formatted string like "1234 5678 9012 3456".
+ */
 function formatCardNumber(raw: string) {
   return raw.replace(/\D/g, '').slice(0, 16).replace(/(.{4})/g, '$1 ').trim()
 }
 
+/**
+ * Formats a raw expiry input as "MM/YY".
+ * @param raw - Raw expiry input (digits only, up to 4).
+ * @returns Formatted expiry string.
+ */
 function formatExpiry(raw: string) {
   const digits = raw.replace(/\D/g, '').slice(0, 4)
   if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`
   return digits
 }
 
+/**
+ * Detects the card network from the card number prefix.
+ * @param number - Card number (may include spaces).
+ * @returns "Visa", "Mastercard", "Amex", or an empty string if unknown.
+ */
 function detectCardType(number: string): string {
   const digits = number.replace(/\s/g, '')
   if (/^4/.test(digits)) return 'Visa'
@@ -99,10 +175,18 @@ function detectCardType(number: string): string {
   return ''
 }
 
+/**
+ * Returns true if the card number (stripped of spaces) is exactly 16 digits.
+ * @param number - Card number string.
+ */
 function validateCardNumber(number: string): boolean {
   return /^\d{16}$/.test(number.replace(/\s/g, ''))
 }
 
+/**
+ * Returns true if the expiry string is a valid future date in "MM/YY" format.
+ * @param expiry - Expiry string.
+ */
 function validateExpiry(expiry: string): boolean {
   if (!/^\d{2}\/\d{2}$/.test(expiry)) return false
   const [mm, yy] = expiry.split('/').map(Number)
@@ -111,22 +195,45 @@ function validateExpiry(expiry: string): boolean {
   return new Date(2000 + yy, mm, 0) >= now
 }
 
+/**
+ * Returns true if the CVV is 3 or 4 digits.
+ * @param cvv - CVV string.
+ */
 function validateCvv(cvv: string): boolean {
   return /^\d{3,4}$/.test(cvv)
 }
 
+/**
+ * Formats a numeric or string amount to two decimal places.
+ * @param n - Amount.
+ * @returns Formatted decimal string.
+ */
 function fmt(n: number | string) {
   return Number(n).toFixed(2)
 }
 
+/**
+ * Converts an uppercase status code to a title-cased human-readable label.
+ * @param s - Status string (e.g. "IN_TRANSIT").
+ * @returns Label (e.g. "In transit").
+ */
 function statusLabel(s: string) {
   return s.charAt(0) + s.slice(1).toLowerCase().replace('_', ' ')
 }
 
+/**
+ * Formats an ISO date string as a short British date (e.g. "1 May 2025").
+ * @param iso - ISO 8601 date string.
+ * @returns Formatted date string.
+ */
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+/**
+ * Multi-tab buyer settings page with sections for Profile, Addresses (GeoNorge autocomplete),
+ * Payment (card management), Orders (reorder support), and Security (password change and account deletion).
+ */
 export default function BuyerSettingsPage() {
   const [buyer, setBuyer] = useState<BuyerSession | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -196,6 +303,7 @@ export default function BuyerSettingsPage() {
     setIsReady(true)
   }, [])
 
+  /** Returns the Authorization header object for authenticated buyer API calls. */
   function getAuthHeader(): Record<string, string> {
     try {
       const token = window.localStorage.getItem(TOKEN_KEY)
@@ -259,6 +367,7 @@ export default function BuyerSettingsPage() {
 
   // ── Profile ──────────────────────────────────────────────────────────────────
 
+  /** Saves the buyer's profile fields (first name, last name) via the API. */
   async function handleSaveProfile() {
     if (!buyer || isSavingProfile) return
     if (!profileFirstName.trim() || !profileLastName.trim()) {
@@ -293,6 +402,7 @@ export default function BuyerSettingsPage() {
     setShowAddrSuggestions(false)
   }
 
+  /** Creates or updates a saved delivery address via the API. */
   async function handleSaveAddress() {
     if (!buyer || isSavingAddr) return
     const trimmed = newAddrQuery.trim()
@@ -323,6 +433,10 @@ export default function BuyerSettingsPage() {
     }
   }
 
+  /**
+   * Sets the specified saved address as the buyer's default delivery address.
+   * @param id - Address record ID to set as default.
+   */
   async function handleSetDefaultAddress(id: string) {
     const res = await fetch(buildApiUrl(`/api/auth/addresses/${id}`), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -331,6 +445,10 @@ export default function BuyerSettingsPage() {
     if (res.ok) setAddresses((prev) => prev.map((a) => ({ ...a, isDefault: a.id === id })))
   }
 
+  /**
+   * Deletes a saved delivery address via the API.
+   * @param id - Address record ID to delete.
+   */
   async function handleDeleteAddress(id: string) {
     const res = await fetch(buildApiUrl(`/api/auth/addresses/${id}`), { method: 'DELETE', headers: getAuthHeader() })
     if (res.ok || res.status === 204) {
@@ -355,6 +473,7 @@ export default function BuyerSettingsPage() {
     return Object.keys(errors).length === 0
   }
 
+  /** Validates and saves a new payment card via the API, then refreshes the payment methods list. */
   async function handleSaveCard() {
     if (!buyer || isSavingCard) return
     if (!validateNewCard()) return
@@ -384,6 +503,10 @@ export default function BuyerSettingsPage() {
     }
   }
 
+  /**
+   * Sets the specified payment method as the buyer's default.
+   * @param id - Payment method record ID to set as default.
+   */
   async function handleSetDefaultPayment(id: string) {
     const res = await fetch(buildApiUrl(`/api/auth/payment-methods/${id}`), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -392,6 +515,10 @@ export default function BuyerSettingsPage() {
     if (res.ok) setPayments((prev) => prev.map((p) => ({ ...p, isDefault: p.id === id })))
   }
 
+  /**
+   * Deletes a saved payment method via the API.
+   * @param id - Payment method record ID to delete.
+   */
   async function handleDeletePayment(id: string) {
     const res = await fetch(buildApiUrl(`/api/auth/payment-methods/${id}`), { method: 'DELETE', headers: getAuthHeader() })
     if (res.ok || res.status === 204) {
@@ -406,6 +533,10 @@ export default function BuyerSettingsPage() {
 
   // ── Orders ────────────────────────────────────────────────────────────────────
 
+  /**
+   * Re-creates a previous order's cart in localStorage and redirects to checkout.
+   * @param order - The order to re-order.
+   */
   async function handleReorder(order: Order) {
     if (!buyer || reorderingId) return
     setReorderingId(order.id)
@@ -430,6 +561,7 @@ export default function BuyerSettingsPage() {
 
   // ── Security ──────────────────────────────────────────────────────────────────
 
+  /** Validates the current and new passwords and POSTs a change-password request to the API. */
   async function handleChangePassword() {
     if (isSavingPw) return
     setPwMsg(null)

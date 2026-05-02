@@ -1,4 +1,5 @@
 /**
+ * @module geonorgeAdresser
  * Norwegian address lookup via Geonorge Adresser API (Kartverket).
  * Uses backend proxy (/api/addresses/sok) when API_BASE_URL is set to avoid CORS.
  * @see https://ws.geonorge.no/adresser/v1/
@@ -6,6 +7,16 @@
 
 import { API_BASE_URL, buildApiUrl } from './api'
 
+/**
+ * A single Norwegian address record returned after lookup and normalisation.
+ *
+ * @property {string} adressetekst - Full formatted address text (e.g. "Storgata 1").
+ * @property {string} postnummer - Four-digit postal code (e.g. "0155").
+ * @property {string} poststed - Postal area name in title-case (e.g. "Oslo").
+ * @property {string} adressenavn - Street or road name without the house number.
+ * @property {number} nummer - House number.
+ * @property {string | null} bokstav - Optional letter suffix for the house number (e.g. "A"), or `null`.
+ */
 export type GeonorgeAdresse = {
   adressetekst: string
   postnummer: string
@@ -47,6 +58,21 @@ function mapRow(a: AdresseRow): GeonorgeAdresse {
   }
 }
 
+/**
+ * Searches for Norwegian addresses matching the given query string.
+ *
+ * When `API_BASE_URL` is configured the request is routed through the backend
+ * proxy (`/api/addresses/sok`) to avoid CORS restrictions. Otherwise the
+ * Geonorge API is called directly from the browser.
+ *
+ * Returns an empty array when the query is blank, when the network request
+ * fails, or when the response contains no results. The request is aborted
+ * automatically after 8 seconds.
+ *
+ * @param {string} query - The free-text search string (street name, number, or postcode).
+ * @param {number} [limit=10] - Maximum number of address suggestions to return.
+ * @returns {Promise<GeonorgeAdresse[]>} Resolves to an array of matching address records.
+ */
 export async function searchAddresses(query: string, limit = 10): Promise<GeonorgeAdresse[]> {
   const trimmed = query.trim()
   if (trimmed.length === 0) return []

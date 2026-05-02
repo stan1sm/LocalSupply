@@ -1,3 +1,8 @@
+/**
+ * @module CheckoutPage
+ * Full checkout flow: store selection, delivery address with GeoNorge autocomplete, live Wolt estimate, payment, and order placement.
+ */
+
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -6,6 +11,16 @@ import { buildApiUrl } from '../../../lib/api'
 const CART_STORAGE_KEY = 'localsupply-marketplace-cart'
 const BUYER_STORAGE_KEY = 'localsupply-user'
 
+/**
+ * A single item from the buyer's cart, as stored in localStorage.
+ * @property id - Price ID used as cart key.
+ * @property imageUrl - Optional product image URL.
+ * @property name - Product display name.
+ * @property price - Unit price in Norwegian krone.
+ * @property quantity - Number of units.
+ * @property store - Store code, or null.
+ * @property unitInfo - Human-readable unit description, or null.
+ */
 type CartItem = {
   id: string
   imageUrl: string | null
@@ -16,6 +31,13 @@ type CartItem = {
   unitInfo: string | null
 }
 
+/**
+ * Authenticated buyer session read from localStorage.
+ * @property id - Buyer identifier.
+ * @property firstName - Buyer's first name.
+ * @property lastName - Buyer's last name.
+ * @property email - Buyer's email address.
+ */
 type BuyerSession = {
   id: string
   firstName: string
@@ -23,6 +45,16 @@ type BuyerSession = {
   email: string
 }
 
+/**
+ * A product line within a Wolt store match result.
+ * @property brand - Brand name, or null.
+ * @property catalogProductId - Wolt catalog product ID.
+ * @property imageUrl - Product image URL, or null.
+ * @property lineTotal - Total price for this line.
+ * @property name - Product name.
+ * @property quantity - Matched quantity.
+ * @property unitPrice - Price per unit.
+ */
 type MatchedStoreItem = {
   brand: string | null
   catalogProductId: string
@@ -33,6 +65,19 @@ type MatchedStoreItem = {
   unitPrice: number
 }
 
+/**
+ * A Wolt store that can fulfil (part of) the cart.
+ * @property deliveryCost - Delivery fee in krone.
+ * @property eta - Human-readable ETA string.
+ * @property etaMinutes - Estimated delivery time in minutes.
+ * @property items - Matched product lines at this store.
+ * @property itemsAvailable - Number of cart items available.
+ * @property itemsRequested - Total cart items requested.
+ * @property storeCode - Wolt store identifier.
+ * @property storeName - Display name of the store.
+ * @property subtotal - Products subtotal.
+ * @property total - Grand total including delivery.
+ */
 type MatchedStore = {
   deliveryCost: number
   eta: string
@@ -46,6 +91,13 @@ type MatchedStore = {
   total: number
 }
 
+/**
+ * Response from the cart-to-store matching endpoint.
+ * @property bestMatch - Best matching store, or null.
+ * @property savings - Total potential savings.
+ * @property stores - All stores that can fulfil the cart.
+ * @property totalCartItems - Total items in the cart.
+ */
 type MatchResponse = {
   bestMatch: MatchedStore | null
   savings: number
@@ -53,6 +105,13 @@ type MatchResponse = {
   totalCartItems: number
 }
 
+/**
+ * An address suggestion from the GeoNorge geocoding API.
+ * @property adressetekst - Full street address text.
+ * @property postnummer - Norwegian postal code.
+ * @property poststed - City or postal area name.
+ * @property kommunenavn - Municipality name.
+ */
 type GeoNorgeAddress = {
   adressetekst: string
   postnummer: string
@@ -60,10 +119,20 @@ type GeoNorgeAddress = {
   kommunenavn: string
 }
 
+/** Whether the order is placed by an individual consumer or a business. */
 type AccountType = 'INDIVIDUAL' | 'BUSINESS'
 
+/** Selected payment method for the order. */
 type PaymentMethod = 'vipps' | 'card' | 'invoice'
 
+/**
+ * A saved delivery address from the buyer's profile.
+ * @property id - Address record identifier.
+ * @property label - Optional display label (e.g. "Home").
+ * @property address - Full address string.
+ * @property phone - Contact phone for delivery, or null.
+ * @property isDefault - Whether this is the buyer's default address.
+ */
 type SavedAddress = {
   id: string
   label: string | null
@@ -72,6 +141,13 @@ type SavedAddress = {
   isDefault: boolean
 }
 
+/**
+ * Successful Wolt Drive delivery estimate.
+ * @property ok - Always true for a success response.
+ * @property fee - Delivery fee in krone.
+ * @property etaMinutes - Estimated delivery time in minutes.
+ * @property currency - ISO currency code (e.g. "NOK").
+ */
 type WoltEstimate = {
   ok: true
   fee: number
@@ -79,16 +155,32 @@ type WoltEstimate = {
   currency: string
 }
 
+/**
+ * Error response from the Wolt Drive estimate endpoint.
+ * @property ok - Always false for an error response.
+ * @property errorCode - Machine-readable error code from Wolt.
+ * @property message - Human-readable error description.
+ */
 type WoltError = {
   ok: false
   errorCode: string
   message: string
 }
 
+/**
+ * Formats a numeric value as a Norwegian krone string.
+ * @param value - Numeric amount.
+ * @returns String with two decimal places and "kr" suffix.
+ */
 function formatCurrency(value: number) {
   return `${value.toFixed(2)} kr`
 }
 
+/**
+ * Converts a duration in minutes to a human-readable ETA label.
+ * @param minutes - Duration in minutes.
+ * @returns Formatted string such as "30 mins" or "1h 15min".
+ */
 function etaLabel(minutes: number): string {
   if (minutes < 60) return `${minutes} mins`
   const h = Math.floor(minutes / 60)
@@ -108,6 +200,10 @@ const WOLT_OUTSIDE_AREA_CODES = new Set([
   'INVALID_DROPOFF_ADDRESS',
 ])
 
+/**
+ * Checkout page managing store selection, delivery address input with GeoNorge autocomplete,
+ * live Wolt Drive fee estimation, payment method selection, and final order submission.
+ */
 export default function CheckoutPage() {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [buyer, setBuyer] = useState<BuyerSession | null>(null)
@@ -175,6 +271,7 @@ export default function CheckoutPage() {
     }
   }, [isReady, buyer])
 
+  /** Returns the Authorization header object for authenticated buyer API calls. */
   function getAuthHeader(): Record<string, string> {
     try {
       const token = window.localStorage.getItem('localsupply-token')
@@ -337,29 +434,55 @@ export default function CheckoutPage() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  /**
+   * Fills the address input with a selected GeoNorge suggestion and hides the dropdown.
+   * @param addr - The GeoNorge address suggestion to apply.
+   */
   function selectAddress(addr: GeoNorgeAddress) {
     setAddressQuery(`${addr.adressetekst}, ${addr.postnummer} ${addr.poststed}`)
     setShowSuggestions(false)
   }
 
+  /**
+   * Returns cart items that are not available at the given matched store.
+   * @param store - The matched store to check availability against.
+   * @returns Array of cart items not matched at the store.
+   */
   function getUnavailableItems(store: MatchedStore): CartItem[] {
     const matchedNames = new Set(store.items.map((i) => i.name.toLowerCase()))
     return cartItems.filter((ci) => !matchedNames.has(ci.name.toLowerCase()))
   }
 
-  // Effective delivery cost/eta for a store — uses Wolt if available
+  /**
+   * Returns the effective delivery cost for a store, using the live Wolt estimate if available.
+   * @param store - The matched store.
+   * @returns Delivery fee in krone.
+   */
   function effectiveDeliveryCost(store: MatchedStore): number {
     return woltEstimate ? woltEstimate.fee : store.deliveryCost
   }
 
+  /**
+   * Returns the effective ETA label for a store, using the live Wolt estimate if available.
+   * @param store - The matched store.
+   * @returns Human-readable ETA string.
+   */
   function effectiveEta(store: MatchedStore): string {
     return woltEstimate ? etaLabel(woltEstimate.etaMinutes) : store.eta
   }
 
+  /**
+   * Calculates the effective grand total for a store (subtotal + effective delivery), rounded to 2 decimal places.
+   * @param store - The matched store.
+   * @returns Grand total in krone.
+   */
   function effectiveTotal(store: MatchedStore): number {
     return Math.round((store.subtotal + effectiveDeliveryCost(store)) * 100) / 100
   }
 
+  /**
+   * Validates the checkout form, POSTs the order to the API, clears the cart, and redirects to the orders page on success.
+   */
   async function handlePlaceOrder() {
     if (!selectedStore || !buyer || isPlacing) return
     if (!addressQuery.trim()) {

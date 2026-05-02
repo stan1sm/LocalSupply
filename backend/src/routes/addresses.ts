@@ -1,8 +1,27 @@
+/**
+ * @module routes/addresses
+ * Express router for Norwegian address autocomplete via the Geonorge API.
+ * All routes are mounted under /api/addresses.
+ */
+
 import { Router, type Request, type Response } from 'express'
 
+/**
+ * Express router providing address search endpoints.
+ */
 const addressesRouter = Router()
 const GEONORGE_BASE = 'https://ws.geonorge.no/adresser/v1'
 
+/**
+ * Search for Norwegian addresses using the Geonorge address API.
+ * Proxies the request to the Geonorge /sok endpoint and returns the
+ * matching address list. The result count is clamped between 1 and 20.
+ *
+ * @route {GET} /sok
+ * @access {public}
+ * @param req.query.q   - The address search string (required).
+ * @param req.query.limit - Maximum number of results to return (1–20, default 10).
+ */
 addressesRouter.get('/sok', async (req: Request, res: Response) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : ''
   const limit = Math.min(Math.max(1, Number(req.query.limit) || 10), 20)
@@ -34,4 +53,5 @@ addressesRouter.get('/sok', async (req: Request, res: Response) => {
   }
 })
 
+/** @exports addressesRouter */
 export default addressesRouter

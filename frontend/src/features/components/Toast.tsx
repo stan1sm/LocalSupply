@@ -1,7 +1,29 @@
 'use client'
 
+/**
+ * @module Toast
+ * Fixed-position container that renders the active toast notification stack.
+ */
+
 import type { Toast } from './useToast'
 
+/**
+ * Renders all active toast notifications in a fixed overlay anchored to the
+ * bottom-right corner of the viewport.
+ *
+ * Toasts are colour-coded by type:
+ * - `'success'` — green border and background.
+ * - `'error'` — red border and background.
+ * - `'info'` — neutral white background.
+ *
+ * Returns `null` when the `toasts` array is empty so no DOM node is mounted.
+ * Each toast carries `role="status"` and `aria-live="polite"` for screen-reader
+ * accessibility.
+ *
+ * @param {Object} props - Component props.
+ * @param {Toast[]} props.toasts - The current array of active toast records supplied by {@link useToast}.
+ * @returns {JSX.Element | null} The rendered toast stack, or `null` when there are no toasts.
+ */
 export function ToastContainer({ toasts }: { toasts: Toast[] }) {
   if (toasts.length === 0) return null
   return (

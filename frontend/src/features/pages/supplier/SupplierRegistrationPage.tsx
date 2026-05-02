@@ -1,3 +1,8 @@
+/**
+ * @module SupplierRegistrationPage
+ * Supplier registration form with Brreg verification, business/contact details, account setup, and address input.
+ */
+
 'use client'
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
@@ -17,6 +22,16 @@ import {
 import { buildApiUrl } from '../../../lib/api'
 import { type GeonorgeAdresse, searchAddresses } from '../../../lib/geonorgeAdresser'
 
+/**
+ * Result from the Brønnøysundregistrene (Brreg) business lookup.
+ * @property ok - Whether the lookup succeeded and the business is registerable.
+ * @property name - Official business name, if found.
+ * @property address - Official registered address, if found.
+ * @property isActive - Whether the business is currently active.
+ * @property inBankruptcy - Whether the business is in bankruptcy proceedings.
+ * @property inLiquidation - Whether the business is in voluntary liquidation.
+ * @property message - Error description if the lookup failed.
+ */
 type BrregResult = {
   ok: boolean
   name?: string
@@ -27,6 +42,19 @@ type BrregResult = {
   message?: string
 }
 
+/**
+ * Form field values for the supplier registration form.
+ * @property orgnr - Norwegian organisation number (9 digits).
+ * @property businessName - Registered business name.
+ * @property contactName - Primary contact person's full name.
+ * @property phoneNumber - Business phone number.
+ * @property email - Business email address.
+ * @property password - Chosen account password.
+ * @property confirmPassword - Password confirmation.
+ * @property streetAddress - Street address.
+ * @property postalCode - Norwegian postal code.
+ * @property city - City/postal area name.
+ */
 type SupplierFormData = {
   orgnr: string
   businessName: string
@@ -40,6 +68,7 @@ type SupplierFormData = {
   city: string
 }
 
+/** Per-field validation error messages for the supplier registration form. */
 type SupplierFormErrors = Partial<Record<keyof SupplierFormData, string>>
 
 const initialFormData: SupplierFormData = {
@@ -59,6 +88,18 @@ const ADDRESS_DEBOUNCE_MS = 400
 const GEONORGE_SUGGESTIONS_LIMIT = 8
 const BRREG_SLOW_THRESHOLD_MS = 4000
 
+/**
+ * Pipeline state for the Brønnøysundregistrene organisation lookup.
+ * - `idle` — not started
+ * - `loading` — request in flight
+ * - `slow` — request taking longer than threshold
+ * - `verified` — business is active and valid
+ * - `bankrupt` — business is in bankruptcy proceedings
+ * - `liquidation` — business is in voluntary liquidation
+ * - `inactive` — business is not active
+ * - `not_found` — no matching organisation found
+ * - `error` — lookup request failed
+ */
 type BrregStatus = 'idle' | 'loading' | 'slow' | 'verified' | 'bankrupt' | 'liquidation' | 'inactive' | 'not_found' | 'error'
 
 function SectionHeader({ number, title }: { number: number; title: string }) {
@@ -173,6 +214,10 @@ function BrregBanner({ status, result }: { status: BrregStatus; result: BrregRes
   return null
 }
 
+/**
+ * Supplier registration page with a 4-section form: Brreg organisation verification,
+ * business and contact details, account credentials, and delivery address with GeoNorge autocomplete.
+ */
 export default function SupplierRegistrationPage() {
   const router = useRouter()
   const [formData, setFormData] = useState<SupplierFormData>(initialFormData)
@@ -200,6 +245,11 @@ export default function SupplierRegistrationPage() {
 
   const passwordRequirements = getPasswordRequirementStatus(formData.password)
 
+  /**
+   * Fetches GeoNorge address suggestions for the given query and updates the autocomplete dropdown.
+   * @param query - Street address search term.
+   * @param onResults - Optional callback invoked with the fetched results.
+   */
   const runAddressSearch = useCallback(
     async (query: string, onResults?: (results: GeonorgeAdresse[]) => void) => {
       if (!query.trim()) {
@@ -242,6 +292,10 @@ export default function SupplierRegistrationPage() {
     }
   }, [addressDropdownVisible])
 
+  /**
+   * Strips non-digit characters, limits to 9 digits, and triggers a debounced Brreg lookup when the number is complete.
+   * @param value - Raw value from the organisation number input.
+   */
   function handleOrgnrChange(value: string) {
     const digits = value.replace(/[^0-9]/g, '').slice(0, 9)
     setFormData((prev) => ({ ...prev, orgnr: digits }))
@@ -306,6 +360,11 @@ export default function SupplierRegistrationPage() {
     }
   }
 
+  /**
+   * Sanitises and updates a text field; triggers a debounced address search when editing streetAddress.
+   * @param field - The form field to update.
+   * @param value - Raw input value.
+   */
   function handleTextChange(field: 'businessName' | 'contactName' | 'streetAddress' | 'city', value: string) {
     const maxLength = field === 'streetAddress' ? 120 : 80
     setFormData((prev) => ({ ...prev, [field]: sanitizeTextInput(value, maxLength) }))
@@ -323,6 +382,10 @@ export default function SupplierRegistrationPage() {
     }
   }
 
+  /**
+   * Strips non-digits, limits to 4 characters, and auto-populates the city field via GeoNorge when complete.
+   * @param value - Raw value from the postal code input.
+   */
   function handlePostalCodeChange(value: string) {
     const digits = value.replace(/[^0-9]/g, '').slice(0, 4)
     setFormData((prev) => ({ ...prev, postalCode: digits }))
@@ -342,6 +405,10 @@ export default function SupplierRegistrationPage() {
     }
   }
 
+  /**
+   * Applies a GeoNorge address suggestion to the street, postal code, and city fields.
+   * @param addr - The selected GeoNorge address suggestion.
+   */
   function handleSelectAddress(addr: GeonorgeAdresse) {
     setFormData((prev) => ({
       ...prev,
@@ -354,24 +421,42 @@ export default function SupplierRegistrationPage() {
     setAddressDropdownVisible(false)
   }
 
+  /**
+   * Sanitises and updates the phone number field.
+   * @param value - Raw value from the phone input.
+   */
   function handlePhoneChange(value: string) {
     setFormData((prev) => ({ ...prev, phoneNumber: sanitizePhoneInput(value) }))
     setErrors((prev) => ({ ...prev, phoneNumber: undefined }))
     setSubmitMessage('')
   }
 
+  /**
+   * Sanitises and updates the email field, clearing any prior email error.
+   * @param value - Raw value from the email input.
+   */
   function handleEmailChange(value: string) {
     setFormData((prev) => ({ ...prev, email: sanitizeEmailInput(value) }))
     setErrors((prev) => ({ ...prev, email: undefined }))
     setSubmitMessage('')
   }
 
+  /**
+   * Updates a password field (capped at 128 characters), clearing any prior error.
+   * @param field - The password field to update.
+   * @param value - Raw value from the password input.
+   */
   function handlePasswordChange(field: 'password' | 'confirmPassword', value: string) {
     setFormData((prev) => ({ ...prev, [field]: value.slice(0, 128) }))
     setErrors((prev) => ({ ...prev, [field]: undefined }))
     setSubmitMessage('')
   }
 
+  /**
+   * Validates all supplier registration form fields and returns a map of field errors.
+   * @param data - Current form data to validate.
+   * @returns Object mapping field keys to error message strings (empty if valid).
+   */
   function validate(data: SupplierFormData): SupplierFormErrors {
     const nextErrors: SupplierFormErrors = {}
     const businessName = data.businessName.trim()
@@ -413,6 +498,10 @@ export default function SupplierRegistrationPage() {
     return nextErrors
   }
 
+  /**
+   * Normalises form data, validates it, and submits the supplier registration request to the API.
+   * @param event - The form submit event.
+   */
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const normalizedData: SupplierFormData = {

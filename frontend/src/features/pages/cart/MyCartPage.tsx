@@ -1,9 +1,24 @@
+/**
+ * @module MyCartPage
+ * Shopping cart page with smart store matching, AI meal-plan intent cart, and AI substitution suggestions.
+ */
+
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 import BuyerSidebar from '../../components/BuyerSidebar'
 
+/**
+ * A single item in the buyer's cart.
+ * @property id - Product price ID used as the cart key.
+ * @property imageUrl - Optional product image URL.
+ * @property name - Product display name.
+ * @property price - Unit price in Norwegian krone.
+ * @property quantity - Number of units in the cart.
+ * @property store - Store code the product belongs to, or null.
+ * @property unitInfo - Human-readable unit description (e.g. "500 g"), or null.
+ */
 type CartItem = {
   id: string
   imageUrl: string | null
@@ -14,6 +29,21 @@ type CartItem = {
   unitInfo: string | null
 }
 
+/**
+ * AI-generated substitution suggestion for a cart item.
+ * @property priceId - Price ID of the suggested substitute product.
+ * @property name - Substitute product name.
+ * @property brand - Brand name, or null.
+ * @property imageUrl - Product image URL, or null.
+ * @property unit - Unit description, or null.
+ * @property storeCode - Store code where the substitute is available.
+ * @property storeName - Human-readable store name.
+ * @property price - Unit price of the substitute.
+ * @property savingsAmount - Absolute savings compared to the original item.
+ * @property savingsPercentage - Relative savings as a percentage, or null.
+ * @property similarity - Semantic similarity score (0–1).
+ * @property reason - Human-readable explanation for the substitution.
+ */
 type SubstitutionSuggestion = {
   priceId: string
   name: string
@@ -29,10 +59,24 @@ type SubstitutionSuggestion = {
   reason: string
 }
 
+/**
+ * API response envelope for the substitution suggestions endpoint.
+ * @property suggestions - Array of substitution candidates.
+ */
 type SubstitutionsResponse = {
   suggestions: SubstitutionSuggestion[]
 }
 
+/**
+ * A single product line within a matched Wolt store result.
+ * @property brand - Brand name, or null.
+ * @property catalogProductId - Wolt catalog product ID.
+ * @property imageUrl - Product image URL, or null.
+ * @property lineTotal - Total price for this line (unitPrice × quantity).
+ * @property name - Product name.
+ * @property quantity - Matched quantity.
+ * @property unitPrice - Price per unit.
+ */
 type MatchedStoreItem = {
   brand: string | null
   catalogProductId: string
@@ -43,6 +87,19 @@ type MatchedStoreItem = {
   unitPrice: number
 }
 
+/**
+ * A Wolt store that can fulfil (part of) the cart.
+ * @property deliveryCost - Delivery fee in krone.
+ * @property eta - Human-readable ETA string.
+ * @property etaMinutes - Estimated delivery time in minutes.
+ * @property items - Matched product lines available at this store.
+ * @property itemsAvailable - Number of cart items available at this store.
+ * @property itemsRequested - Total number of cart items requested.
+ * @property storeCode - Wolt store identifier.
+ * @property storeName - Display name of the store.
+ * @property subtotal - Products subtotal before delivery.
+ * @property total - Grand total including delivery.
+ */
 type MatchedStore = {
   deliveryCost: number
   eta: string
@@ -56,6 +113,13 @@ type MatchedStore = {
   total: number
 }
 
+/**
+ * Response from the cart-to-store matching endpoint.
+ * @property bestMatch - The single best matching store, or null if none found.
+ * @property savings - Total potential savings across all matched stores.
+ * @property stores - All stores that can fulfil at least part of the cart.
+ * @property totalCartItems - Total number of items in the cart.
+ */
 type MatchResponse = {
   bestMatch: MatchedStore | null
   savings: number
@@ -63,6 +127,17 @@ type MatchResponse = {
   totalCartItems: number
 }
 
+/**
+ * A product line within an AI-planned intent cart.
+ * @property imageUrl - Product image URL, or null.
+ * @property priceId - Price ID for the product.
+ * @property catalogProductId - Wolt catalog product ID.
+ * @property name - Product display name.
+ * @property unitPrice - Price per unit.
+ * @property unitInfo - Unit description, or null.
+ * @property quantity - Suggested quantity.
+ * @property lineTotal - Total for this line.
+ */
 type IntentCartItem = {
   imageUrl: string | null
   priceId: string
@@ -74,6 +149,16 @@ type IntentCartItem = {
   lineTotal: number
 }
 
+/**
+ * Best-matched store for an AI-planned intent cart.
+ * @property storeCode - Wolt store identifier.
+ * @property storeName - Display name of the store.
+ * @property subtotal - Products subtotal.
+ * @property deliveryCost - Delivery fee.
+ * @property total - Grand total.
+ * @property eta - Human-readable ETA string.
+ * @property etaMinutes - Estimated delivery time in minutes.
+ */
 type IntentCartStoreChoice = {
   storeCode: string
   storeName: string
@@ -84,6 +169,13 @@ type IntentCartStoreChoice = {
   etaMinutes: number
 }
 
+/**
+ * Full AI intent-cart planning response.
+ * @property items - Suggested product lines for the planned cart.
+ * @property explanation - Array of bullet-point explanations from the AI.
+ * @property storeChoice - Best store to fulfil the plan, or null.
+ * @property totalPrice - Estimated grand total.
+ */
 type IntentCartResponse = {
   items: IntentCartItem[]
   explanation: string[]
@@ -94,10 +186,20 @@ type IntentCartResponse = {
 const CART_STORAGE_KEY = 'localsupply-marketplace-cart'
 const BUYER_STORAGE_KEY = 'localsupply-user'
 
+/**
+ * Formats a numeric value as a Norwegian krone string.
+ * @param value - Numeric amount.
+ * @returns String with two decimal places and "kr" suffix.
+ */
 function formatCurrency(value: number) {
   return `${value.toFixed(2)} kr`
 }
 
+
+/**
+ * Cart page showing current items, smart Wolt store matching, AI substitution suggestions per item,
+ * and an AI meal-plan intent-cart builder.
+ */
 export default function MyCartPage() {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [matchResult, setMatchResult] = useState<MatchResponse | null>(null)
@@ -132,6 +234,10 @@ export default function MyCartPage() {
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems))
   }, [cartItems])
 
+  /**
+   * Sends cart items to the store-matching API and updates matched store results.
+   * @param items - Current cart items to match against available Wolt stores.
+   */
   const runMatch = useCallback(async (items: CartItem[]) => {
     if (items.length === 0) {
       setMatchResult(null)
@@ -166,6 +272,10 @@ export default function MyCartPage() {
     runMatch(cartItems)
   }, [cartItems, runMatch])
 
+  /**
+   * Reads the authenticated buyer's ID from localStorage.
+   * @returns The buyer ID string, or null if not logged in or data is invalid.
+   */
   function getBuyerIdFromStorage(): string | null {
     try {
       const storedBuyer = typeof window !== 'undefined' ? window.localStorage.getItem(BUYER_STORAGE_KEY) : null
@@ -180,6 +290,11 @@ export default function MyCartPage() {
     }
   }
 
+  /**
+   * Increments or decrements a cart item's quantity; removes the item if quantity reaches zero.
+   * @param itemId - Price ID of the cart item to update.
+   * @param delta - Quantity change (+1 or -1).
+   */
   function updateQuantity(itemId: string, delta: number) {
     setCartItems((current) =>
       current
@@ -192,6 +307,11 @@ export default function MyCartPage() {
     )
   }
 
+  /**
+   * Replaces a cart item with an AI-suggested substitute and clears its substitution list.
+   * @param oldPriceId - Price ID of the item to replace.
+   * @param suggestion - The substitute product to swap in.
+   */
   function replaceCartItem(oldPriceId: string, suggestion: SubstitutionSuggestion) {
     setCartItems((current) =>
       current.map((item) =>
@@ -214,6 +334,10 @@ export default function MyCartPage() {
     })
   }
 
+  /**
+   * Fetches AI substitution suggestions for a cart item from the API.
+   * @param priceId - Price ID of the item to find substitutions for.
+   */
   async function loadSubstitutions(priceId: string) {
     if (!priceId || loadingSubFor[priceId]) return
 
@@ -245,6 +369,10 @@ export default function MyCartPage() {
     }
   }
 
+  /**
+   * Sends the intent text to the AI cart-planner endpoint and populates the cart with the suggested items.
+   * Redirects to login if the buyer is not authenticated.
+   */
   async function planIntentCart() {
     const text = intentText.trim()
     if (!text) return
@@ -312,6 +440,7 @@ export default function MyCartPage() {
     }
   }
 
+  /** Removes all items from the cart and resets match and store selection state. */
   function clearCart() {
     setCartItems([])
     setMatchResult(null)

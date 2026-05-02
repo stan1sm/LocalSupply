@@ -1,8 +1,14 @@
+/**
+ * @module routes/products
+ * Express router for the product catalog, search, and sync operations.
+ * All routes are mounted under /api/products.
+ */
 import { Router } from 'express'
 import { syncCatalog } from '../lib/catalogSync.js'
 import { getPrismaClient } from '../lib/prisma.js'
 import { findSimilarProductsForProduct } from '../lib/embeddings.js'
 
+/** Express router providing product catalog browsing, search, and sync endpoints. */
 const productsRouter = Router()
 const KASSAL_DEFAULT_PAGE_SIZE = 50
 
@@ -11,6 +17,11 @@ const PLACEHOLDER_IMAGE_URLS = [
   'https://res.cloudinary.com/norgesgruppen/image/upload/Product/404.jpg',
 ]
 
+/**
+ * Returns `true` when the given URL is a known placeholder / "no image"
+ * image that should be treated as absent. Checks against a hard-coded list
+ * of CDN placeholder URLs and common path/filename patterns.
+ */
 function isPlaceholderImage(url: string | null | undefined): boolean {
   if (!url || url.trim() === '') return true
   if (PLACEHOLDER_IMAGE_URLS.includes(url)) return true
@@ -20,6 +31,11 @@ function isPlaceholderImage(url: string | null | undefined): boolean {
   return false
 }
 
+/**
+ * Unified product shape returned by all marketplace listing endpoints,
+ * regardless of whether the product originates from the Kassal catalog or a
+ * local supplier.
+ */
 type NormalizedProduct = {
   brand: string | null
   category: string | null
@@ -37,6 +53,10 @@ type NormalizedProduct = {
   supplierId?: string
 }
 
+/**
+ * Maps a frontend-facing category slug (e.g. `"dairy"`) to the list of
+ * Norwegian Kassal category strings stored in the database.
+ */
 type CategoryDefinition = {
   id: string
   kassalCategories: string[]
@@ -55,10 +75,19 @@ const categoryDefinitions: CategoryDefinition[] = [
   { id: 'cleaning', kassalCategories: ['Rengjøringsmidler', 'Oppvask', 'Klesvask', 'Tørkepapir og servietter', 'Søppelposer', 'Toalettpapir'] },
 ]
 
+/**
+ * Coerces `value` to a non-empty trimmed string, or returns `null` when
+ * `value` is absent, not a string, or blank after trimming.
+ */
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
 
+/**
+ * Coerces `value` to a finite number, handling strings with comma decimal
+ * separators and objects that implement `valueOf` or `toString`. Returns
+ * `null` for any value that cannot be converted to a finite number.
+ */
 function asNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value
@@ -91,6 +120,10 @@ function asNumber(value: unknown): number | null {
   return null
 }
 
+/**
+ * Formats a price value as a Norwegian kroner string (e.g. `"29.90 kr"`).
+ * Returns `null` when `price` is `null`.
+ */
 function formatPrice(price: number | null) {
   if (price === null) {
     return null
@@ -99,6 +132,10 @@ function formatPrice(price: number | null) {
   return `${price.toFixed(2)} kr`
 }
 
+/**
+ * Builds a human-readable unit price string (e.g. `"49.90 kr/kg"`). Falls
+ * back to the raw unit label when the per-unit price or unit string is absent.
+ */
 function formatUnitInfo(currentUnitPrice: number | null, currentUnitPriceUnit: string | null, fallbackUnit: string | null) {
   if (currentUnitPrice !== null && currentUnitPriceUnit) {
     return `${currentUnitPrice.toFixed(2)} kr/${currentUnitPriceUnit}`
@@ -107,10 +144,19 @@ function formatUnitInfo(currentUnitPrice: number | null, currentUnitPriceUnit: s
   return fallbackUnit
 }
 
+/**
+ * Lowercases a string for case-insensitive comparisons.
+ * Returns an empty string when `value` is `null` or `undefined`.
+ */
 function normalizeText(value: string | null | undefined) {
   return (value ?? '').toLowerCase()
 }
 
+/**
+ * Builds a Prisma `where` clause fragment that filters catalog products by
+ * the frontend category slug. Returns `undefined` when `categoryId` is empty,
+ * `"all"`, or does not match any known category definition.
+ */
 function buildCategoryFilter(categoryId: string) {
   if (!categoryId || categoryId === 'all') {
     return undefined
@@ -126,6 +172,11 @@ function buildCategoryFilter(categoryId: string) {
   }
 }
 
+/**
+ * Builds a Prisma `where` clause fragment that performs a case-insensitive
+ * full-text search across `name`, `brand`, `gtin`, and `category` columns.
+ * Returns `undefined` when the search string is shorter than 3 characters.
+ */
 function buildSearchFilter(search: string) {
   if (!search || search.length < 3) {
     return undefined
@@ -141,6 +192,11 @@ function buildSearchFilter(search: string) {
   }
 }
 
+/**
+ * Converts a sort key string from the query string into a Prisma `orderBy`
+ * array. Supported values: `"price-asc"`, `"price-desc"`, `"name-asc"`,
+ * `"store-asc"`. Any other value falls back to `updatedAt desc` (newest first).
+ */
 function buildOrderBy(sort: string) {
   switch (sort) {
     case 'price-asc':
@@ -156,6 +212,12 @@ function buildOrderBy(sort: string) {
   }
 }
 
+/**
+ * Computes a relevance score for `product` against the given search terms.
+ * Scoring weights: exact word boundary match in name (+50), prefix match
+ * (+30), substring match in name (+5), brand word boundary (+15), category
+ * word boundary (+10), has image (+20), has price (+10).
+ */
 function scoreRelevance(product: NormalizedProduct, searchTerms: string[]): number {
   let score = 0
   const nameLower = (product.name ?? '').toLowerCase()
@@ -185,6 +247,11 @@ function scoreRelevance(product: NormalizedProduct, searchTerms: string[]): numb
   return score
 }
 
+/**
+ * Sorts `products` by relevance to `query` using `scoreRelevance`. Products
+ * with equal scores are ordered so those with images come first. Returns the
+ * original array unchanged when the query is shorter than 2 characters.
+ */
 function rankByRelevance(products: NormalizedProduct[], query: string): NormalizedProduct[] {
   if (!query || query.length < 2) return products
 
@@ -201,6 +268,11 @@ function rankByRelevance(products: NormalizedProduct[], query: string): Normaliz
   })
 }
 
+/**
+ * Maps a raw `CatalogProductPrice` database row (with its nested
+ * `catalogProduct` relation) to a `NormalizedProduct` shape ready for the
+ * API response. Placeholder images are replaced with `null`.
+ */
 function toMarketplaceProduct(row: {
   id: string
   storeName: string
@@ -236,6 +308,20 @@ function toMarketplaceProduct(row: {
   }
 }
 
+/**
+ * List and search the product catalog with optional filtering, sorting, and
+ * pagination. Supports three distinct modes:
+ * - `category=local-suppliers` — returns active supplier products only.
+ * - No search/category — returns recently updated catalog items with images
+ *   (discovery / homepage feed).
+ * - Search and/or category set — filters the catalog and applies either
+ *   relevance ranking (default sort) or a user-chosen sort order.
+ *
+ * Query params: `q`, `category`, `store`, `sort`, `page`, `pageSize`.
+ *
+ * @route {GET} /
+ * @access public
+ */
 productsRouter.get('/', async (req, res) => {
   const page = Math.max(1, Number.parseInt(String(req.query.page ?? '1'), 10) || 1)
   const pageSize = Math.min(100, Math.max(1, Number.parseInt(String(req.query.pageSize ?? KASSAL_DEFAULT_PAGE_SIZE), 10) || KASSAL_DEFAULT_PAGE_SIZE))
@@ -393,6 +479,14 @@ productsRouter.get('/', async (req, res) => {
   }
 })
 
+/**
+ * Return a deduplicated list of all store codes and display names found in
+ * the catalog, ordered alphabetically by store name. Used to populate the
+ * store filter dropdown on the frontend.
+ *
+ * @route {GET} /stores
+ * @access public
+ */
 productsRouter.get('/stores', async (_req, res) => {
   try {
     const prisma = getPrismaClient()
@@ -410,6 +504,11 @@ productsRouter.get('/stores', async (_req, res) => {
   }
 })
 
+/**
+ * Generates a human-readable reason string explaining why `candidate` is a
+ * suitable substitution for `base`. Prefers brand-match wording, then
+ * category-match, then a generic fallback.
+ */
 function buildSubstitutionReason(
   candidate: { brand: string | null; category: string | null; name: string },
   base: { brand: string | null; category: string | null; name: string },
@@ -423,6 +522,17 @@ function buildSubstitutionReason(
   return `Similar product at a lower price`
 }
 
+/**
+ * Return up to 5 cheaper substitute products for the given catalog product
+ * price entry. Uses vector-embedding similarity search to find candidates,
+ * then applies strict filters (same category, similar unit, token overlap,
+ * similarity >= 0.70) with a loose fallback (similarity >= 0.68, unit
+ * ignored) when no strict matches are found. Results are sorted by savings
+ * amount descending.
+ *
+ * @route {GET} /:productId/substitutions
+ * @access public
+ */
 productsRouter.get('/:productId/substitutions', async (req, res) => {
   const productId = typeof req.params.productId === 'string' ? req.params.productId.trim() : ''
 
@@ -598,6 +708,17 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
   }
 })
 
+/**
+ * Trigger a full catalog sync from the Kassal API. Protected by a shared
+ * secret passed in the `x-catalog-sync-secret` request header. Intended for
+ * use by an automated cron job or CI pipeline, not end users.
+ *
+ * @route {POST} /sync
+ * @access admin
+ * @note Requires the `CATALOG_SYNC_SECRET` environment variable to be set.
+ *       Calls `syncCatalog` which may run for several minutes on a large
+ *       catalog.
+ */
 productsRouter.post('/sync', async (req, res) => {
   const configuredSecret = process.env.CATALOG_SYNC_SECRET?.trim()
   const providedSecret = req.get('x-catalog-sync-secret')?.trim()

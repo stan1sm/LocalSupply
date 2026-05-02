@@ -1,3 +1,8 @@
+/**
+ * @module routes/chat
+ * Next.js route entry — renders ChatConversationPage when a supplierId query param is present, otherwise ChatInboxPage.
+ */
+
 'use client'
 
 import { useSearchParams } from 'next/navigation'
@@ -16,6 +21,7 @@ function ChatPageInner() {
   return <ChatInboxPage />
 }
 
+/** Next.js page component — wraps ChatPageInner in a Suspense boundary to support useSearchParams. */
 export default function Page() {
   return (
     <Suspense>

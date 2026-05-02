@@ -1,9 +1,22 @@
+/**
+ * @module EmailVerifiedPage
+ * Displays email verification success or an invalid-link error based on the URL status parameter.
+ */
+
 import Link from 'next/link'
 
+/**
+ * Props for the EmailVerifiedPage component.
+ * @property status - Verification outcome; "invalid" renders an error state, anything else renders success.
+ */
 type EmailVerifiedPageProps = {
   status?: string
 }
 
+/**
+ * Shows a success confirmation or an invalid-link error after the user clicks their verification link.
+ * @param props - {@link EmailVerifiedPageProps}
+ */
 export default function EmailVerifiedPage({ status }: EmailVerifiedPageProps) {
   const isInvalid = status === 'invalid'
 

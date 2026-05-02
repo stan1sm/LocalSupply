@@ -1,3 +1,8 @@
+/**
+ * @module RegisterPage
+ * Buyer registration page with Vipps OAuth and email/password sign-up.
+ */
+
 'use client'
 
 import { type FormEvent, useState } from 'react'
@@ -13,6 +18,15 @@ import {
   sanitizeTextInput,
 } from '../../../utils/inputSecurity'
 
+/**
+ * Form field values for the buyer registration form.
+ * @property firstName - Buyer's first name.
+ * @property lastName - Buyer's last name.
+ * @property email - Buyer's email address.
+ * @property password - Chosen password.
+ * @property confirmPassword - Password confirmation.
+ * @property termsAccepted - Whether the user accepted the terms of service.
+ */
 type RegisterFormData = {
   firstName: string
   lastName: string
@@ -21,7 +35,17 @@ type RegisterFormData = {
   confirmPassword: string
   termsAccepted: boolean
 }
+
+/** Per-field validation error messages for the registration form. */
 type RegisterFormErrors = Partial<Record<keyof RegisterFormData, string>>
+
+/**
+ * API error response shape from the /api/auth/register endpoint.
+ * @property deliveryMode - How the verification email was sent ("email" | "fallback").
+ * @property message - General error or success message.
+ * @property verificationPreviewUrl - Dev-mode link to preview the verification email.
+ * @property errors - Field-level validation errors.
+ */
 type RegisterApiErrorResponse = {
   deliveryMode?: 'email' | 'fallback'
   message?: string
@@ -34,6 +58,10 @@ const inputClass =
 const labelClass = 'block space-y-1 text-xs font-medium text-[#2e3b31]'
 const errorClass = 'text-[10px] text-[#c53030]'
 
+/**
+ * Buyer registration page with Vipps OAuth button and a full name/email/password form.
+ * Shows a live password requirements checklist and redirects to /check-email on success.
+ */
 export default function RegisterPage() {
   const router = useRouter()
   const [formData, setFormData] = useState<RegisterFormData>({
@@ -51,24 +79,42 @@ export default function RegisterPage() {
     formData.confirmPassword !== formData.password
   const passwordRequirements = getPasswordRequirementStatus(formData.password)
 
+  /**
+   * Sanitises and updates a text name field, clearing any prior field error.
+   * @param field - The form field to update ("firstName" or "lastName").
+   * @param value - Raw input value.
+   */
   function handleTextChange(field: 'firstName' | 'lastName', value: string) {
     setFormData((prev) => ({ ...prev, [field]: sanitizeTextInput(value, 50) }))
     setErrors((prev) => ({ ...prev, [field]: undefined }))
     setSubmitMessage('')
   }
 
+  /**
+   * Sanitises and updates the email field, clearing any prior email error.
+   * @param value - Raw value from the email input.
+   */
   function handleEmailChange(value: string) {
     setFormData((prev) => ({ ...prev, email: sanitizeEmailInput(value) }))
     setErrors((prev) => ({ ...prev, email: undefined }))
     setSubmitMessage('')
   }
 
+  /**
+   * Updates a password field (capped at 128 characters), clearing any prior password error.
+   * @param field - The password field to update ("password" or "confirmPassword").
+   * @param value - Raw value from the password input.
+   */
   function handlePasswordChange(field: 'password' | 'confirmPassword', value: string) {
     setFormData((prev) => ({ ...prev, [field]: value.slice(0, 128) }))
     setErrors((prev) => ({ ...prev, [field]: undefined }))
     setSubmitMessage('')
   }
 
+  /**
+   * Validates all fields, then POSTs registration data to the API; redirects to /check-email on success.
+   * @param event - The form submit event.
+   */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return

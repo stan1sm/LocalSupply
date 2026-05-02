@@ -1,3 +1,8 @@
+/**
+ * @module AdminDashboardPage
+ * Admin control panel for managing suppliers, users, and orders across the platform.
+ */
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -6,8 +11,30 @@ import { buildApiUrl } from '../../../lib/api'
 
 const ADMIN_STORAGE_KEY = 'localsupply-admin'
 
+/**
+ * Authenticated admin session stored in localStorage.
+ * @property id - Unique admin identifier.
+ * @property email - Admin email address.
+ * @property name - Display name of the admin.
+ */
 type AdminSession = { id: string; email: string; name: string }
 
+/**
+ * Supplier record as returned by the admin API.
+ * @property id - Unique supplier identifier.
+ * @property businessName - Registered business name.
+ * @property contactName - Primary contact person.
+ * @property email - Business email address.
+ * @property address - Physical address.
+ * @property orgnr - Norwegian organisation number, or null if not set.
+ * @property isVerified - Whether the supplier has been fully verified.
+ * @property verificationStatus - Current verification pipeline stage.
+ * @property verificationRejectedReason - Reason for rejection, or null.
+ * @property showInMarketplace - Whether the supplier is publicly visible.
+ * @property createdAt - ISO timestamp of account creation.
+ * @property productCount - Number of active products.
+ * @property orderCount - Total orders placed through this supplier.
+ */
 type Supplier = {
   id: string
   businessName: string
@@ -24,6 +51,16 @@ type Supplier = {
   orderCount: number
 }
 
+/**
+ * Buyer user record as returned by the admin API.
+ * @property id - Unique user identifier.
+ * @property firstName - User's first name.
+ * @property lastName - User's last name.
+ * @property email - User's email address.
+ * @property emailVerified - Whether the email address has been verified.
+ * @property createdAt - ISO timestamp of account creation.
+ * @property orderCount - Total orders placed by this user.
+ */
 type User = {
   id: string
   firstName: string
@@ -34,6 +71,17 @@ type User = {
   orderCount: number
 }
 
+/**
+ * Order record as returned by the admin API.
+ * @property id - Unique order identifier.
+ * @property status - Current order status (e.g. PENDING, CONFIRMED, DELIVERED).
+ * @property total - Total order amount.
+ * @property createdAt - ISO timestamp of order creation.
+ * @property buyer - Buyer name and email.
+ * @property supplierName - Name of the fulfilling supplier.
+ * @property itemCount - Number of line items in the order.
+ * @property woltStatus - Wolt Drive delivery status, or null if not dispatched.
+ */
 type Order = {
   id: string
   status: string
@@ -45,6 +93,7 @@ type Order = {
   woltStatus: string | null
 }
 
+/** Active tab in the admin dashboard navigation. */
 type Tab = 'suppliers' | 'users' | 'orders'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -54,15 +103,29 @@ const STATUS_COLORS: Record<string, string> = {
   UNVERIFIED: 'bg-gray-100 text-gray-600',
 }
 
+/**
+ * Formats an ISO date string into a localised Norwegian short date.
+ * @param value - ISO 8601 date string.
+ * @returns Formatted date string (e.g. "01. mai 2025").
+ */
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('no-NO', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+/**
+ * Formats a numeric or string value as a Norwegian krone currency string.
+ * @param value - Numeric amount or string representation of the amount.
+ * @returns Formatted string with two decimal places and "kr" suffix.
+ */
 function formatCurrency(value: number | string) {
   const n = Number(value)
   return Number.isFinite(n) ? `${n.toFixed(2)} kr` : `${value} kr`
 }
 
+/**
+ * Admin dashboard page with tabs for managing suppliers, buyers, and orders.
+ * Requires an active admin session stored in localStorage; redirects to login otherwise.
+ */
 export default function AdminDashboardPage() {
   const router = useRouter()
   const [admin, setAdmin] = useState<AdminSession | null>(null)
@@ -88,6 +151,7 @@ export default function AdminDashboardPage() {
     checkAuth()
   }, [router])
 
+  /** Returns the Authorization header object for authenticated admin API calls. */
   function getAuthHeader(): Record<string, string> {
     try {
       const token = window.localStorage.getItem('localsupply-admin-token')
@@ -117,11 +181,17 @@ export default function AdminDashboardPage() {
     loadData()
   }, [admin])
 
+  /** Clears the admin session from localStorage and redirects to the admin login page. */
   function handleLogout() {
     window.localStorage.removeItem(ADMIN_STORAGE_KEY)
     router.push('/admin/login')
   }
 
+  /**
+   * Sends a partial update to the supplier record via the admin API and refreshes local state.
+   * @param id - Supplier ID to update.
+   * @param patch - Key/value pairs to patch on the supplier record.
+   */
   async function updateSupplier(id: string, patch: Record<string, unknown>) {
     setActionMessage('')
     try {
@@ -138,6 +208,10 @@ export default function AdminDashboardPage() {
     } catch { setActionMessage('Update failed.') }
   }
 
+  /**
+   * Prompts for confirmation, then permanently deletes a supplier via the admin API.
+   * @param id - Supplier ID to delete.
+   */
   async function deleteSupplier(id: string) {
     if (!window.confirm('Delete this supplier? This cannot be undone.')) return
     try {
@@ -146,6 +220,10 @@ export default function AdminDashboardPage() {
     } catch { setActionMessage('Delete failed.') }
   }
 
+  /**
+   * Prompts for confirmation, then permanently deletes a buyer user via the admin API.
+   * @param id - User ID to delete.
+   */
   async function deleteUser(id: string) {
     if (!window.confirm('Delete this user? This cannot be undone.')) return
     try {

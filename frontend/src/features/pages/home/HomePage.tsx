@@ -1,3 +1,8 @@
+/**
+ * @module HomePage
+ * Public landing page with hero section, how-it-works steps, and smart cart feature highlights.
+ */
+
 'use client'
 
 import Link from 'next/link'
@@ -82,6 +87,9 @@ const smartCartFeatures = [
   },
 ]
 
+/**
+ * Public landing page that adapts the navigation bar for logged-in buyers, logged-in suppliers, or guests.
+ */
 export default function HomePage() {
   const [loggedInName, setLoggedInName] = useState<string | null>(null)
   const [supplierName, setSupplierName] = useState<string | null>(null)
@@ -109,11 +117,13 @@ export default function HomePage() {
     return () => window.removeEventListener('storage', readStorage)
   }, [])
 
+  /** Removes the buyer session from localStorage and clears the logged-in name from state. */
   function handleLogout() {
     window.localStorage.removeItem(BUYER_STORAGE_KEY)
     setLoggedInName(null)
   }
 
+  /** Removes the supplier session and token from localStorage and clears the supplier name from state. */
   function handleSupplierLogout() {
     window.localStorage.removeItem(SUPPLIER_STORAGE_KEY)
     window.localStorage.removeItem(SUPPLIER_TOKEN_KEY)

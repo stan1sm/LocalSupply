@@ -1,5 +1,10 @@
 'use client'
 
+/**
+ * @module BuyerSidebar
+ * Navigation sidebar component for the buyer-facing area of the application.
+ */
+
 const navItems = [
   {
     id: 'marketplace',
@@ -84,6 +89,20 @@ function handleSignOut() {
   window.location.href = '/login'
 }
 
+/**
+ * Sidebar navigation for authenticated buyers.
+ *
+ * Renders the main buyer navigation links (Marketplace, Suppliers, Cart, Orders,
+ * Chats, Delivery Tracking) followed by a Settings link and a Sign-out button.
+ * The currently active item is highlighted and receives `aria-current="page"`.
+ * Signing out clears the `localsupply-user` and `localsupply-token` keys from
+ * `localStorage` before redirecting to `/login`.
+ *
+ * @param {Object} props - Component props.
+ * @param {string} props.activeId - The `id` of the navigation item that should be marked active
+ *   (e.g. `'marketplace'`, `'orders'`, `'settings'`).
+ * @returns {JSX.Element} The rendered sidebar `<aside>` element.
+ */
 export default function BuyerSidebar({ activeId }: { activeId: string }) {
   return (
     <aside className="flex flex-col rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">

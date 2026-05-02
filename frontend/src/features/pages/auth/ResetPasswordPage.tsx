@@ -1,3 +1,8 @@
+/**
+ * @module ResetPasswordPage
+ * Password reset form that reads a token from the URL and sets a new password via the API.
+ */
+
 'use client'
 
 import { type FormEvent, useState } from 'react'
@@ -11,6 +16,10 @@ const inputClass =
 const labelClass = 'block space-y-1 text-xs font-medium text-[#2e3b31]'
 const errorClass = 'text-[10px] text-[#c53030]'
 
+/**
+ * Reset-password page that reads the reset token from the `?token` search parameter.
+ * Displays a live password requirements checklist and transitions to a done state on success.
+ */
 export default function ResetPasswordPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -25,6 +34,10 @@ export default function ResetPasswordPage() {
   const hasLiveMismatch = confirmPassword.length > 0 && password !== confirmPassword
   const passwordRequirements = getPasswordRequirementStatus(password)
 
+  /**
+   * Validates the new password and confirmation, then POSTs the reset request to the API.
+   * @param event - The form submit event.
+   */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return

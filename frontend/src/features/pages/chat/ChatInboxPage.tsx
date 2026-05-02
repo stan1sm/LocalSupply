@@ -1,3 +1,8 @@
+/**
+ * @module ChatInboxPage
+ * Chat inbox listing all conversations for the authenticated buyer or supplier.
+ */
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -9,8 +14,24 @@ const BUYER_USER_KEY = 'localsupply-user'
 const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 const SUPPLIER_SESSION_KEY = 'localsupply-supplier'
 
+/**
+ * Minimal supplier session data for sidebar rendering in supplier chat view.
+ * @property id - Supplier identifier.
+ * @property businessName - Registered business name.
+ * @property address - Physical address.
+ */
 type SupplierSession = { id: string; businessName: string; address: string }
 
+/**
+ * A conversation preview row in the inbox list.
+ * @property id - Conversation identifier.
+ * @property buyerId - Participating buyer ID.
+ * @property supplierId - Participating supplier ID.
+ * @property updatedAt - ISO timestamp of the last activity.
+ * @property buyer - Buyer profile data.
+ * @property supplier - Supplier profile data.
+ * @property messages - Array of the most recent messages (used for preview snippet).
+ */
 type ConversationSummary = {
   id: string
   buyerId: string
@@ -21,6 +42,11 @@ type ConversationSummary = {
   messages: { content: string; senderType: string; createdAt: string }[]
 }
 
+/**
+ * Returns a human-readable relative time string (e.g. "5m ago", "2h ago") for an ISO timestamp.
+ * @param iso - ISO 8601 timestamp string.
+ * @returns Relative time label.
+ */
 function formatRelative(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60000)
@@ -31,6 +57,10 @@ function formatRelative(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+/**
+ * Inbox page listing all chat conversations for the logged-in buyer or supplier.
+ * Adapts the layout to show the supplier sidebar when in supplier view.
+ */
 export default function ChatInboxPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)

@@ -1,3 +1,10 @@
+/**
+ * @module routes/admin
+ * Express router for admin panel operations including authentication,
+ * supplier verification management, user management, and order overview.
+ * All routes are mounted under /api/admin.
+ */
+
 import { Router } from 'express'
 import { getPrismaClient } from '../lib/prisma.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
@@ -5,9 +12,21 @@ import { signAdminToken } from '../lib/jwt.js'
 import { requireAdminAuth } from '../middleware/requireAdminAuth.js'
 import { sendSupplierVerificationApprovedEmail, sendSupplierVerificationRejectedEmail } from '../lib/email.js'
 
+/**
+ * Express router providing admin panel endpoints.
+ */
 const adminRouter = Router()
 
-// POST /api/admin/login
+/**
+ * Authenticate an admin user and return a signed JWT token.
+ * The token must be passed as a Bearer token in the Authorization header
+ * for all subsequent admin-protected routes.
+ *
+ * @route {POST} /login
+ * @access {public}
+ * @param req.body.email    - Admin account email address.
+ * @param req.body.password - Admin account password.
+ */
 adminRouter.post('/login', async (req, res) => {
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
@@ -35,7 +54,18 @@ adminRouter.post('/login', async (req, res) => {
   }
 })
 
-// POST /api/admin/seed — create first admin (only works if no admin exists)
+/**
+ * Bootstrap the first admin account. Succeeds only when no admin record
+ * exists in the database; returns 409 Conflict if one is already present.
+ * This endpoint should be called once during initial deployment and is not
+ * protected by admin authentication.
+ *
+ * @route {POST} /seed
+ * @access {public}
+ * @param req.body.email    - Email address for the new admin account.
+ * @param req.body.password - Password for the new admin account.
+ * @param req.body.name     - Display name for the admin (defaults to "Admin").
+ */
 adminRouter.post('/seed', async (req, res) => {
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
@@ -64,7 +94,13 @@ adminRouter.post('/seed', async (req, res) => {
   }
 })
 
-// GET /api/admin/suppliers
+/**
+ * Retrieve all supplier accounts ordered by registration date (newest first).
+ * Each entry includes aggregated product and order counts.
+ *
+ * @route {GET} /suppliers
+ * @access {authenticated}
+ */
 adminRouter.get('/suppliers', requireAdminAuth, async (_req, res) => {
   try {
     const prisma = getPrismaClient()
@@ -94,7 +130,20 @@ adminRouter.get('/suppliers', requireAdminAuth, async (_req, res) => {
   }
 })
 
-// PATCH /api/admin/suppliers/:id — update verification status
+/**
+ * Update a supplier's verification status and/or marketplace visibility.
+ * When the status is set to VERIFIED or REJECTED, a transactional email is
+ * fired to the supplier after the database update completes. Setting
+ * verificationStatus to VERIFIED also sets the isVerified flag to true and
+ * clears any existing rejection reason.
+ *
+ * @route {PATCH} /suppliers/:id
+ * @access {authenticated}
+ * @param req.params.id                           - Supplier record ID.
+ * @param req.body.verificationStatus             - New status: UNVERIFIED | PENDING | VERIFIED | REJECTED.
+ * @param req.body.verificationRejectedReason     - Reason text shown to the supplier on rejection (optional).
+ * @param req.body.showInMarketplace              - Whether the supplier appears in the public marketplace (optional).
+ */
 adminRouter.patch('/suppliers/:id', requireAdminAuth, async (req, res) => {
   const supplierId = String(req.params.id ?? '').trim()
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
@@ -140,7 +189,14 @@ adminRouter.patch('/suppliers/:id', requireAdminAuth, async (req, res) => {
   }
 })
 
-// DELETE /api/admin/suppliers/:id
+/**
+ * Permanently delete a supplier account and all its associated data.
+ * This action is irreversible.
+ *
+ * @route {DELETE} /suppliers/:id
+ * @access {authenticated}
+ * @param req.params.id - Supplier record ID.
+ */
 adminRouter.delete('/suppliers/:id', requireAdminAuth, async (req, res) => {
   const supplierId = String(req.params.id ?? '').trim()
   if (!supplierId) {
@@ -157,7 +213,13 @@ adminRouter.delete('/suppliers/:id', requireAdminAuth, async (req, res) => {
   }
 })
 
-// GET /api/admin/users
+/**
+ * Retrieve all buyer/user accounts ordered by registration date (newest first).
+ * Each entry includes an aggregated order count.
+ *
+ * @route {GET} /users
+ * @access {authenticated}
+ */
 adminRouter.get('/users', requireAdminAuth, async (_req, res) => {
   try {
     const prisma = getPrismaClient()
@@ -181,7 +243,14 @@ adminRouter.get('/users', requireAdminAuth, async (_req, res) => {
   }
 })
 
-// DELETE /api/admin/users/:id
+/**
+ * Permanently delete a buyer/user account and all its associated data.
+ * This action is irreversible.
+ *
+ * @route {DELETE} /users/:id
+ * @access {authenticated}
+ * @param req.params.id - User record ID.
+ */
 adminRouter.delete('/users/:id', requireAdminAuth, async (req, res) => {
   const userId = String(req.params.id ?? '').trim()
   if (!userId) {
@@ -198,7 +267,14 @@ adminRouter.delete('/users/:id', requireAdminAuth, async (req, res) => {
   }
 })
 
-// GET /api/admin/orders
+/**
+ * Retrieve the 200 most recent orders across all suppliers, ordered by
+ * creation date (newest first). Each entry includes buyer details,
+ * supplier name, item count, and the current Wolt delivery status.
+ *
+ * @route {GET} /orders
+ * @access {authenticated}
+ */
 adminRouter.get('/orders', requireAdminAuth, async (_req, res) => {
   try {
     const prisma = getPrismaClient()
@@ -228,4 +304,5 @@ adminRouter.get('/orders', requireAdminAuth, async (_req, res) => {
   }
 })
 
+/** @exports adminRouter */
 export default adminRouter

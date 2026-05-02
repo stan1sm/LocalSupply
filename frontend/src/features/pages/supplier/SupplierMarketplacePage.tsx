@@ -1,14 +1,34 @@
+/**
+ * @module SupplierMarketplacePage
+ * Public supplier marketplace listing with search and open/closed status based on opening hours.
+ */
+
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 
+/** A day-of-week key for the weekly schedule object. */
 type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
+
+/**
+ * Opening schedule for a single day.
+ * @property open - Whether the store is open on this day.
+ * @property start - Opening time in "HH:MM" format.
+ * @property end - Closing time in "HH:MM" format.
+ */
 type DaySchedule = { open: boolean; start: string; end: string }
+
+/** A full weekly schedule, keyed by {@link DayKey}. */
 type WeeklyHours = Record<DayKey, DaySchedule>
 
 const JS_DAY_TO_KEY: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
+/**
+ * Determines whether a supplier is currently open based on their stored opening hours.
+ * @param openingHours - JSON-serialised {@link WeeklyHours} string, or null/undefined.
+ * @returns true if currently open, false if closed, null if hours are unavailable or unparseable.
+ */
 function isOpenNow(openingHours: string | null | undefined): boolean | null {
   if (!openingHours) return null
   try {
@@ -28,6 +48,21 @@ function isOpenNow(openingHours: string | null | undefined): boolean | null {
   }
 }
 
+/**
+ * Public listing of a verified supplier in the marketplace.
+ * @property id - Supplier identifier.
+ * @property businessName - Registered business name.
+ * @property contactName - Primary contact person.
+ * @property address - Physical address.
+ * @property email - Business email address.
+ * @property isVerified - Whether the supplier has passed admin verification.
+ * @property tagline - Short promotional tagline, or null.
+ * @property storeType - Store category label (e.g. "Bakery"), or null.
+ * @property badgeText - Custom badge text (e.g. "New"), or null.
+ * @property brandColor - Hex brand colour for the store card, or null.
+ * @property openingHours - JSON-serialised {@link WeeklyHours} string, or null.
+ * @property productCount - Number of listed products.
+ */
 type SupplierSummary = {
   id: string
   businessName: string
@@ -43,10 +78,18 @@ type SupplierSummary = {
   productCount: number
 }
 
+/**
+ * Normalises a string to lowercase NFKC Unicode form for locale-insensitive comparison.
+ * @param text - Input string.
+ * @returns Normalised lowercase string.
+ */
 function normalize(text: string) {
   return text.normalize('NFKC').toLowerCase()
 }
 
+/**
+ * Public marketplace listing of all verified suppliers with a search filter.
+ */
 export default function SupplierMarketplacePage() {
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([])
   const [search, setSearch] = useState('')

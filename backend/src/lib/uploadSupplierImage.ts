@@ -1,3 +1,8 @@
+/**
+ * @module uploadSupplierImage
+ * Configures a multer middleware instance and URL helper for uploading supplier images to disk.
+ */
+
 import fs from 'fs'
 import path from 'path'
 import { randomBytes } from 'crypto'
@@ -21,6 +26,11 @@ const storage = multer.diskStorage({
   },
 })
 
+/**
+ * Multer middleware for handling single or multi-file supplier image uploads.
+ * Accepts JPEG, PNG, WebP, and GIF files up to 5 MB; stores them under `uploads/suppliers/` with a random hex filename.
+ * @type {multer.Multer}
+ */
 export const uploadSupplierImage = multer({
   storage,
   limits: { fileSize: MAX_SIZE },
@@ -33,6 +43,11 @@ export const uploadSupplierImage = multer({
   },
 })
 
+/**
+ * Returns the public URL path for a stored supplier image file.
+ * @param {string} filename - The stored filename (as returned by multer, e.g. `a3f9...hex.jpg`).
+ * @returns {string} The URL path string in the form `/uploads/suppliers/<filename>`.
+ */
 export function supplierImageUrl(filename: string): string {
   return `/uploads/suppliers/${filename}`
 }

@@ -1,3 +1,8 @@
+/**
+ * @module routes/auth/vipps-return
+ * Next.js route entry — handles the Vipps OAuth return, stores the session token, and redirects to the marketplace.
+ */
+
 'use client'
 
 import { Suspense, useEffect } from 'react'
@@ -44,6 +49,7 @@ function VippsReturnContent() {
   return <Spinner />
 }
 
+/** Next.js page component — wraps VippsReturnContent in a Suspense boundary to support useSearchParams. */
 export default function VippsReturnPage() {
   return (
     <Suspense fallback={<Spinner />}>

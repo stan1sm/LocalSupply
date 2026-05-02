@@ -1,3 +1,8 @@
+/**
+ * @module SupplierOrdersPage
+ * Supplier order management page with status update dropdown and toast notifications.
+ */
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -6,6 +11,14 @@ import { ToastContainer } from '../../components/Toast'
 import { useToast } from '../../components/useToast'
 import SupplierSidebar from '../../components/SupplierSidebar'
 
+/**
+ * Authenticated supplier session read from localStorage.
+ * @property id - Supplier identifier.
+ * @property businessName - Registered business name.
+ * @property contactName - Primary contact person.
+ * @property email - Business email address.
+ * @property address - Physical address.
+ */
 type SupplierSession = {
   id: string
   businessName: string
@@ -14,6 +27,13 @@ type SupplierSession = {
   address: string
 }
 
+/**
+ * Brief buyer info included on an order.
+ * @property id - Buyer identifier.
+ * @property firstName - Buyer's first name.
+ * @property lastName - Buyer's last name.
+ * @property email - Buyer's email address.
+ */
 type BuyerSummary = {
   id: string
   firstName: string
@@ -21,6 +41,15 @@ type BuyerSummary = {
   email: string
 }
 
+/**
+ * A line item within a supplier's order.
+ * @property id - Line item identifier.
+ * @property productId - Product catalog ID.
+ * @property name - Product name.
+ * @property unit - Unit description.
+ * @property quantity - Ordered quantity.
+ * @property unitPrice - Price per unit.
+ */
 type OrderItem = {
   id: string
   productId: string
@@ -30,6 +59,18 @@ type OrderItem = {
   unitPrice: number | string
 }
 
+/**
+ * A supplier's incoming order summary.
+ * @property id - Order identifier.
+ * @property status - Current order status (e.g. PENDING, CONFIRMED).
+ * @property subtotal - Products subtotal.
+ * @property deliveryFee - Delivery fee.
+ * @property total - Grand total.
+ * @property notes - Optional delivery notes, or null.
+ * @property createdAt - ISO timestamp of order creation.
+ * @property buyer - Buyer who placed the order.
+ * @property items - Ordered product lines.
+ */
 type OrderSummary = {
   id: string
   status: string
@@ -45,12 +86,22 @@ type OrderSummary = {
 const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
 const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 
+/**
+ * Formats a numeric or string value as a Norwegian krone currency string.
+ * @param value - Amount as a number or numeric string.
+ * @returns Formatted string with two decimal places and "kr" suffix.
+ */
 function formatCurrency(value: number | string) {
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) return `${value} kr`
   return `${n.toFixed(2)} kr`
 }
 
+/**
+ * Formats an ISO date string as a localised date-time string including year.
+ * @param value - ISO 8601 date string.
+ * @returns Formatted date-time string, or the original value if parsing fails.
+ */
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -63,6 +114,11 @@ function formatDate(value: string) {
   })
 }
 
+/**
+ * Returns the Tailwind badge classes and a human-readable label for an order status.
+ * @param status - Order status string (e.g. "CONFIRMED", "CANCELLED").
+ * @returns Object with badge CSS classes and a display label.
+ */
 function statusStyle(status: string): { badge: string; label: string } {
   switch (status) {
     case 'CONFIRMED': return { badge: 'bg-[#dcf5e2] text-[#1a5e30]', label: 'Confirmed' }
@@ -73,6 +129,10 @@ function statusStyle(status: string): { badge: string; label: string } {
   }
 }
 
+/**
+ * Supplier orders page showing all incoming orders with a status-update dropdown.
+ * Updates are applied optimistically and confirmed via toast notifications.
+ */
 export default function SupplierOrdersPage() {
   const [supplier, setSupplier] = useState<SupplierSession | null>(null)
   const [orders, setOrders] = useState<OrderSummary[]>([])
@@ -123,6 +183,11 @@ export default function SupplierOrdersPage() {
     return () => { cancelled = true }
   }, [supplier])
 
+  /**
+   * PATCHes the order status via the API and updates local state; shows a toast on success or error.
+   * @param orderId - ID of the order to update.
+   * @param status - New status to set (e.g. "CONFIRMED", "DELIVERED").
+   */
   async function handleUpdateStatus(orderId: string, status: string) {
     if (!supplier || updatingId) return
     setUpdatingId(orderId)

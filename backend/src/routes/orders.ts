@@ -1,3 +1,8 @@
+/**
+ * @module routes/orders
+ * Express router for order management. All routes are mounted under /api/orders.
+ */
+
 import { Router } from 'express'
 import { sendBuyerOrderStatusEmail, sendSupplierOrderEmail } from '../lib/email.js'
 import { getPrismaClient } from '../lib/prisma.js'
@@ -6,8 +11,24 @@ import { createDelivery, parseAddressString } from '../lib/woltDrive.js'
 import { requireSupplierAuth } from '../middleware/requireSupplierAuth.js'
 import { requireBuyerAuth } from '../middleware/requireBuyerAuth.js'
 
+/** Express router providing order creation, retrieval, and status management endpoints. */
 const ordersRouter = Router()
 
+/**
+ * Validated input shape for a single line item when creating an order.
+ * Either `productId` (supplier-direct product) or `catalogProductId` (marketplace
+ * catalog product) must be present; both may not be absent simultaneously.
+ * @typedef {Object} CreateOrderItemInput
+ * @property {string} [productId] - ID of an existing supplier-owned Product record.
+ * @property {string} [catalogProductId] - ID of a CatalogProduct; requires `storeCode`
+ *   on the parent request body so the server can look up the authoritative price.
+ * @property {string} [name] - Optional display name override (used for catalog items
+ *   when the catalog name is unavailable).
+ * @property {string} [unit] - Unit label (e.g. "kg", "stk") for catalog items.
+ * @property {number} [unitPrice] - Ignored by the server; price is always resolved
+ *   from the database to prevent client-side price manipulation.
+ * @property {number} quantity - Number of units ordered (must be > 0).
+ */
 type CreateOrderItemInput = {
   productId?: string | undefined
   catalogProductId?: string | undefined
@@ -17,6 +38,47 @@ type CreateOrderItemInput = {
   quantity: number
 }
 
+/**
+ * Creates a new order on behalf of the authenticated buyer.
+ *
+ * Two item path variants are supported in the same request:
+ *  - **Supplier-direct** (`productId`): price is fetched from the Product record;
+ *    stock is decremented best-effort (floored at 0, never goes negative).
+ *  - **Catalog/marketplace** (`catalogProductId` + `storeCode`): the server looks up
+ *    the authoritative price from CatalogProductPrice — client-supplied unit prices
+ *    are never trusted. A thin Product record is upserted per catalog item so that
+ *    OrderItem foreign keys remain valid.
+ *
+ * After the Order is persisted, two non-blocking side-effects are attempted:
+ *  1. **Wolt Drive delivery**: if both `deliveryAddress` (request body) and the
+ *     supplier's address are available, a delivery is created via the Wolt Drive API.
+ *     The resulting `woltDeliveryId`, `woltTrackingUrl`, and `woltStatus` are stored
+ *     on the order. Failure is logged as a warning and does not block the response.
+ *  2. **Supplier email notification**: a new-order email is sent fire-and-forget to
+ *     the supplier via `sendSupplierOrderEmail`. Errors are silently swallowed.
+ *
+ * When no explicit `supplierId` is provided, a virtual "Marketplace Store" supplier
+ * is upserted automatically to handle grocery / catalog-only orders.
+ *
+ * @route {POST} /api/orders
+ * @access {authenticated} Buyer JWT required (enforced by `requireBuyerAuth` middleware).
+ * @param req.body.items {CreateOrderItemInput[]} Line items (at least one required).
+ * @param req.body.supplierId {string} [optional] Supplier ID; defaults to virtual marketplace.
+ * @param req.body.storeCode {string} [optional] Required when any item uses `catalogProductId`.
+ * @param req.body.deliveryFee {number} [optional] Flat delivery fee in NOK (default 0).
+ * @param req.body.notes {string} [optional] Free-text order notes.
+ * @param req.body.paymentMethod {"vipps"|"card"|"invoice"} [optional] Payment method.
+ * @param req.body.deliveryAddressId {string} [optional] ID of a saved UserAddress belonging
+ *   to the buyer; used to populate the Wolt dropoff contact phone number.
+ * @param req.body.deliveryAddress {string} [optional] Plain-text delivery address string
+ *   passed to the Wolt Drive address parser for delivery creation.
+ * @returns {201} Condensed order object with `id`, `status`, totals, `woltTrackingUrl`,
+ *   `woltStatus`, supplier summary, and mapped line items.
+ * @returns {400} When items array is empty, no valid products are resolved, or
+ *   `deliveryAddressId` does not belong to the authenticated buyer.
+ * @returns {404} When the authenticated buyer record is not found.
+ * @returns {503} On unexpected database errors.
+ */
 ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
 
@@ -331,6 +393,19 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
   }
 })
 
+/**
+ * Returns all orders placed by the specified buyer, ordered newest-first.
+ * The caller must be the buyer identified by `buyerId` — attempting to fetch
+ * another buyer's orders returns 403 Forbidden.
+ *
+ * @route {GET} /api/orders/buyer/:buyerId
+ * @access {authenticated} Buyer JWT required (enforced by `requireBuyerAuth` middleware).
+ * @param req.params.buyerId {string} Must match the authenticated buyer's own ID.
+ * @returns {200} Array of order objects including items (with product details),
+ *   supplier summary, totals, Wolt tracking fields, and status.
+ * @returns {403} When `buyerId` param does not match the JWT-authenticated buyer.
+ * @returns {503} On unexpected database errors.
+ */
 ordersRouter.get('/buyer/:buyerId', requireBuyerAuth, async (req, res) => {
   const buyerId = String(req.params.buyerId ?? '').trim()
 
@@ -386,6 +461,19 @@ ordersRouter.get('/buyer/:buyerId', requireBuyerAuth, async (req, res) => {
   }
 })
 
+/**
+ * Returns all orders received by the specified supplier, ordered newest-first.
+ * The caller must be the supplier identified by `supplierId` — attempting to fetch
+ * another supplier's orders returns 403 Forbidden.
+ *
+ * @route {GET} /api/orders/supplier/:supplierId
+ * @access {authenticated} Supplier JWT required (enforced by `requireSupplierAuth` middleware).
+ * @param req.params.supplierId {string} Must match the authenticated supplier's own ID.
+ * @returns {200} Array of order objects including items (with product details),
+ *   buyer summary (id, name, email), totals, and status.
+ * @returns {403} When `supplierId` param does not match the JWT-authenticated supplier.
+ * @returns {503} On unexpected database errors.
+ */
 ordersRouter.get('/supplier/:supplierId', requireSupplierAuth, async (req, res) => {
   const supplierId = String(req.params.supplierId ?? '').trim()
 
@@ -440,6 +528,34 @@ ordersRouter.get('/supplier/:supplierId', requireSupplierAuth, async (req, res) 
   }
 })
 
+/**
+ * Advances or cancels an order through the supplier-controlled status state machine.
+ *
+ * Allowed transitions:
+ * ```
+ * PENDING    → CONFIRMED | IN_TRANSIT | DELIVERED | CANCELLED
+ * CONFIRMED  → IN_TRANSIT | DELIVERED | CANCELLED
+ * IN_TRANSIT → DELIVERED | CANCELLED
+ * ```
+ * DELIVERED and CANCELLED are terminal states — no further transitions are permitted.
+ * IN_TRANSIT and DELIVERED will eventually be driven automatically by Wolt webhook
+ * events once Wolt keys are active; until then all transitions are manually advanceable
+ * by the supplier.
+ *
+ * Side-effect: when the new status is `CONFIRMED` or `CANCELLED`, a buyer notification
+ * email is sent fire-and-forget via `sendBuyerOrderStatusEmail`. Errors are silently
+ * swallowed (already logged inside the email helper).
+ *
+ * @route {PATCH} /api/orders/:id/status
+ * @access {authenticated} Supplier JWT required (enforced by `requireSupplierAuth` middleware).
+ * @param req.params.id {string} The order ID.
+ * @param req.body.status {string} Target status value (case-insensitive; normalised to uppercase).
+ * @returns {200} `{ id, status }` — the updated order ID and new status string.
+ * @returns {400} When the requested status value is not a recognised target state.
+ * @returns {404} When the order does not exist or does not belong to the authenticated supplier.
+ * @returns {409} When the current order status does not permit a transition to the requested status.
+ * @returns {503} On unexpected database errors.
+ */
 ordersRouter.patch('/:id/status', requireSupplierAuth, async (req, res) => {
   const id = typeof req.params.id === 'string' ? req.params.id : ''
   const supplierId = res.locals.supplierId as string

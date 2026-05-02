@@ -1,3 +1,7 @@
+/**
+ * @module app
+ * Configures and exports the Express application with CORS, rate limiting, and all API routers.
+ */
 import path from 'path'
 import cors, { type CorsOptions } from 'cors'
 import express from 'express'
@@ -27,6 +31,12 @@ const configuredOrigins = (process.env.CORS_ORIGINS ?? '')
 const allowVercelPreviews = (process.env.CORS_ALLOW_VERCEL_PREVIEWS ?? 'true').toLowerCase() !== 'false'
 const allowedOrigins = new Set([...localDevOrigins, ...configuredOrigins])
 
+/**
+ * CORS configuration that allows local dev origins, explicitly configured origins via the
+ * `CORS_ORIGINS` environment variable, and optionally all `*.vercel.app` preview deployments.
+ *
+ * Non-browser clients (curl, server-to-server) are always permitted by passing `null` as the origin.
+ */
 const corsOptions: CorsOptions = {
   origin(origin, callback) {
     // Allow non-browser clients (curl, server-to-server, health checks).
@@ -56,6 +66,10 @@ const corsOptions: CorsOptions = {
   },
 }
 
+/**
+ * Rate limiter applied to authentication endpoints (login, register, password reset).
+ * Allows up to 20 requests per 15-minute window per IP.
+ */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
@@ -64,6 +78,10 @@ const authLimiter = rateLimit({
   message: { message: 'Too many requests, please try again later.' },
 })
 
+/**
+ * Rate limiter applied to product search/browse endpoints.
+ * Allows up to 120 requests per 15-minute window per IP.
+ */
 const searchLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 120,
@@ -72,6 +90,10 @@ const searchLimiter = rateLimit({
   message: { message: 'Too many requests, please try again later.' },
 })
 
+/**
+ * Rate limiter applied to order placement and management endpoints.
+ * Allows up to 30 requests per 15-minute window per IP.
+ */
 const orderLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
@@ -80,6 +102,10 @@ const orderLimiter = rateLimit({
   message: { message: 'Too many requests, please try again later.' },
 })
 
+/**
+ * Rate limiter applied to supplier routes that include file upload operations.
+ * Allows up to 40 requests per 15-minute window per IP.
+ */
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 40,
@@ -118,4 +144,10 @@ app.get('/', (_req, res) => {
   res.json({ status: 'ok' })
 })
 
+/**
+ * The fully configured Express application instance.
+ *
+ * Mount order: static files → CORS → raw body (Wolt webhook) → JSON parser →
+ * rate limiters → feature routers → root health-check.
+ */
 export default app
