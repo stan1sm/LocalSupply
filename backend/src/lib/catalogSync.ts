@@ -44,7 +44,7 @@ type CachedCatalogProduct = {
   id: string
 }
 
-type LoggerLike = Pick<Console, 'error' | 'info' | 'warn'>
+export type LoggerLike = Pick<Console, 'error' | 'info' | 'warn'>
 
 /**
  * Configuration options for a catalog synchronisation run.

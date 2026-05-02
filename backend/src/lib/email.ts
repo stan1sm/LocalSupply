@@ -4,7 +4,7 @@
  */
 import { Resend } from 'resend'
 
-type VerificationEmailInput = {
+export type VerificationEmailInput = {
   email: string
   firstName: string
   verificationToken: string
@@ -109,7 +109,7 @@ async function send(params: SendParams): Promise<void> {
   if (error) throw error
 }
 
-type OrderNotificationInput = {
+export type OrderNotificationInput = {
   supplierEmail: string
   supplierName: string
   orderId: string
@@ -196,7 +196,7 @@ export async function sendSupplierOrderEmail({
   }
 }
 
-type BuyerOrderStatusInput = {
+export type BuyerOrderStatusInput = {
   buyerEmail: string
   buyerName: string
   orderId: string

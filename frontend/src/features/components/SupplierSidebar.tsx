@@ -9,7 +9,7 @@
  * @property {string} businessName - The registered trading name of the supplier.
  * @property {string} address - The physical address shown beneath the business name.
  */
-type SupplierInfo = { businessName: string; address: string }
+export type SupplierInfo = { businessName: string; address: string }
 
 const navItems = [
   {

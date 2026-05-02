@@ -21,7 +21,7 @@ import type { Toast } from './useToast'
  * accessibility.
  *
  * @param {Object} props - Component props.
- * @param {Toast[]} props.toasts - The current array of active toast records supplied by {@link useToast}.
+ * @param {Toast[]} props.toasts - The current array of active toast records supplied by the useToast hook.
  * @returns {JSX.Element | null} The rendered toast stack, or `null` when there are no toasts.
  */
 export function ToastContainer({ toasts }: { toasts: Toast[] }) {

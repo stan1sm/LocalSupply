@@ -9,7 +9,7 @@ import Link from 'next/link'
  * Props for the CheckEmailPage component.
  * @property verificationPreviewUrl - Optional dev-mode link to preview the verification email.
  */
-type CheckEmailPageProps = {
+export type CheckEmailPageProps = {
   verificationPreviewUrl?: string
 }
 

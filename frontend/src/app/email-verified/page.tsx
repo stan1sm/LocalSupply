@@ -5,7 +5,7 @@
 
 import EmailVerifiedPage from '../../features/pages/auth/EmailVerifiedPage'
 
-type PageProps = {
+export type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 

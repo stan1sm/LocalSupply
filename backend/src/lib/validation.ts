@@ -115,23 +115,23 @@ export type SupplierLoginInput = {
  */
 export type SupplierLoginErrors = Partial<Record<keyof SupplierLoginInput, string>>
 
-type ValidationResult =
+export type ValidationResult =
   | { ok: true; data: UserRegistrationInput }
   | { ok: false; errors: UserRegistrationErrors }
 
-type LoginValidationResult =
+export type LoginValidationResult =
   | { ok: true; data: UserLoginInput }
   | { ok: false; errors: UserLoginErrors }
 
-type EmailValidationResult =
+export type EmailValidationResult =
   | { ok: true; data: UserEmailInput }
   | { ok: false; errors: UserEmailErrors }
 
-type SupplierRegistrationValidationResult =
+export type SupplierRegistrationValidationResult =
   | { ok: true; data: SupplierRegistrationInput }
   | { ok: false; errors: SupplierRegistrationErrors }
 
-type SupplierLoginValidationResult =
+export type SupplierLoginValidationResult =
   | { ok: true; data: SupplierLoginInput }
   | { ok: false; errors: SupplierLoginErrors }
 

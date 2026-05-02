@@ -5,7 +5,7 @@
 
 import CheckEmailPage from '../../features/pages/auth/CheckEmailPage'
 
-type PageProps = {
+export type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 

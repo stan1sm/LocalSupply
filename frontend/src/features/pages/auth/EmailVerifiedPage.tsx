@@ -9,7 +9,7 @@ import Link from 'next/link'
  * Props for the EmailVerifiedPage component.
  * @property status - Verification outcome; "invalid" renders an error state, anything else renders success.
  */
-type EmailVerifiedPageProps = {
+export type EmailVerifiedPageProps = {
   status?: string
 }
 

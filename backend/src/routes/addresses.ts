@@ -53,5 +53,4 @@ addressesRouter.get('/sok', async (req: Request, res: Response) => {
   }
 })
 
-/** @exports addressesRouter */
 export default addressesRouter

@@ -7,7 +7,7 @@
 
 import { useCallback, useState } from 'react'
 
-type ToastType = 'success' | 'error' | 'info'
+export type ToastType = 'success' | 'error' | 'info'
 
 /**
  * Represents a single toast notification held in the queue.

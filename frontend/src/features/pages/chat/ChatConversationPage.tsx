@@ -109,8 +109,8 @@ function getAuth(): { token: string; role: 'buyer' | 'supplier'; userId: string 
 /**
  * Renders a real-time chat conversation between a buyer and a supplier.
  * Auto-scrolls to the latest message and groups messages by date separator.
- * @param conversationId - ID of an existing conversation to load.
- * @param supplierId - Supplier ID used to open or create a conversation with that supplier.
+ * @param conversationId - ID of an existing conversation to load; the page fetches and renders this conversation.
+ *   When supplierId is also provided the page opens or creates a conversation with that supplier.
  */
 export default function ChatConversationPage({
   conversationId,

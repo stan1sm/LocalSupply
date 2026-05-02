@@ -13,7 +13,7 @@ import { buildApiUrl } from '../../../lib/api'
  * Props for the EmailNotVerifiedPage component.
  * @property email - The unverified email address to resend verification to.
  */
-type EmailNotVerifiedPageProps = { email?: string }
+export type EmailNotVerifiedPageProps = { email?: string }
 
 /**
  * API response shape for the resend-verification endpoint.

@@ -304,5 +304,4 @@ adminRouter.get('/orders', requireAdminAuth, async (_req, res) => {
   }
 })
 
-/** @exports adminRouter */
 export default adminRouter

@@ -91,7 +91,7 @@ export async function generateAndStoreProductEmbedding(productId: string): Promi
  * @property {string} productId - The ID of the similar `CatalogProduct`.
  * @property {number} similarity - Cosine similarity score in the range [0, 1]; higher is more similar.
  */
-type SimilarProduct = {
+export type SimilarProduct = {
   productId: string
   similarity: number
 }

@@ -110,7 +110,7 @@ export async function getEmbeddings(texts: string[]): Promise<number[][]> {
  * @property {T} result - The JSON payload parsed from the model's response content.
  * @property {unknown} raw - The raw API response object, useful for debugging or inspecting usage metadata.
  */
-type JsonChatResponse<T> = {
+export type JsonChatResponse<T> = {
   result: T
   raw: unknown
 }
@@ -120,7 +120,7 @@ type JsonChatResponse<T> = {
  * @property {string} name - The schema name passed to the model's `json_schema` response format.
  * @property {Record<string, unknown>} schema - The JSON Schema definition object.
  */
-type JsonSchemaSpec = {
+export type JsonSchemaSpec = {
   name: string
   schema: Record<string, unknown>
 }

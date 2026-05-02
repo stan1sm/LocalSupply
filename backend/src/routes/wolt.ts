@@ -119,5 +119,4 @@ woltRouter.post('/webhook', async (req, res) => {
   }
 })
 
-/** @exports woltRouter */
 export default woltRouter
