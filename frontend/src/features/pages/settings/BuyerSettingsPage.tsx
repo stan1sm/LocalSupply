@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 import BuyerSidebar from '../../components/BuyerSidebar'
+import { sanitizeTextInput, sanitizePhoneInput } from '../../../utils/inputSecurity'
 
 const BUYER_STORAGE_KEY = 'localsupply-user'
 const TOKEN_KEY = 'localsupply-token'
@@ -644,11 +645,11 @@ export default function BuyerSettingsPage() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <label className={labelCls}>First name</label>
-                      <input type="text" value={profileFirstName} onChange={(e) => setProfileFirstName(e.target.value)} className={inputCls} />
+                      <input type="text" value={profileFirstName} onChange={(e) => setProfileFirstName(sanitizeTextInput(e.target.value, 50))} className={inputCls} />
                     </div>
                     <div>
                       <label className={labelCls}>Last name</label>
-                      <input type="text" value={profileLastName} onChange={(e) => setProfileLastName(e.target.value)} className={inputCls} />
+                      <input type="text" value={profileLastName} onChange={(e) => setProfileLastName(sanitizeTextInput(e.target.value, 50))} className={inputCls} />
                     </div>
                   </div>
                   <div>
@@ -743,7 +744,7 @@ export default function BuyerSettingsPage() {
                 <div ref={addrRef} className="relative">
                   <label className={labelCls}>Address</label>
                   <input
-                    type="text" value={newAddrQuery} onChange={(e) => setNewAddrQuery(e.target.value)}
+                    type="text" value={newAddrQuery} onChange={(e) => setNewAddrQuery(sanitizeTextInput(e.target.value, 200))}
                     placeholder="Start typing your address..." className={inputCls}
                   />
                   {isSearchingAddr && <span className="absolute right-3 top-8 text-xs text-gray-400">Searching...</span>}
@@ -763,16 +764,16 @@ export default function BuyerSettingsPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={labelCls}>Label <span className="font-normal text-gray-400">(optional)</span></label>
-                    <input type="text" value={newAddrLabel} onChange={(e) => setNewAddrLabel(e.target.value)} placeholder="e.g. Home, Work" className={inputCls} />
+                    <input type="text" value={newAddrLabel} onChange={(e) => setNewAddrLabel(sanitizeTextInput(e.target.value, 60))} placeholder="e.g. Home, Work" className={inputCls} />
                   </div>
                   <div>
                     <label className={labelCls}>Phone <span className="font-normal text-gray-400">(optional)</span></label>
-                    <input type="tel" value={newAddrPhone} onChange={(e) => setNewAddrPhone(e.target.value.slice(0, 20))} placeholder="+47 900 00 000" className={inputCls} />
+                    <input type="tel" value={newAddrPhone} onChange={(e) => setNewAddrPhone(sanitizePhoneInput(e.target.value))} placeholder="+47 900 00 000" className={inputCls} />
                   </div>
                 </div>
                 <div>
                   <label className={labelCls}>Delivery instructions <span className="font-normal text-gray-400">(optional)</span></label>
-                  <input type="text" value={newAddrInstructions} onChange={(e) => setNewAddrInstructions(e.target.value)} placeholder="e.g. Ring the bell, leave at door" className={inputCls} />
+                  <input type="text" value={newAddrInstructions} onChange={(e) => setNewAddrInstructions(sanitizeTextInput(e.target.value, 200))} placeholder="e.g. Ring the bell, leave at door" className={inputCls} />
                 </div>
                 <label className="flex items-center gap-2 text-sm text-gray-700">
                   <input type="checkbox" checked={newAddrDefault} onChange={(e) => setNewAddrDefault(e.target.checked)} className="rounded" />
@@ -833,7 +834,7 @@ export default function BuyerSettingsPage() {
               <div className="mt-4 rounded-lg border border-[#dfe5da] bg-[#f9fafb] p-4 space-y-3">
                 <div>
                   <label className={labelCls}>Cardholder name</label>
-                  <input autoComplete="cc-name" type="text" value={newCardName} onChange={(e) => { setNewCardName(e.target.value); setCardErrors((p) => ({ ...p, name: undefined })) }} placeholder="Full name on card" className={`w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1f7b3a]/20 ${cardErrors.name ? 'border-red-400' : 'border-[#dfe5da] focus:border-[#1f7b3a]'}`} />
+                  <input autoComplete="cc-name" type="text" value={newCardName} onChange={(e) => { setNewCardName(sanitizeTextInput(e.target.value, 100)); setCardErrors((p) => ({ ...p, name: undefined })) }} placeholder="Full name on card" className={`w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1f7b3a]/20 ${cardErrors.name ? 'border-red-400' : 'border-[#dfe5da] focus:border-[#1f7b3a]'}`} />
                   {cardErrors.name && <p className="mt-1 text-xs text-red-500">{cardErrors.name}</p>}
                 </div>
                 <div>

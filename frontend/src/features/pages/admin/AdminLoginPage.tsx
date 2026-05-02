@@ -8,6 +8,7 @@
 import { type FormEvent, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { buildApiUrl } from '../../../lib/api'
+import { sanitizeEmailInput } from '../../../utils/inputSecurity'
 
 const ADMIN_STORAGE_KEY = 'localsupply-admin'
 
@@ -78,7 +79,7 @@ export default function AdminLoginPage() {
             <input
               autoComplete="email"
               className="mt-1 w-full rounded-lg border border-[#d1d5db] px-3 py-2 text-sm text-[#1f2937] outline-none transition focus:border-[#1f2937] focus:ring-2 focus:ring-[#1f2937]/10"
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => setEmail(sanitizeEmailInput(e.target.value))}
               required
               type="email"
               value={email}
@@ -89,7 +90,7 @@ export default function AdminLoginPage() {
             <input
               autoComplete="current-password"
               className="mt-1 w-full rounded-lg border border-[#d1d5db] px-3 py-2 text-sm text-[#1f2937] outline-none transition focus:border-[#1f2937] focus:ring-2 focus:ring-[#1f2937]/10"
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value.slice(0, 128))}
               required
               type="password"
               value={password}

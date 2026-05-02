@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 import SupplierSidebar from '../../components/SupplierSidebar'
+import { sanitizeTextInput } from '../../../utils/inputSecurity'
 
 /**
  * Authenticated supplier session read from localStorage.
@@ -573,7 +574,7 @@ export default function SupplierSettingsPage() {
                     <input
                       className={inputClass}
                       maxLength={160}
-                      onChange={(event) => updateField('tagline', event.target.value)}
+                      onChange={(event) => updateField('tagline', sanitizeTextInput(event.target.value, 160))}
                       placeholder="Fresh organic vegetables from Oslo — delivered twice weekly."
                       type="text"
                       value={profile?.tagline ?? ''}
@@ -588,7 +589,7 @@ export default function SupplierSettingsPage() {
                     <textarea
                       className={inputClass}
                       maxLength={4000}
-                      onChange={(event) => updateField('description', event.target.value)}
+                      onChange={(event) => updateField('description', sanitizeTextInput(event.target.value, 4000))}
                       placeholder="Tell buyers what makes your products special, how you operate, and anything important to know before ordering."
                       rows={5}
                       value={profile?.description ?? ''}
@@ -602,7 +603,7 @@ export default function SupplierSettingsPage() {
                       <input
                         className={inputClass}
                         maxLength={80}
-                        onChange={(event) => updateField('storeType', event.target.value)}
+                        onChange={(event) => updateField('storeType', sanitizeTextInput(event.target.value, 80))}
                         placeholder="Farm, bakery, wholesaler, fishery…"
                         type="text"
                         value={profile?.storeType ?? ''}
@@ -614,7 +615,7 @@ export default function SupplierSettingsPage() {
                       <input
                         className={inputClass}
                         maxLength={40}
-                        onChange={(event) => updateField('badgeText', event.target.value)}
+                        onChange={(event) => updateField('badgeText', sanitizeTextInput(event.target.value, 40))}
                         placeholder="Local farm · Certified organic"
                         type="text"
                         value={profile?.badgeText ?? ''}
@@ -630,7 +631,7 @@ export default function SupplierSettingsPage() {
                       <input
                         className={inputClass}
                         maxLength={2048}
-                        onChange={(event) => updateField('websiteUrl', event.target.value)}
+                        onChange={(event) => updateField('websiteUrl', sanitizeTextInput(event.target.value, 2048))}
                         placeholder="https://yourbusiness.no"
                         type="url"
                         value={profile?.websiteUrl ?? ''}
@@ -641,7 +642,7 @@ export default function SupplierSettingsPage() {
                       <input
                         className={inputClass}
                         maxLength={2048}
-                        onChange={(event) => updateField('instagramUrl', event.target.value)}
+                        onChange={(event) => updateField('instagramUrl', sanitizeTextInput(event.target.value, 2048))}
                         placeholder="https://instagram.com/your-handle"
                         type="url"
                         value={profile?.instagramUrl ?? ''}
@@ -652,7 +653,7 @@ export default function SupplierSettingsPage() {
                       <input
                         className={inputClass}
                         maxLength={2048}
-                        onChange={(event) => updateField('facebookUrl', event.target.value)}
+                        onChange={(event) => updateField('facebookUrl', sanitizeTextInput(event.target.value, 2048))}
                         placeholder="https://facebook.com/your-page"
                         type="url"
                         value={profile?.facebookUrl ?? ''}
@@ -663,7 +664,7 @@ export default function SupplierSettingsPage() {
                       <input
                         className={inputClass}
                         maxLength={80}
-                        onChange={(event) => updateField('preferredContactMethod', event.target.value)}
+                        onChange={(event) => updateField('preferredContactMethod', sanitizeTextInput(event.target.value, 80))}
                         placeholder="Email, phone, WhatsApp…"
                         type="text"
                         value={profile?.preferredContactMethod ?? ''}
@@ -703,14 +704,14 @@ export default function SupplierSettingsPage() {
                     <div className="mt-1 flex items-center gap-2">
                       <input
                         className="h-9 w-12 cursor-pointer rounded-lg border border-[#d4ddcf] p-0.5"
-                        onChange={(event) => updateField('brandColor', event.target.value)}
+                        onChange={(event) => updateField('brandColor', sanitizeTextInput(event.target.value, 32))}
                         type="color"
                         value={profile?.brandColor && /^#[0-9a-fA-F]{6}$/.test(profile.brandColor) ? profile.brandColor : '#2f9f4f'}
                       />
                       <input
                         className="flex-1 rounded-xl border border-[#d4ddcf] bg-white px-3 py-2 text-sm text-[#1f2937] outline-none placeholder:text-[#95a39a] focus:border-[#2f9f4f] focus:ring-2 focus:ring-[#b7e0c2]"
                         maxLength={32}
-                        onChange={(event) => updateField('brandColor', event.target.value)}
+                        onChange={(event) => updateField('brandColor', sanitizeTextInput(event.target.value, 32))}
                         placeholder="#2f9f4f"
                         type="text"
                         value={profile?.brandColor ?? ''}
@@ -788,7 +789,7 @@ export default function SupplierSettingsPage() {
                     <input
                       className={inputClass}
                       maxLength={400}
-                      onChange={(event) => updateField('openingHoursNote', event.target.value)}
+                      onChange={(event) => updateField('openingHoursNote', sanitizeTextInput(event.target.value, 400))}
                       placeholder="Closed on public holidays. Pickup by appointment only in July."
                       type="text"
                       value={profile?.openingHoursNote ?? ''}
@@ -859,7 +860,7 @@ export default function SupplierSettingsPage() {
                     <textarea
                       className={inputClass}
                       maxLength={400}
-                      onChange={(event) => updateField('orderNotesHint', event.target.value)}
+                      onChange={(event) => updateField('orderNotesHint', sanitizeTextInput(event.target.value, 400))}
                       placeholder="e.g. Please specify your preferred delivery window. All orders must be placed by Tuesday 14:00 for Thursday delivery."
                       rows={3}
                       value={profile?.orderNotesHint ?? ''}

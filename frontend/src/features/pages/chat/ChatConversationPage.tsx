@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 import SupplierSidebar from '../../components/SupplierSidebar'
+import { sanitizeTextInput } from '../../../utils/inputSecurity'
 
 const BUYER_TOKEN_KEY = 'localsupply-token'
 const BUYER_USER_KEY = 'localsupply-user'
@@ -217,7 +218,7 @@ export default function ChatConversationPage({
     const auth = getAuth()
     if (!input.trim() || isSending || !convId || !auth) return
     setIsSending(true)
-    const content = input.trim()
+    const content = sanitizeTextInput(input.trim(), 4000)
     setInput('')
 
     try {
