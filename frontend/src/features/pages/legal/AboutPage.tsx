@@ -48,7 +48,7 @@ export default function AboutPage() {
             LocalSupply isn't just for buyers. We're building the infrastructure for local Norwegian food businesses to reach customers directly — with their own storefront, product listings, and order management — all in one place.
           </p>
           <p className="mt-3 leading-relaxed text-[#4b5563]">
-            Suppliers on LocalSupply get verified listings, Wolt Drive delivery integration, real-time order notifications, and a dashboard to manage everything from inventory to customer conversations.
+            Suppliers on LocalSupply get verified listings, integrated last-mile delivery, real-time order notifications, and a dashboard to manage everything from inventory to customer conversations.
           </p>
 
           <hr className="my-8 border-[#e5e7eb]" />

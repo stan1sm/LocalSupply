@@ -75,7 +75,7 @@ export default function PrivacyPolicyPage() {
             <ul className={ul}>
               <li><strong>Resend</strong> — transactional email delivery.</li>
               <li><strong>Vipps</strong> — payment and login services.</li>
-              <li><strong>Wolt Drive</strong> — last-mile delivery. Your delivery address is shared with Wolt when a delivery is requested.</li>
+              <li><strong>LocalSupply Delivery</strong> — last-mile delivery. Your delivery address is used to arrange courier dispatch when a delivery is requested.</li>
               <li><strong>Vercel</strong> — cloud hosting and infrastructure.</li>
               <li><strong>Neon / PostgreSQL</strong> — database hosting.</li>
             </ul>

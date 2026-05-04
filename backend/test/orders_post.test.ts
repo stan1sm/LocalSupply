@@ -57,6 +57,11 @@ vi.mock('../src/lib/email.js', () => ({
 
 vi.mock('../src/lib/woltDrive.js', () => ({
   createDelivery: vi.fn().mockResolvedValue({ ok: false, message: 'Wolt disabled in tests' }),
+  parseAddressString: vi.fn((addr: string) => ({ street: addr, city: 'Oslo' })),
+}))
+
+vi.mock('../src/lib/storeLocator.js', () => ({
+  findNearestStoreAddress: vi.fn().mockResolvedValue(null),
 }))
 
 import app from '../src/app.js'

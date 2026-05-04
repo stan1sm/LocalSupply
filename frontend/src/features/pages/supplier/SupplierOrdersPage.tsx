@@ -283,7 +283,7 @@ export default function SupplierOrdersPage() {
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Supplier Orders</p>
                 <h1 className="mt-2 text-2xl font-bold text-[#1f2b22]">Incoming orders</h1>
                 <p className="mt-1 text-sm text-[#617166]">
-                  Confirm or cancel pending orders. Wolt handles delivery once confirmed.
+                  Confirm or cancel pending orders. Delivery will be arranged once confirmed.
                 </p>
               </div>
               {pendingCount > 0 ? (

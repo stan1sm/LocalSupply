@@ -8,6 +8,7 @@ import { sendBuyerOrderStatusEmail, sendSupplierOrderEmail } from '../lib/email.
 import { getPrismaClient } from '../lib/prisma.js'
 import type { OrderStatus } from '../generated/prisma/enums.js'
 import { createDelivery, parseAddressString } from '../lib/woltDrive.js'
+import { findNearestStoreAddress } from '../lib/storeLocator.js'
 import { requireSupplierAuth } from '../middleware/requireSupplierAuth.js'
 import { requireBuyerAuth } from '../middleware/requireBuyerAuth.js'
 
@@ -312,13 +313,28 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
     let woltStatus: string | null = null
 
     const deliveryAddress = typeof body.deliveryAddress === 'string' ? body.deliveryAddress.trim() : ''
-    const pickupAddress = supplier.address ?? (process.env.WOLT_DEFAULT_PICKUP_ADDRESS ?? '')
 
-    if (deliveryAddress && pickupAddress) {
+    // For catalog store orders, find the nearest physical store to the delivery address.
+    // For supplier orders, use the supplier's registered address.
+    let pickupAddr = supplier.address
+      ? parseAddressString(supplier.address)
+      : null
+
+    if (!pickupAddr && storeCode && deliveryAddress) {
+      const nearest = await findNearestStoreAddress(storeCode, deliveryAddress)
+      if (nearest) pickupAddr = nearest
+    }
+
+    if (!pickupAddr) {
+      const fallback = process.env.WOLT_DEFAULT_PICKUP_ADDRESS ?? ''
+      if (fallback) pickupAddr = parseAddressString(fallback)
+    }
+
+    if (deliveryAddress && pickupAddr) {
       const woltResult = await createDelivery({
         orderId: order.id,
         pickup: {
-          ...parseAddressString(pickupAddress),
+          ...pickupAddr!,
           contactName: supplier.businessName,
           contactPhone: supplier.phoneNumber ?? '00000000',
         },
