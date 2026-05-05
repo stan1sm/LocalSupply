@@ -1,9 +1,21 @@
 'use client'
 
+import { usePathname } from 'next/navigation'
+
 /**
  * @module BuyerSidebar
  * Navigation sidebar component for the buyer-facing area of the application.
  */
+
+function getActiveId(pathname: string): string {
+  if (pathname.startsWith('/marketplace')) return 'marketplace'
+  if (pathname.startsWith('/suppliers') || pathname.startsWith('/supplier/')) return 'suppliers'
+  if (pathname.startsWith('/cart') || pathname.startsWith('/checkout')) return 'my-cart'
+  if (pathname.startsWith('/orders')) return 'orders'
+  if (pathname.startsWith('/chat')) return 'chats'
+  if (pathname.startsWith('/settings')) return 'settings'
+  return ''
+}
 
 const navItems = [
   {
@@ -103,9 +115,12 @@ function handleSignOut() {
  *   (e.g. `'marketplace'`, `'orders'`, `'settings'`).
  * @returns {JSX.Element} The rendered sidebar `<aside>` element.
  */
-export default function BuyerSidebar({ activeId }: { activeId: string }) {
+export default function BuyerSidebar() {
+  const pathname = usePathname()
+  const activeId = getActiveId(pathname)
+
   return (
-    <aside className="flex flex-col rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+    <aside className="sticky top-6 flex h-[calc(100vh-3rem)] flex-col rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
       <div className="px-2 pb-5">
         <a
           className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#2f9f4f] hover:text-[#1f2937]"

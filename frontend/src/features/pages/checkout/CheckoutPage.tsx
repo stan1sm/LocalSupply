@@ -976,18 +976,20 @@ export default function CheckoutPage() {
                 />
               </div>
 
-              {/* Delivery route map */}
-              {pickupCoords && dropoffCoords ? (
+              {/* Delivery route map — shows as soon as dropoff is geocoded */}
+              {dropoffCoords ? (
                 <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7b70]">Delivery route</p>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7b70]">
+                    {pickupCoords ? 'Delivery route' : 'Delivery address'}
+                  </p>
                   <Suspense fallback={<div className="h-56 w-full rounded-2xl bg-[#f0faf2] animate-pulse" />}>
                     <DeliveryMap
-                      pickupLat={pickupCoords.lat}
-                      pickupLon={pickupCoords.lon}
                       dropoffLat={dropoffCoords.lat}
                       dropoffLon={dropoffCoords.lon}
-                      pickupLabel={pickupCoords.label}
                       dropoffLabel={dropoffCoords.label}
+                      pickupLat={pickupCoords?.lat}
+                      pickupLon={pickupCoords?.lon}
+                      pickupLabel={pickupCoords?.label}
                     />
                   </Suspense>
                 </div>

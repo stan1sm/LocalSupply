@@ -602,8 +602,8 @@ export default function BuyerSettingsPage() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto grid w-full max-w-[1200px] gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <BuyerSidebar activeId="settings" />
+      <div className="mx-auto grid w-full max-w-[1200px] items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <BuyerSidebar />
 
         <section>
           <div className="mb-6 rounded-[28px] border border-[#dce5d7] bg-white/95 px-6 py-5 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">

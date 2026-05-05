@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
+import BuyerSidebar from '../../components/BuyerSidebar'
 import SupplierSidebar from '../../components/SupplierSidebar'
 
 const BUYER_TOKEN_KEY = 'localsupply-token'
@@ -207,18 +208,14 @@ export default function ChatInboxPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
       {role === 'supplier' && supplierSession ? (
-        <div className="mx-auto grid w-full max-w-[1400px] gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <div className="mx-auto grid w-full max-w-[1400px] items-start gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
           <SupplierSidebar activeId="chats" supplier={supplierSession} />
           <div>{inboxContent}</div>
         </div>
       ) : (
-        <div className="mx-auto w-full max-w-2xl">
-          <div className="mb-4">
-            <a className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2f9f4f] hover:text-[#1f2937]" href="/marketplace/dashboard">
-              <span aria-hidden="true">←</span> Marketplace
-            </a>
-          </div>
-          {inboxContent}
+        <div className="mx-auto grid w-full max-w-[1400px] items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <BuyerSidebar />
+          <div>{inboxContent}</div>
         </div>
       )}
     </main>
