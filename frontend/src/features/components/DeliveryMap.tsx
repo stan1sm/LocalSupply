@@ -4,15 +4,15 @@ import { useEffect, useRef } from 'react'
 import type { Map, Marker, Polyline } from 'leaflet'
 
 type Props = {
-  pickupLat: number
-  pickupLon: number
   dropoffLat: number
   dropoffLon: number
-  pickupLabel: string
   dropoffLabel: string
+  pickupLat?: number
+  pickupLon?: number
+  pickupLabel?: string
 }
 
-export default function DeliveryMap({ pickupLat, pickupLon, dropoffLat, dropoffLon, pickupLabel, dropoffLabel }: Props) {
+export default function DeliveryMap({ dropoffLat, dropoffLon, dropoffLabel, pickupLat, pickupLon, pickupLabel }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<Map | null>(null)
   const markersRef = useRef<{ pickup: Marker | null; dropoff: Marker | null; line: Polyline | null }>({
@@ -45,13 +45,9 @@ export default function DeliveryMap({ pickupLat, pickupLon, dropoffLat, dropoffL
       refs.pickup?.remove()
       refs.dropoff?.remove()
       refs.line?.remove()
-
-      const storeIcon = L.divIcon({
-        className: '',
-        html: `<div style="background:#2f9f4f;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:2px solid #fff">🏪</div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-      })
+      refs.pickup = null
+      refs.dropoff = null
+      refs.line = null
 
       const homeIcon = L.divIcon({
         className: '',
@@ -60,24 +56,34 @@ export default function DeliveryMap({ pickupLat, pickupLon, dropoffLat, dropoffL
         iconAnchor: [16, 16],
       })
 
-      refs.pickup = L.marker([pickupLat, pickupLon], { icon: storeIcon })
-        .addTo(map)
-        .bindPopup(`<b>Pickup</b><br>${pickupLabel}`)
-
       refs.dropoff = L.marker([dropoffLat, dropoffLon], { icon: homeIcon })
         .addTo(map)
         .bindPopup(`<b>Delivery</b><br>${dropoffLabel}`)
 
-      refs.line = L.polyline(
-        [[pickupLat, pickupLon], [dropoffLat, dropoffLon]],
-        { color: '#2f9f4f', weight: 2.5, dashArray: '6 6', opacity: 0.7 }
-      ).addTo(map)
+      if (pickupLat != null && pickupLon != null && pickupLabel != null) {
+        const storeIcon = L.divIcon({
+          className: '',
+          html: `<div style="background:#2f9f4f;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:2px solid #fff">🏪</div>`,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+        })
 
-      const bounds = L.latLngBounds(
-        [pickupLat, pickupLon],
-        [dropoffLat, dropoffLon],
-      )
-      map.fitBounds(bounds, { padding: [48, 48] })
+        refs.pickup = L.marker([pickupLat, pickupLon], { icon: storeIcon })
+          .addTo(map)
+          .bindPopup(`<b>Pickup</b><br>${pickupLabel}`)
+
+        refs.line = L.polyline(
+          [[pickupLat, pickupLon], [dropoffLat, dropoffLon]],
+          { color: '#2f9f4f', weight: 2.5, dashArray: '6 6', opacity: 0.7 }
+        ).addTo(map)
+
+        map.fitBounds(
+          L.latLngBounds([pickupLat, pickupLon], [dropoffLat, dropoffLon]),
+          { padding: [48, 48] }
+        )
+      } else {
+        map.setView([dropoffLat, dropoffLon], 14)
+      }
     }
 
     init()

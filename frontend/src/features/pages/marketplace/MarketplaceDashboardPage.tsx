@@ -463,8 +463,8 @@ export default function MarketplaceDashboardPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
       <ToastContainer toasts={toasts} />
-      <div className="mx-auto grid w-full max-w-[1600px] gap-6 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
-        <BuyerSidebar activeId="marketplace" />
+      <div className="mx-auto grid w-full max-w-[1600px] items-start gap-6 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
+        <BuyerSidebar />
 
         <section className="overflow-hidden rounded-[28px] border border-[#dce5d7] bg-white/92 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
           <header className="border-b border-[#e5ece2] px-5 py-5 sm:px-6">

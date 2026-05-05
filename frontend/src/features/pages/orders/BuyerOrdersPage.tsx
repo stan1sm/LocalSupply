@@ -237,8 +237,8 @@ export default function BuyerOrdersPage() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto grid w-full max-w-[1200px] gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <BuyerSidebar activeId="orders" />
+      <div className="mx-auto grid w-full max-w-[1200px] items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <BuyerSidebar />
 
         <section className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
           <div className="border-b border-[#e5ece2] px-5 py-5">
