@@ -5,6 +5,8 @@
 
 import { Router } from 'express'
 import { getPrismaClient } from '../lib/prisma.js'
+import { findSimilarProductsForProduct } from '../lib/embeddings.js'
+import { tokenise, hasTokenOverlap } from '../lib/substitutions.js'
 import { planMealFromText } from '../lib/intentCartPlanner.js'
 import { getEmbeddings } from '../lib/aiClient.js'
 
@@ -199,8 +201,10 @@ cartRouter.post('/match', async (req, res) => {
           brand: string | null
           catalogProductId: string
           imageUrl: string | null
+          isSubstitute?: boolean
           lineTotal: number
           name: string
+          originalName?: string
           quantity: number
           unitPrice: number
         }[]
@@ -243,6 +247,113 @@ cartRouter.post('/match', async (req, res) => {
       store.subtotal += lineTotal
       store.itemsAvailable += 1
     }
+
+    // For each store, find substitute products for missing cart items
+    async function addSubstitutes() {
+      const missingByStore = new Map<string, string[]>()
+      for (const [storeCode, store] of storeMap) {
+        const storeProductIds = new Set(store.items.map((i) => i.catalogProductId))
+        const missing = catalogProductIds.filter((id) => !storeProductIds.has(id))
+        if (missing.length > 0) missingByStore.set(storeCode, missing)
+      }
+      if (missingByStore.size === 0) return
+
+      const uniqueMissingIds = [...new Set([...missingByStore.values()].flat())]
+
+      const [missingProductDetails, similarResults] = await Promise.all([
+        prisma.catalogProduct.findMany({
+          where: { id: { in: uniqueMissingIds } },
+          select: { id: true, name: true, category: true, imageUrl: true, brand: true },
+        }),
+        Promise.allSettled(
+          uniqueMissingIds.map((id) => findSimilarProductsForProduct(id, { limit: 40 })),
+        ),
+      ])
+
+      const missingProductMap = new Map(missingProductDetails.map((p) => [p.id, p]))
+      const similarByProductId = new Map<string, Array<{ productId: string; similarity: number }>>()
+      uniqueMissingIds.forEach((id, idx) => {
+        const result = similarResults[idx]
+        if (result?.status === 'fulfilled') {
+          similarByProductId.set(id, result.value.filter((s) => s.similarity >= 0.68))
+        }
+      })
+
+      const allCandidateIds = [
+        ...new Set([...similarByProductId.values()].flat().map((s) => s.productId)),
+      ]
+      if (allCandidateIds.length === 0) return
+
+      const candidatePrices = await prisma.catalogProductPrice.findMany({
+        where: {
+          catalogProductId: { in: allCandidateIds },
+          storeCode: { in: [...missingByStore.keys()] },
+          currentPrice: { not: null },
+        },
+        include: { catalogProduct: true },
+      })
+
+      for (const [storeCode, missingIds] of missingByStore) {
+        const store = storeMap.get(storeCode)!
+        const storeAlreadyHas = new Set(store.items.map((i) => i.catalogProductId))
+
+        for (const missingProductId of missingIds) {
+          const baseProduct = missingProductMap.get(missingProductId)
+          if (!baseProduct?.category) continue
+          const baseTokens = new Set(tokenise(baseProduct.name))
+          if (baseTokens.size === 0) continue
+
+          const similar = similarByProductId.get(missingProductId) ?? []
+          const similarIdSet = new Set(similar.map((s) => s.productId))
+
+          const candidates = candidatePrices.filter(
+            (p) =>
+              p.storeCode === storeCode &&
+              similarIdSet.has(p.catalogProductId) &&
+              !storeAlreadyHas.has(p.catalogProductId) &&
+              p.catalogProduct.category === baseProduct.category &&
+              hasTokenOverlap(p.catalogProduct.name, baseTokens),
+          )
+          if (candidates.length === 0) continue
+
+          const scored = candidates.map((c) => ({
+            candidate: c,
+            similarity: similar.find((s) => s.productId === c.catalogProductId)?.similarity ?? 0,
+          }))
+          scored.sort((a, b) => {
+            if (b.similarity !== a.similarity) return b.similarity - a.similarity
+            return (
+              (asNumber(a.candidate.currentPrice) ?? Infinity) -
+              (asNumber(b.candidate.currentPrice) ?? Infinity)
+            )
+          })
+
+          const best = scored[0]!.candidate
+          const unitPrice = asNumber(best.currentPrice)
+          if (unitPrice === null || unitPrice <= 0) continue
+
+          const quantity = quantityByProductId.get(missingProductId) ?? 1
+          const lineTotal = unitPrice * quantity
+
+          store.items.push({
+            catalogProductId: best.catalogProductId,
+            name: best.catalogProduct.name,
+            brand: best.catalogProduct.brand,
+            imageUrl: best.catalogProduct.imageUrl,
+            unitPrice,
+            quantity,
+            lineTotal,
+            isSubstitute: true,
+            originalName: baseProduct.name,
+          })
+          store.subtotal += lineTotal
+          store.itemsAvailable += 1
+          storeAlreadyHas.add(best.catalogProductId)
+        }
+      }
+    }
+
+    await Promise.race([addSubstitutes(), new Promise<void>((resolve) => setTimeout(resolve, 4000))])
 
     const totalRequested = catalogProductIds.length
 
