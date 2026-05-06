@@ -63,8 +63,10 @@ type MatchedStoreItem = {
   brand: string | null
   catalogProductId: string
   imageUrl: string | null
+  isSubstitute?: boolean
   lineTotal: number
   name: string
+  originalName?: string
   quantity: number
   unitPrice: number
 }
@@ -563,8 +565,13 @@ export default function CheckoutPage() {
    * @returns Array of cart items not matched at the store.
    */
   function getUnavailableItems(store: MatchedStore): CartItem[] {
-    const matchedNames = new Set(store.items.map((i) => i.name.toLowerCase()))
-    return cartItems.filter((ci) => !matchedNames.has(ci.name.toLowerCase()))
+    const directNames = new Set(store.items.filter((i) => !i.isSubstitute).map((i) => i.name.toLowerCase()))
+    const substitutedOriginals = new Set(
+      store.items.filter((i) => i.isSubstitute && i.originalName).map((i) => i.originalName!.toLowerCase()),
+    )
+    return cartItems.filter(
+      (ci) => !directNames.has(ci.name.toLowerCase()) && !substitutedOriginals.has(ci.name.toLowerCase()),
+    )
   }
 
   function effectiveDeliveryCost(store: MatchedStore): number {
@@ -886,8 +893,21 @@ export default function CheckoutPage() {
                           <div className="space-y-1.5">
                             {store.items.map((item) => (
                               <div className="flex items-center gap-2 text-xs" key={item.catalogProductId}>
-                                <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#dcf5e2] text-[9px] font-bold text-[#1a7a34]">✓</span>
-                                <span className="min-w-0 flex-1 truncate text-[#1f2b22]">{item.name}</span>
+                                {item.isSubstitute ? (
+                                  <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#e8f4ff] text-[9px] font-bold text-[#1a5fa6]">↔</span>
+                                ) : (
+                                  <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#dcf5e2] text-[9px] font-bold text-[#1a7a34]">✓</span>
+                                )}
+                                {item.isSubstitute ? (
+                                  <div className="min-w-0 flex-1">
+                                    <span className="block truncate text-[#1f2b22]">{item.name}</span>
+                                    {item.originalName ? (
+                                      <span className="block truncate text-[10px] text-[#8a9a8e]">sub for {item.originalName}</span>
+                                    ) : null}
+                                  </div>
+                                ) : (
+                                  <span className="min-w-0 flex-1 truncate text-[#1f2b22]">{item.name}</span>
+                                )}
                                 <span className="shrink-0 text-[#6d7b70]">×{item.quantity}</span>
                                 <span className="shrink-0 font-semibold text-[#2f9f4f]">{formatCurrency(item.lineTotal)}</span>
                               </div>
