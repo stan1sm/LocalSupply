@@ -139,16 +139,6 @@ type StoreLocatorResult = {
   etaMinutes: number
 }
 
-const STORE_BRANDS: Record<string, string[]> = {
-  meny:     ['Meny'],
-  coop:     ['Coop Extra', 'Coop Mega', 'Coop Obs', 'Coop Prix', 'Coop'],
-  spar:     ['Spar', 'SPAR'],
-  joker:    ['Joker'],
-  kiwi:     ['KIWI', 'Kiwi'],
-  rema1000: ['Rema 1000', 'REMA 1000'],
-  bunnpris: ['Bunnpris'],
-}
-
 /** Whether the order is placed by an individual consumer or a business. */
 type AccountType = 'INDIVIDUAL' | 'BUSINESS'
 
