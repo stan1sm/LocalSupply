@@ -4,6 +4,7 @@ import { rateLimit } from 'express-rate-limit'
 import estimateRouter from './routes/estimate.js'
 import { deliveryRouter } from './routes/delivery.js'
 import { trackingRouter } from './routes/tracking.js'
+import { advancePendingDeliveries } from './lib/simulator.js'
 
 const app = express()
 
@@ -46,5 +47,21 @@ app.use('/merchants/:merchantId/delivery-order', merchantLimiter, requireApiKey,
 
 // Tracking page is public (buyers visit it directly) but globally rate-limited above
 app.use('/track', trackingRouter)
+
+// Cron endpoint — called by cron-job.org every minute
+const CRON_SECRET = process.env.CRON_SECRET ?? ''
+app.get('/api/cron/advance-deliveries', async (req: Request, res: Response) => {
+  if (CRON_SECRET && req.headers.authorization !== `Bearer ${CRON_SECRET}`) {
+    res.status(401).json({ error: 'Unauthorized' })
+    return
+  }
+  try {
+    await advancePendingDeliveries()
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('advance-deliveries cron error:', err)
+    res.status(500).json({ error: 'Internal error' })
+  }
+})
 
 export default app
