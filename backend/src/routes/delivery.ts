@@ -36,14 +36,18 @@ function estimateDelivery(km: number): { feeNok: number; etaMinutes: number } | 
 }
 
 interface OverpassElement {
-  lat: number
-  lon: number
+  lat?: number
+  lon?: number
+  center?: { lat: number; lon: number }
   tags?: Record<string, string>
 }
 
 interface OverpassResponse {
   elements?: OverpassElement[]
 }
+
+function elLat(el: OverpassElement): number | undefined { return el.lat ?? el.center?.lat }
+function elLon(el: OverpassElement): number | undefined { return el.lon ?? el.center?.lon }
 
 export interface StoreLocatorEntry {
   chainKey: string
@@ -69,11 +73,11 @@ async function findNearestForChain(
 ): Promise<StoreLocatorEntry | null> {
   const filters = labels
     .flatMap((b) => [
-      `node["name"="${b}"](around:${radiusM},${userLat},${userLon});`,
-      `node["brand"="${b}"](around:${radiusM},${userLat},${userLon});`,
+      `nwr["name"="${b}"](around:${radiusM},${userLat},${userLon});`,
+      `nwr["brand"="${b}"](around:${radiusM},${userLat},${userLon});`,
     ])
     .join('\n')
-  const query = `[out:json][timeout:8];\n(\n${filters}\n);\nout 10;`
+  const query = `[out:json][timeout:8];\n(\n${filters}\n);\nout center 10;`
 
   try {
     const res = await fetch('https://overpass-api.de/api/interpreter', {
@@ -84,12 +88,12 @@ async function findNearestForChain(
     if (!res.ok) return null
 
     const data = (await res.json()) as OverpassResponse
-    const nodes = data.elements ?? []
-    if (nodes.length === 0) return null
+    const elements = (data.elements ?? []).filter((e) => elLat(e) != null && elLon(e) != null)
+    if (elements.length === 0) return null
 
-    const nearest = nodes.reduce((best, node) =>
-      haversineKm(userLat, userLon, node.lat, node.lon) < haversineKm(userLat, userLon, best.lat, best.lon)
-        ? node
+    const nearest = elements.reduce((best, el) =>
+      haversineKm(userLat, userLon, elLat(el)!, elLon(el)!) < haversineKm(userLat, userLon, elLat(best)!, elLon(best)!)
+        ? el
         : best,
     )
 
@@ -100,7 +104,7 @@ async function findNearestForChain(
         ? `${streetParts}, ${tags['addr:city']}`
         : tags['name'] ?? displayName
 
-    const distanceKm = haversineKm(userLat, userLon, nearest.lat, nearest.lon)
+    const distanceKm = haversineKm(userLat, userLon, elLat(nearest)!, elLon(nearest)!)
     const est = estimateDelivery(distanceKm)
     if (!est) return null
 
@@ -109,8 +113,8 @@ async function findNearestForChain(
       displayName,
       color,
       name: tags['name'] ?? displayName,
-      lat: nearest.lat,
-      lon: nearest.lon,
+      lat: elLat(nearest)!,
+      lon: elLon(nearest)!,
       address,
       distanceKm: Math.round(distanceKm * 10) / 10,
       feeNok: est.feeNok,

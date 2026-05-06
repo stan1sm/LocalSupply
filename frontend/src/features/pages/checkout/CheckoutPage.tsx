@@ -451,21 +451,24 @@ export default function CheckoutPage() {
     let cancelled = false
     const { lat, lon } = dropoffCoords
     const filters = labels
-      .flatMap((b) => [`node["name"="${b}"](around:15000,${lat},${lon});`, `node["brand"="${b}"](around:15000,${lat},${lon});`])
+      .flatMap((b) => [`nwr["name"="${b}"](around:15000,${lat},${lon});`, `nwr["brand"="${b}"](around:15000,${lat},${lon});`])
       .join('\n')
-    const query = `[out:json][timeout:8];\n(\n${filters}\n);\nout 5;`
+    const query = `[out:json][timeout:8];\n(\n${filters}\n);\nout center 5;`
+
+    type OEl = { lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }
+    const eLat = (e: OEl) => e.lat ?? e.center?.lat ?? 0
+    const eLon = (e: OEl) => e.lon ?? e.center?.lon ?? 0
 
     fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query, signal: AbortSignal.timeout(10000) })
       .then((r) => r.json())
-      .then((data: { elements?: { lat: number; lon: number; tags?: Record<string, string> }[] }) => {
+      .then((data: { elements?: OEl[] }) => {
         if (cancelled) return
-        const nodes = data.elements ?? []
-        if (nodes.length === 0) return
-        const nearest = nodes.reduce((best, n) =>
-          Math.hypot(n.lat - lat, n.lon - lon) < Math.hypot(best.lat - lat, best.lon - lon) ? n : best)
-        const t = nearest.tags ?? {}
-        const label = t['name'] ?? labels[0]!
-        setPickupCoords({ lat: nearest.lat, lon: nearest.lon, label })
+        const els = (data.elements ?? []).filter((e) => eLat(e) !== 0 || eLon(e) !== 0)
+        if (els.length === 0) return
+        const nearest = els.reduce((best, e) =>
+          Math.hypot(eLat(e) - lat, eLon(e) - lon) < Math.hypot(eLat(best) - lat, eLon(best) - lon) ? e : best)
+        const label = nearest.tags?.['name'] ?? labels[0]!
+        setPickupCoords({ lat: eLat(nearest), lon: eLon(nearest), label })
       })
       .catch(() => {})
 
@@ -523,7 +526,7 @@ export default function CheckoutPage() {
       setIsSearchingAddress(true)
       try {
         const res = await fetch(
-          `https://ws.geonorge.no/adresser/v1/sok?sok=${encodeURIComponent(addressQuery)}&fuzzy=true&treffPerSide=7`,
+          `https://ws.geonorge.no/adresser/v1/sok?sok=${encodeURIComponent(addressQuery)}&treffPerSide=8&sokemodus=AND`,
         )
         const data = (await res.json()) as { adresser: GeoNorgeAddress[] }
         setAddressSuggestions(data.adresser ?? [])
