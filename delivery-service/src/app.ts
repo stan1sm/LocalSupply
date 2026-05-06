@@ -7,6 +7,7 @@ import { trackingRouter } from './routes/tracking.js'
 import { advancePendingDeliveries } from './lib/simulator.js'
 
 const app = express()
+app.set('trust proxy', 1)
 
 // Restrict CORS to known LocalSupply origins
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? '')
