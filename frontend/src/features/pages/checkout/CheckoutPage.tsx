@@ -5,9 +5,10 @@
 
 'use client'
 
-import { useEffect, useRef, useState, lazy, Suspense } from 'react'
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 import BuyerSidebar from '../../components/BuyerSidebar'
+import type { StoreMarker } from '../../components/DeliveryMap'
 
 const DeliveryMap = lazy(() => import('../../components/DeliveryMap'))
 
@@ -124,6 +125,19 @@ type GeoNorgeAddress = {
 }
 
 type MapCoords = { lat: number; lon: number; label: string }
+
+type StoreLocatorResult = {
+  chainKey: string
+  displayName: string
+  color: string
+  name: string
+  lat: number
+  lon: number
+  address: string
+  distanceKm: number
+  feeNok: number
+  etaMinutes: number
+}
 
 const STORE_BRANDS: Record<string, string[]> = {
   meny:     ['Meny'],
@@ -242,7 +256,10 @@ export default function CheckoutPage() {
   const addressRef = useRef<HTMLDivElement>(null)
 
   const [dropoffCoords, setDropoffCoords] = useState<MapCoords | null>(null)
-  const [pickupCoords, setPickupCoords] = useState<MapCoords | null>(null)
+
+  // Store locator: nearest store per chain from backend
+  const [storeLocatorData, setStoreLocatorData] = useState<Record<string, StoreLocatorResult> | null>(null)
+  const [isFetchingLocator, setIsFetchingLocator] = useState(false)
 
   // Wolt real-time delivery estimate
   const [woltEstimate, setWoltEstimate] = useState<WoltEstimate | null>(null)
@@ -397,44 +414,23 @@ export default function CheckoutPage() {
     return () => clearTimeout(timer)
   }, [addressQuery])
 
-  // Fetch nearest store coords via Overpass when store + dropoff are ready
+  // Fetch nearest store per chain from backend when delivery address is geocoded
   useEffect(() => {
-    if (!selectedStore || !dropoffCoords) { setPickupCoords(null); return }
-    const brands = STORE_BRANDS[selectedStore.storeCode.toLowerCase()]
-    if (!brands) { setPickupCoords(null); return }
+    if (!dropoffCoords) { setStoreLocatorData(null); return }
 
     let cancelled = false
-    const { lat, lon } = dropoffCoords
-    const nameFilters = brands.map((b) => `node["name"="${b}"](around:15000,${lat},${lon});`).join('\n')
-    const brandFilters = brands.map((b) => `node["brand"="${b}"](around:15000,${lat},${lon});`).join('\n')
-    const query = `[out:json][timeout:8];\n(\n${nameFilters}\n${brandFilters}\n);\nout 5;`
+    setIsFetchingLocator(true)
 
-    fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      body: query,
-      signal: AbortSignal.timeout(10000),
-    })
+    fetch(buildApiUrl(`/api/delivery/store-locator?lat=${dropoffCoords.lat}&lon=${dropoffCoords.lon}`))
       .then((r) => r.json())
-      .then((data: { elements?: { lat: number; lon: number; tags?: Record<string, string> }[] }) => {
-        if (cancelled) return
-        const nodes = data.elements ?? []
-        if (nodes.length === 0) return
-        const sorted = [...nodes].sort((a, b) => {
-          const dist = (a2: number, b2: number, a3: number, b3: number) =>
-            Math.hypot(a2 - a3, b2 - b3)
-          return dist(lat, lon, a.lat, a.lon) - dist(lat, lon, b.lat, b.lon)
-        })
-        const nearest = sorted[0]!
-        const t = nearest.tags ?? {}
-        const street = t['addr:street'] && t['addr:city']
-          ? `${t['addr:street']}${t['addr:housenumber'] ? ' ' + t['addr:housenumber'] : ''}, ${t['addr:city']}`
-          : (t['name'] ?? selectedStore.storeName)
-        setPickupCoords({ lat: nearest.lat, lon: nearest.lon, label: street })
+      .then((data: { chains?: Record<string, StoreLocatorResult> }) => {
+        if (!cancelled) setStoreLocatorData(data.chains ?? null)
       })
       .catch(() => {})
+      .finally(() => { if (!cancelled) setIsFetchingLocator(false) })
 
     return () => { cancelled = true }
-  }, [selectedStore, dropoffCoords])
+  }, [dropoffCoords])
 
   // Run store match
   useEffect(() => {
@@ -528,32 +524,39 @@ export default function CheckoutPage() {
     return cartItems.filter((ci) => !matchedNames.has(ci.name.toLowerCase()))
   }
 
-  /**
-   * Returns the effective delivery cost for a store, using the live Wolt estimate if available.
-   * @param store - The matched store.
-   * @returns Delivery fee in krone.
-   */
   function effectiveDeliveryCost(store: MatchedStore): number {
-    return woltEstimate ? woltEstimate.fee : store.deliveryCost
+    const locator = storeLocatorData?.[store.storeCode.toLowerCase()]
+    if (locator) return locator.feeNok
+    if (woltEstimate) return woltEstimate.fee
+    return store.deliveryCost
   }
 
-  /**
-   * Returns the effective ETA label for a store, using the live Wolt estimate if available.
-   * @param store - The matched store.
-   * @returns Human-readable ETA string.
-   */
   function effectiveEta(store: MatchedStore): string {
-    return woltEstimate ? etaLabel(woltEstimate.etaMinutes) : store.eta
+    const locator = storeLocatorData?.[store.storeCode.toLowerCase()]
+    if (locator) return etaLabel(locator.etaMinutes)
+    if (woltEstimate) return etaLabel(woltEstimate.etaMinutes)
+    return store.eta
   }
 
-  /**
-   * Calculates the effective grand total for a store (subtotal + effective delivery), rounded to 2 decimal places.
-   * @param store - The matched store.
-   * @returns Grand total in krone.
-   */
   function effectiveTotal(store: MatchedStore): number {
     return Math.round((store.subtotal + effectiveDeliveryCost(store)) * 100) / 100
   }
+
+  // Build store markers for map — one per chain, selected chain highlighted
+  const mapStores = useMemo<StoreMarker[]>(() => {
+    if (!storeLocatorData) return []
+    return Object.values(storeLocatorData).map((entry) => ({
+      chain: entry.chainKey,
+      name: entry.name,
+      lat: entry.lat,
+      lon: entry.lon,
+      color: entry.color,
+      isSelected: selectedStore?.storeCode.toLowerCase() === entry.chainKey,
+      distanceKm: entry.distanceKm,
+      feeNok: entry.feeNok,
+      etaMinutes: entry.etaMinutes,
+    }))
+  }, [storeLocatorData, selectedStore?.storeCode])
 
   /**
    * Validates the checkout form, POSTs the order to the API, clears the cart, and redirects to the orders page on success.
@@ -589,7 +592,12 @@ export default function CheckoutPage() {
           notes: [
             `Store: ${selectedStore.storeName}`,
             `Delivery to: ${addressQuery.trim()}`,
-            woltEstimate ? `Wolt delivery: ${formatCurrency(woltEstimate.fee)}, ~${etaLabel(woltEstimate.etaMinutes)}` : null,
+            (() => {
+              const locator = storeLocatorData?.[selectedStore.storeCode.toLowerCase()]
+              if (locator) return `Distance: ${locator.distanceKm} km · Delivery: ${formatCurrency(locator.feeNok)}, ~${etaLabel(locator.etaMinutes)}`
+              if (woltEstimate) return `Wolt delivery: ${formatCurrency(woltEstimate.fee)}, ~${etaLabel(woltEstimate.etaMinutes)}`
+              return null
+            })(),
             notes ? `Note: ${notes}` : '',
           ]
             .filter(Boolean)
@@ -675,6 +683,7 @@ export default function CheckoutPage() {
   const woltDeliveryClosed = woltError && WOLT_CLOSED_CODES.has(woltError.errorCode)
   const woltOutsideArea = woltError && WOLT_OUTSIDE_AREA_CODES.has(woltError.errorCode)
   const woltUnavailable = woltError && woltError.errorCode === 'WOLT_UNAVAILABLE'
+  const hasLocatorData = storeLocatorData && Object.keys(storeLocatorData).length > 0
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
@@ -690,24 +699,24 @@ export default function CheckoutPage() {
             <p className="mt-1 text-sm text-[#617166]">Select where you want to order from. Delivery pricing updates live once you enter your address.</p>
           </div>
 
-          {/* Wolt status banner */}
-          {(woltDeliveryClosed || woltOutsideArea) && !isFetchingWolt ? (
+          {/* Delivery status banner */}
+          {isFetchingLocator ? (
+            <div className="mx-5 mt-4 flex items-center gap-2 rounded-2xl border border-[#e5ece2] bg-[#f8fbf7] px-4 py-2.5 text-sm text-[#6d7b70]">
+              <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#2f9f4f]/40 border-t-[#2f9f4f]" />
+              Locating nearest stores…
+            </div>
+          ) : hasLocatorData ? (
+            <div className="mx-5 mt-4 flex items-center gap-3 rounded-2xl border border-[#b2d4bc] bg-[#f0faf2] px-4 py-2.5 text-sm text-[#1a5e30]">
+              <span className="shrink-0 text-base">📍</span>
+              <span><span className="font-semibold">Stores located</span> — delivery prices based on distance from nearest branch</span>
+            </div>
+          ) : (woltDeliveryClosed || woltOutsideArea) && !isFetchingWolt ? (
             <div className={`mx-5 mt-4 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm ${woltDeliveryClosed ? 'border-[#f0c070] bg-[#fffbea] text-[#7a5000]' : 'border-[#f0d4d4] bg-[#fff5f5] text-[#9b2c2c]'}`}>
               <span className="mt-0.5 text-base">{woltDeliveryClosed ? '🕐' : '📍'}</span>
               <div>
                 <p className="font-semibold">{woltDeliveryClosed ? 'Delivery is currently unavailable' : 'Outside delivery area'}</p>
                 <p className="mt-0.5 text-xs opacity-80">{woltError!.message} Showing estimated delivery times instead.</p>
               </div>
-            </div>
-          ) : woltEstimate && !isFetchingWolt ? (
-            <div className="mx-5 mt-4 flex items-center gap-3 rounded-2xl border border-[#b2d4bc] bg-[#f0faf2] px-4 py-2.5 text-sm text-[#1a5e30]">
-              <span className="shrink-0 text-base">🛵</span>
-              <span><span className="font-semibold">Delivery</span> — {formatCurrency(woltEstimate.fee)} · ~{etaLabel(woltEstimate.etaMinutes)} · Live pricing</span>
-            </div>
-          ) : isFetchingWolt ? (
-            <div className="mx-5 mt-4 flex items-center gap-2 rounded-2xl border border-[#e5ece2] bg-[#f8fbf7] px-4 py-2.5 text-sm text-[#6d7b70]">
-              <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#2f9f4f]/40 border-t-[#2f9f4f]" />
-              Fetching live delivery price…
             </div>
           ) : null}
 
@@ -753,6 +762,8 @@ export default function CheckoutPage() {
                   const dispEta = effectiveEta(store)
                   const dispTotal = effectiveTotal(store)
 
+                  const chainData = storeLocatorData?.[store.storeCode.toLowerCase()]
+
                   return (
                     <div key={store.storeCode} className={`rounded-2xl border-2 transition ${isSelected ? 'border-[#2f9f4f]' : 'border-[#e5ece2]'}`}>
                       <button
@@ -771,15 +782,25 @@ export default function CheckoutPage() {
                             <p className="text-sm font-semibold text-[#1f2b22]">{store.storeName}</p>
                             {isBest ? <span className="rounded-full bg-[#dcf5e2] px-2 py-0.5 text-[10px] font-semibold text-[#1a7a34]">Best price</span> : null}
                             {isFastest ? <span className="rounded-full bg-[#fff4e0] px-2 py-0.5 text-[10px] font-semibold text-[#92600a]">Fastest</span> : null}
-                            {woltEstimate ? <span className="rounded-full bg-[#e0f0ff] px-2 py-0.5 text-[10px] font-semibold text-[#1a4a7a]">🛵 Live pricing</span> : null}
                           </div>
-                          <div className="mt-1 flex items-center gap-2">
+                          <div className="mt-1 flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-[#6d7b70]">⏱ {dispEta}</span>
                             <span className="text-[#d0d9cc]">·</span>
                             <span className={`text-xs ${hasPartial ? 'text-[#c07e00]' : 'text-[#2f9f4f]'}`}>
                               {store.itemsAvailable}/{store.itemsRequested} items
                             </span>
+                            {chainData ? (
+                              <>
+                                <span className="text-[#d0d9cc]">·</span>
+                                <span className="text-xs text-[#6d7b70]">📍 {chainData.distanceKm} km</span>
+                              </>
+                            ) : null}
                           </div>
+                          {chainData ? (
+                            <p className="mt-0.5 text-[11px] text-[#8a9a8e] truncate" title={chainData.address}>
+                              {chainData.name} · {chainData.address}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="shrink-0 text-right">
                           <p className="text-base font-bold text-[#1f2b22]">{formatCurrency(dispTotal)}</p>
@@ -941,16 +962,14 @@ export default function CheckoutPage() {
               {dropoffCoords ? (
                 <div>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7b70]">
-                    {pickupCoords ? 'Delivery route' : 'Delivery address'}
+                    {mapStores.length > 0 ? 'Nearest stores & delivery routes' : 'Delivery address'}
                   </p>
-                  <Suspense fallback={<div className="h-56 w-full rounded-2xl bg-[#f0faf2] animate-pulse" />}>
+                  <Suspense fallback={<div className="h-64 w-full rounded-2xl bg-[#f0faf2] animate-pulse" />}>
                     <DeliveryMap
                       dropoffLat={dropoffCoords.lat}
                       dropoffLon={dropoffCoords.lon}
                       dropoffLabel={dropoffCoords.label}
-                      pickupLat={pickupCoords?.lat}
-                      pickupLon={pickupCoords?.lon}
-                      pickupLabel={pickupCoords?.label}
+                      stores={mapStores}
                     />
                   </Suspense>
                 </div>
@@ -1101,8 +1120,8 @@ export default function CheckoutPage() {
                 ← Back to cart
               </a>
 
-              {woltEstimate ? (
-                <p className="mt-3 text-center text-[10px] text-[#9ca3af]">Delivery powered by LocalSupply · Live pricing</p>
+              {hasLocatorData ? (
+                <p className="mt-3 text-center text-[10px] text-[#9ca3af]">Delivery pricing by LocalSupply · Distance-based estimate</p>
               ) : null}
             </div>
           </div>
