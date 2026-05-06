@@ -7,7 +7,8 @@ import { usePathname } from 'next/navigation'
  * Navigation sidebar component for the buyer-facing area of the application.
  */
 
-function getActiveId(pathname: string): string {
+function getActiveId(pathname: string | null): string {
+  if (!pathname) return ''
   if (pathname.startsWith('/marketplace')) return 'marketplace'
   if (pathname.startsWith('/suppliers') || pathname.startsWith('/supplier/')) return 'suppliers'
   if (pathname.startsWith('/cart') || pathname.startsWith('/checkout')) return 'my-cart'
