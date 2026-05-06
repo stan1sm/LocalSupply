@@ -139,6 +139,21 @@ type StoreLocatorResult = {
   etaMinutes: number
 }
 
+const CHAIN_QUERY_LABELS: Record<string, string[]> = {
+  kiwi:     ['KIWI', 'Kiwi'],
+  rema1000: ['Rema 1000', 'REMA 1000'],
+  coop:     ['Coop Extra', 'Coop Mega', 'Coop Obs', 'Coop Prix', 'Coop'],
+  meny:     ['Meny'],
+  spar:     ['Spar', 'SPAR'],
+  joker:    ['Joker'],
+  bunnpris: ['Bunnpris'],
+}
+
+const CHAIN_COLORS: Record<string, string> = {
+  kiwi: '#f9c000', rema1000: '#e8100d', coop: '#00a0e1',
+  meny: '#d4001a', spar: '#007f3e', joker: '#e55b00', bunnpris: '#003d7a',
+}
+
 /** Whether the order is placed by an individual consumer or a business. */
 type AccountType = 'INDIVIDUAL' | 'BUSINESS'
 
@@ -250,6 +265,9 @@ export default function CheckoutPage() {
   // Store locator: nearest store per chain from backend
   const [storeLocatorData, setStoreLocatorData] = useState<Record<string, StoreLocatorResult> | null>(null)
   const [isFetchingLocator, setIsFetchingLocator] = useState(false)
+
+  // Client-side fallback: Overpass lookup for the selected chain when backend locator has no data
+  const [pickupCoords, setPickupCoords] = useState<{ lat: number; lon: number; label: string } | null>(null)
 
   // Wolt real-time delivery estimate
   const [woltEstimate, setWoltEstimate] = useState<WoltEstimate | null>(null)
@@ -422,6 +440,38 @@ export default function CheckoutPage() {
     return () => { cancelled = true }
   }, [dropoffCoords])
 
+  // Overpass fallback: find selected chain's nearest store when backend locator has no entry for it
+  useEffect(() => {
+    if (!selectedStore || !dropoffCoords) { setPickupCoords(null); return }
+    const chainKey = selectedStore.storeCode.toLowerCase()
+    if (storeLocatorData?.[chainKey]) { setPickupCoords(null); return }
+    const labels = CHAIN_QUERY_LABELS[chainKey]
+    if (!labels) { setPickupCoords(null); return }
+
+    let cancelled = false
+    const { lat, lon } = dropoffCoords
+    const filters = labels
+      .flatMap((b) => [`node["name"="${b}"](around:15000,${lat},${lon});`, `node["brand"="${b}"](around:15000,${lat},${lon});`])
+      .join('\n')
+    const query = `[out:json][timeout:8];\n(\n${filters}\n);\nout 5;`
+
+    fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query, signal: AbortSignal.timeout(10000) })
+      .then((r) => r.json())
+      .then((data: { elements?: { lat: number; lon: number; tags?: Record<string, string> }[] }) => {
+        if (cancelled) return
+        const nodes = data.elements ?? []
+        if (nodes.length === 0) return
+        const nearest = nodes.reduce((best, n) =>
+          Math.hypot(n.lat - lat, n.lon - lon) < Math.hypot(best.lat - lat, best.lon - lon) ? n : best)
+        const t = nearest.tags ?? {}
+        const label = t['name'] ?? labels[0]!
+        setPickupCoords({ lat: nearest.lat, lon: nearest.lon, label })
+      })
+      .catch(() => {})
+
+    return () => { cancelled = true }
+  }, [selectedStore, dropoffCoords, storeLocatorData])
+
   // Run store match
   useEffect(() => {
     if (!isReady || cartItems.length === 0) return
@@ -532,21 +582,38 @@ export default function CheckoutPage() {
     return Math.round((store.subtotal + effectiveDeliveryCost(store)) * 100) / 100
   }
 
-  // Build store markers for map — one per chain, selected chain highlighted
+  // Build store markers for map: backend locator data for all chains +
+  // client-side Overpass fallback for the selected chain if backend has no entry
   const mapStores = useMemo<StoreMarker[]>(() => {
-    if (!storeLocatorData) return []
-    return Object.values(storeLocatorData).map((entry) => ({
-      chain: entry.chainKey,
-      name: entry.name,
-      lat: entry.lat,
-      lon: entry.lon,
-      color: entry.color,
-      isSelected: selectedStore?.storeCode.toLowerCase() === entry.chainKey,
-      distanceKm: entry.distanceKm,
-      feeNok: entry.feeNok,
-      etaMinutes: entry.etaMinutes,
-    }))
-  }, [storeLocatorData, selectedStore?.storeCode])
+    const selectedChain = selectedStore?.storeCode.toLowerCase()
+    const markers: StoreMarker[] = storeLocatorData
+      ? Object.values(storeLocatorData).map((entry) => ({
+          chain: entry.chainKey,
+          name: entry.name,
+          lat: entry.lat,
+          lon: entry.lon,
+          color: entry.color,
+          isSelected: selectedChain === entry.chainKey,
+          distanceKm: entry.distanceKm,
+          feeNok: entry.feeNok,
+          etaMinutes: entry.etaMinutes,
+        }))
+      : []
+
+    // Add selected chain from Overpass fallback if backend has no entry for it
+    if (selectedChain && pickupCoords && !storeLocatorData?.[selectedChain]) {
+      markers.push({
+        chain: selectedChain,
+        name: pickupCoords.label,
+        lat: pickupCoords.lat,
+        lon: pickupCoords.lon,
+        color: CHAIN_COLORS[selectedChain] ?? '#2f9f4f',
+        isSelected: true,
+      })
+    }
+
+    return markers
+  }, [storeLocatorData, selectedStore?.storeCode, pickupCoords])
 
   /**
    * Validates the checkout form, POSTs the order to the API, clears the cart, and redirects to the orders page on success.

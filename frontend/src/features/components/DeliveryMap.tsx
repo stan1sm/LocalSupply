@@ -58,9 +58,9 @@ export default function DeliveryMap({ dropoffLat, dropoffLon, dropoffLabel, stor
 
       const homeIcon = L.divIcon({
         className: '',
-        html: `<div style="background:#1a4a7a;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:2px solid #fff">📍</div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        html: `<div style="width:14px;height:14px;border-radius:50%;background:#1a4a7a;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.35)"></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
       })
       layersRef.current.push(
         L.marker([dropoffLat, dropoffLon], { icon: homeIcon })
@@ -99,20 +99,19 @@ export default function DeliveryMap({ dropoffLat, dropoffLon, dropoffLabel, stor
       for (const store of unselected) {
         const icon = L.divIcon({
           className: '',
-          html: `<div style="background:${store.color};color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:10px;box-shadow:0 1px 4px rgba(0,0,0,0.2);border:2px solid #fff;opacity:0.65">🏪</div>`,
-          iconSize: [22, 22],
-          iconAnchor: [11, 11],
+          html: `<div style="width:10px;height:10px;border-radius:50%;background:${store.color};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.25);opacity:0.6"></div>`,
+          iconSize: [10, 10],
+          iconAnchor: [5, 5],
         })
-        const popup = buildPopup(store)
-        layersRef.current.push(L.marker([store.lat, store.lon], { icon }).addTo(map).bindPopup(popup))
+        layersRef.current.push(L.marker([store.lat, store.lon], { icon }).addTo(map).bindPopup(buildPopup(store)))
       }
 
       if (selected) {
         const icon = L.divIcon({
           className: '',
-          html: `<div style="background:${selected.color};color:#fff;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 3px 8px rgba(0,0,0,0.35);border:2.5px solid #fff">🏪</div>`,
-          iconSize: [34, 34],
-          iconAnchor: [17, 17],
+          html: `<div style="width:16px;height:16px;border-radius:50%;background:${selected.color};border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35)"></div>`,
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
         })
         layersRef.current.push(
           L.marker([selected.lat, selected.lon], { icon }).addTo(map).bindPopup(buildPopup(selected)),
