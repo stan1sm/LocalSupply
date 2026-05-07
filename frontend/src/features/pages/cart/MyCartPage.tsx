@@ -5,7 +5,7 @@
 
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
 import BuyerSidebar from '../../components/BuyerSidebar'
 
@@ -212,6 +212,8 @@ export default function MyCartPage() {
   const [intentExplanation, setIntentExplanation] = useState<string[] | null>(null)
   const [intentProgressStep, setIntentProgressStep] = useState(0)
 
+  const abortRef = useRef<AbortController | null>(null)
+
   const [isAiLoggedIn, setIsAiLoggedIn] = useState(false)
 
   useEffect(() => {
@@ -234,42 +236,47 @@ export default function MyCartPage() {
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems))
   }, [cartItems])
 
-  /**
-   * Sends cart items to the store-matching API and updates matched store results.
-   * @param items - Current cart items to match against available Wolt stores.
-   */
   const runMatch = useCallback(async (items: CartItem[]) => {
+    abortRef.current?.abort()
+
     if (items.length === 0) {
       setMatchResult(null)
+      setIsMatching(false)
       return
     }
 
+    const controller = new AbortController()
+    abortRef.current = controller
     setIsMatching(true)
+
     try {
       const response = await fetch(buildApiUrl('/api/cart/match'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: items.map((item) => ({
-            priceId: item.id,
-            quantity: item.quantity,
-          })),
-        }),
+        body: JSON.stringify({ items: items.map((item) => ({ priceId: item.id, quantity: item.quantity })) }),
+        signal: controller.signal,
       })
       const payload = (await response.json()) as MatchResponse
-      if (response.ok) {
+      if (!controller.signal.aborted && response.ok) {
         setMatchResult(payload)
         setSelectedStoreCode(payload.bestMatch?.storeCode ?? null)
       }
     } catch {
-      setMatchResult(null)
+      if (!controller.signal.aborted) setMatchResult(null)
     } finally {
-      setIsMatching(false)
+      if (!controller.signal.aborted) setIsMatching(false)
     }
   }, [])
 
   useEffect(() => {
-    runMatch(cartItems)
+    if (cartItems.length === 0) {
+      abortRef.current?.abort()
+      setMatchResult(null)
+      setIsMatching(false)
+      return
+    }
+    const timer = setTimeout(() => runMatch(cartItems), 400)
+    return () => clearTimeout(timer)
   }, [cartItems, runMatch])
 
   /**
@@ -764,7 +771,7 @@ export default function MyCartPage() {
                 </div>
               ) : null}
             </>
-          ) : cartItems.length > 0 ? (
+          ) : (matchResult !== null && cartItems.length > 0) ? (
             <div className="rounded-[28px] border border-dashed border-[#cfd9cb] bg-[#f8fbf7] p-6 text-center">
               <p className="text-sm font-semibold text-[#304136]">No store matches found</p>
               <p className="mt-2 text-xs text-[#6c7c71]">The products in your cart may not be available in the imported catalog yet.</p>
