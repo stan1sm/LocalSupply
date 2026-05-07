@@ -6,6 +6,11 @@ const nextConfig: NextConfig = {
     devtoolSegmentExplorer: false,
   },
   outputFileTracingRoot: path.join(process.cwd(), '..'),
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'images.unsplash.com' },
+    ],
+  },
 }
 
 export default nextConfig

@@ -5,6 +5,7 @@
 
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
@@ -237,10 +238,13 @@ export default function HomePage() {
           </div>
 
           <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
-            <img
+            <Image
               alt="Fresh groceries ready for delivery"
               className="h-[240px] w-full object-cover sm:h-[280px]"
               src="https://images.unsplash.com/photo-1543168256-418811576931?auto=format&fit=crop&w=1200&q=80"
+              width={1200}
+              height={280}
+              priority
             />
           </div>
         </div>
