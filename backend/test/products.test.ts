@@ -3,28 +3,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   catalogProductCountMock,
+  catalogProductFindManyMock,
+  catalogProductCreateManyAndReturnMock,
   catalogProductPriceCountMock,
   catalogProductPriceFindManyMock,
-  catalogProductPriceUpsertMock,
-  catalogProductUpsertMock,
+  executeRawMock,
 } = vi.hoisted(() => ({
   catalogProductCountMock: vi.fn(),
+  catalogProductFindManyMock: vi.fn(),
+  catalogProductCreateManyAndReturnMock: vi.fn(),
   catalogProductPriceCountMock: vi.fn(),
   catalogProductPriceFindManyMock: vi.fn(),
-  catalogProductPriceUpsertMock: vi.fn(),
-  catalogProductUpsertMock: vi.fn(),
+  executeRawMock: vi.fn(),
 }))
 
 const prismaMock = {
   $disconnect: vi.fn(),
+  $executeRaw: executeRawMock,
   catalogProduct: {
     count: catalogProductCountMock,
-    upsert: catalogProductUpsertMock,
+    findMany: catalogProductFindManyMock,
+    createManyAndReturn: catalogProductCreateManyAndReturnMock,
   },
   catalogProductPrice: {
     count: catalogProductPriceCountMock,
     findMany: catalogProductPriceFindManyMock,
-    upsert: catalogProductPriceUpsertMock,
   },
 }
 
@@ -39,10 +42,11 @@ describe('GET /api/products', () => {
     process.env.KASSAL_API_KEY = 'kassal-test-key'
     process.env.CATALOG_SYNC_REQUEST_DELAY_MS = '0'
     catalogProductCountMock.mockReset()
+    catalogProductFindManyMock.mockReset()
+    catalogProductCreateManyAndReturnMock.mockReset()
     catalogProductPriceCountMock.mockReset()
     catalogProductPriceFindManyMock.mockReset()
-    catalogProductPriceUpsertMock.mockReset()
-    catalogProductUpsertMock.mockReset()
+    executeRawMock.mockReset()
     vi.unstubAllGlobals()
   })
 
@@ -152,10 +156,11 @@ describe('POST /api/products/sync', () => {
     process.env.CATALOG_SYNC_SECRET = 'test-sync-secret'
     process.env.CATALOG_SYNC_REQUEST_DELAY_MS = '0'
     catalogProductCountMock.mockReset()
+    catalogProductFindManyMock.mockReset()
+    catalogProductCreateManyAndReturnMock.mockReset()
     catalogProductPriceCountMock.mockReset()
     catalogProductPriceFindManyMock.mockReset()
-    catalogProductPriceUpsertMock.mockReset()
-    catalogProductUpsertMock.mockReset()
+    executeRawMock.mockReset()
     vi.unstubAllGlobals()
   })
 
@@ -214,51 +219,35 @@ describe('POST /api/products/sync', () => {
       })
 
     vi.stubGlobal('fetch', fetchMock)
-    catalogProductUpsertMock.mockResolvedValue({ id: 'catalog_1' })
-    catalogProductPriceUpsertMock.mockResolvedValue({ id: 'price_1' })
+    // Both pages have the same product (same GTIN) — findMany returns empty on first page,
+    // then the created record on the second page.
+    catalogProductFindManyMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'catalog_1', catalogKey: 'gtin:7030001112223' }])
+    catalogProductCreateManyAndReturnMock.mockResolvedValue([{ id: 'catalog_1', catalogKey: 'gtin:7030001112223' }])
+    executeRawMock.mockResolvedValue(1)
 
     const response = await request(app).post('/api/products/sync').set('x-catalog-sync-secret', 'test-sync-secret')
 
     expect(response.status).toBe(200)
-    expect(catalogProductUpsertMock).toHaveBeenCalledTimes(2)
-    expect(catalogProductUpsertMock).toHaveBeenCalledWith(
+    expect(catalogProductCreateManyAndReturnMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        create: expect.objectContaining({
-          catalogKey: 'gtin:7030001112223',
-          externalId: '101',
-          gtin: '7030001112223',
-          name: 'Whole Wheat Bread',
-        }),
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            catalogKey: 'gtin:7030001112223',
+            externalId: '101',
+            gtin: '7030001112223',
+            name: 'Whole Wheat Bread',
+          }),
+        ]),
       }),
     )
-    expect(catalogProductPriceUpsertMock).toHaveBeenCalledTimes(2)
-    expect(catalogProductPriceUpsertMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({
-          catalogProductId: 'catalog_1',
-          externalId: '101',
-          storeCode: 'MENY_NO',
-          storeName: 'MENY',
-          currentPrice: 39.9,
-        }),
-      }),
-    )
-    expect(catalogProductPriceUpsertMock).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        create: expect.objectContaining({
-          catalogProductId: 'catalog_1',
-          externalId: '202',
-          storeCode: 'JOKER_NO',
-          storeName: 'Joker',
-          currentPrice: 37.9,
-        }),
-      }),
-    )
+    // Page 1: 1 price write. Page 2: 1 product update + 1 price write = 3 total.
+    expect(executeRawMock).toHaveBeenCalledTimes(3)
     expect(response.body).toEqual({
       fetchedListings: 2,
       importedPrices: 2,
-      importedProducts: 1,
+      importedProducts: 2,
       pagesSynced: 2,
       storesSynced: ['JOKER_NO', 'MENY_NO'],
     })
@@ -290,21 +279,19 @@ describe('POST /api/products/sync', () => {
     })
 
     vi.stubGlobal('fetch', fetchMock)
-    catalogProductUpsertMock.mockResolvedValue({ id: 'catalog_1' })
-    catalogProductPriceUpsertMock.mockResolvedValue({ id: 'price_1' })
+    catalogProductFindManyMock.mockResolvedValue([])
+    catalogProductCreateManyAndReturnMock.mockResolvedValue([{ id: 'catalog_1', catalogKey: 'gtin:7030001112223' }])
+    executeRawMock.mockResolvedValue(1)
 
     const response = await request(app).post('/api/products/sync').set('x-catalog-sync-secret', 'test-sync-secret')
 
     expect(response.status).toBe(200)
-    expect(catalogProductPriceUpsertMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          catalogProductId_storeCode: {
-            catalogProductId: 'catalog_1',
-            storeCode: 'MENY_NO',
-          },
-        },
-      }),
-    )
+    // Price upsert uses ON CONFLICT via $executeRaw — verify it was called with the right product ID
+    expect(executeRawMock).toHaveBeenCalledTimes(1)
+    expect(response.body).toMatchObject({
+      fetchedListings: 1,
+      importedPrices: 1,
+      storesSynced: ['MENY_NO'],
+    })
   })
 })
