@@ -682,7 +682,7 @@ export default function MyCartPage() {
                     className={`shrink-0 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white transition ${
                       !selectedStore ? 'pointer-events-none bg-[#9ac7a6]' : 'bg-[#2f9f4f] hover:bg-[#25813f]'
                     }`}
-                    href={selectedStore ? `/checkout?store=${encodeURIComponent(selectedStore.storeCode)}` : '#'}
+                    href={selectedStore ? '/checkout' : '#'}
                   >
                     Go to checkout →
                   </a>

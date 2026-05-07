@@ -496,11 +496,8 @@ export default function CheckoutPage() {
         const payload = (await response.json()) as MatchResponse
         if (!cancelled && response.ok) {
           setMatchResult(payload)
-          const params = new URLSearchParams(window.location.search)
-          const storeParam = params.get('store')
-          const stores = payload.stores ?? []
-          const match = (storeParam ? stores.find((s) => s.storeCode === storeParam) : null) ?? payload.bestMatch
-          setSelectedStore(match ?? null)
+          const match = payload.bestMatch ?? null
+          setSelectedStore(match)
           if (match) setExpandedStore(match.storeCode)
         } else if (!cancelled) {
           setMatchError('Could not match your cart to stores right now.')
@@ -811,11 +808,38 @@ export default function CheckoutPage() {
               </div>
             ) : (
               <>
-                {savings > 0 && matchResult?.bestMatch ? (
-                  <div className="rounded-2xl bg-[#f0faf2] px-4 py-2.5 text-sm text-[#1a7a34]">
-                    Save <span className="font-bold">{formatCurrency(savings)}</span> by choosing {matchResult.bestMatch.storeName}
-                  </div>
-                ) : null}
+                {matchResult?.bestMatch && stores.length > 0 ? (() => {
+                  const best = matchResult.bestMatch!
+                  const fastestStore = [...stores].sort((a, b) => a.etaMinutes - b.etaMinutes)[0]!
+                  const isBestAlsoFastest = best.storeCode === fastestStore.storeCode
+                  const speedPremium = Math.round((effectiveTotal(fastestStore) - effectiveTotal(best)) * 100) / 100
+
+                  return (
+                    <div className="rounded-2xl border border-[#b2d4bc] bg-[#f0faf2] px-4 py-3.5">
+                      <div className="mb-2 flex items-center gap-1.5">
+                        <span className="rounded-full bg-[#2f9f4f] px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">AI</span>
+                        <span className="text-xs font-semibold text-[#1a5e30]">Smart recommendation</span>
+                      </div>
+                      <p className="text-sm text-[#1f2b22]">
+                        <span className="font-semibold">{best.storeName}</span> is your best overall value
+                        {best.itemsAvailable === best.itemsRequested
+                          ? ` — all ${best.itemsRequested} items available`
+                          : ` — ${best.itemsAvailable}/${best.itemsRequested} items matched`}
+                        {savings > 0 ? `, saving you ${formatCurrency(savings)} vs. the most expensive option` : ''}.
+                      </p>
+                      {!isBestAlsoFastest && speedPremium > 0 ? (
+                        <p className="mt-1.5 text-xs text-[#617166]">
+                          Need it faster?{' '}
+                          <span className="font-semibold text-[#1f2b22]">{fastestStore.storeName}</span>{' '}
+                          delivers in {effectiveEta(fastestStore)} — {formatCurrency(speedPremium)} more.
+                        </p>
+                      ) : null}
+                      <p className="mt-2 text-[11px] text-[#8a9a8e]">
+                        Compared {stores.length} store{stores.length !== 1 ? 's' : ''} · ranked by availability then total cost
+                      </p>
+                    </div>
+                  )
+                })() : null}
 
                 {stores.map((store) => {
                   const isSelected = selectedStore?.storeCode === store.storeCode
