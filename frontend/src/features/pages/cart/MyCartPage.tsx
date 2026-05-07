@@ -213,6 +213,7 @@ export default function MyCartPage() {
   const [intentProgressStep, setIntentProgressStep] = useState(0)
 
   const abortRef = useRef<AbortController | null>(null)
+  const isInitialMatchRef = useRef(true)
 
   const [isAiLoggedIn, setIsAiLoggedIn] = useState(false)
 
@@ -275,6 +276,17 @@ export default function MyCartPage() {
       setIsMatching(false)
       return
     }
+
+    // Show skeleton immediately — don't wait for debounce or API response
+    setIsMatching(true)
+
+    // Skip debounce on the first load (cart hydrated from localStorage)
+    if (isInitialMatchRef.current) {
+      isInitialMatchRef.current = false
+      runMatch(cartItems)
+      return
+    }
+
     const timer = setTimeout(() => runMatch(cartItems), 400)
     return () => clearTimeout(timer)
   }, [cartItems, runMatch])
