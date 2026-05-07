@@ -267,7 +267,6 @@ export default function CheckoutPage() {
 
   // Store locator: nearest store per chain from backend
   const [storeLocatorData, setStoreLocatorData] = useState<Record<string, StoreLocatorResult> | null>(null)
-  const [isFetchingLocator, setIsFetchingLocator] = useState(false)
 
   // Client-side fallback: Overpass lookup for the selected chain when backend locator has no data
   const [pickupCoords, setPickupCoords] = useState<{ lat: number; lon: number; label: string } | null>(null)
@@ -430,7 +429,6 @@ export default function CheckoutPage() {
     if (!dropoffCoords) { setStoreLocatorData(null); return }
 
     let cancelled = false
-    setIsFetchingLocator(true)
 
     fetch(buildApiUrl(`/api/delivery/store-locator?lat=${dropoffCoords.lat}&lon=${dropoffCoords.lon}`))
       .then((r) => r.json())
@@ -438,7 +436,6 @@ export default function CheckoutPage() {
         if (!cancelled) setStoreLocatorData(data.chains ?? null)
       })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setIsFetchingLocator(false) })
 
     return () => { cancelled = true }
   }, [dropoffCoords])
