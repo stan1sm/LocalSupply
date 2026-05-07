@@ -260,6 +260,7 @@ export default function CheckoutPage() {
   const [addressSuggestions, setAddressSuggestions] = useState<GeoNorgeAddress[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [isSearchingAddress, setIsSearchingAddress] = useState(false)
+  const [saveAddressForLater, setSaveAddressForLater] = useState(false)
   const addressRef = useRef<HTMLDivElement>(null)
 
   const [dropoffCoords, setDropoffCoords] = useState<MapCoords | null>(null)
@@ -678,6 +679,14 @@ export default function CheckoutPage() {
 
       window.localStorage.removeItem(CART_STORAGE_KEY)
 
+      if (saveAddressForLater && selectedAddressId === 'manual' && addressQuery.trim()) {
+        fetch(buildApiUrl('/api/auth/addresses'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          body: JSON.stringify({ address: addressQuery.trim(), isDefault: savedAddresses.length === 0 }),
+        }).catch(() => {})
+      }
+
       if (payload.woltTrackingUrl) {
         setPlacedTrackingUrl(payload.woltTrackingUrl)
       } else {
@@ -764,12 +773,7 @@ export default function CheckoutPage() {
           </div>
 
           {/* Delivery status banner */}
-          {isFetchingLocator ? (
-            <div className="mx-5 mt-4 flex items-center gap-2 rounded-2xl border border-[#e5ece2] bg-[#f8fbf7] px-4 py-2.5 text-sm text-[#6d7b70]">
-              <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#2f9f4f]/40 border-t-[#2f9f4f]" />
-              Locating nearest stores…
-            </div>
-          ) : hasLocatorData ? (
+          {hasLocatorData ? (
             <div className="mx-5 mt-4 flex items-center gap-3 rounded-2xl border border-[#b2d4bc] bg-[#f0faf2] px-4 py-2.5 text-sm text-[#1a5e30]">
               <span className="shrink-0 text-base">📍</span>
               <span><span className="font-semibold">Stores located</span> — delivery prices based on distance from nearest branch</span>
@@ -1045,6 +1049,17 @@ export default function CheckoutPage() {
                         </li>
                       ))}
                     </ul>
+                  ) : null}
+                  {addressQuery.trim().length >= 8 ? (
+                    <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-[#6d7b70]">
+                      <input
+                        checked={saveAddressForLater}
+                        className="accent-[#2f9f4f]"
+                        onChange={(e) => setSaveAddressForLater(e.target.checked)}
+                        type="checkbox"
+                      />
+                      Save this address for future orders
+                    </label>
                   ) : null}
                 </div>
               ) : null}
