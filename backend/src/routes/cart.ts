@@ -259,6 +259,7 @@ cartRouter.post('/match', async (req, res) => {
       if (missingByStore.size === 0) return
 
       const uniqueMissingIds = [...new Set([...missingByStore.values()].flat())]
+      const relevantStoreCodes = [...missingByStore.keys()]
 
       const [missingProductDetails, similarResults] = await Promise.all([
         prisma.catalogProduct.findMany({
@@ -282,16 +283,35 @@ cartRouter.post('/match', async (req, res) => {
       const allCandidateIds = [
         ...new Set([...similarByProductId.values()].flat().map((s) => s.productId)),
       ]
-      if (allCandidateIds.length === 0) return
 
-      const candidatePrices = await prisma.catalogProductPrice.findMany({
-        where: {
-          catalogProductId: { in: allCandidateIds },
-          storeCode: { in: [...missingByStore.keys()] },
-          currentPrice: { not: null },
-        },
-        include: { catalogProduct: true },
-      })
+      // Collect categories of missing products for the text-based fallback query
+      const missingCategories = [
+        ...new Set(missingProductDetails.filter((p) => p.category).map((p) => p.category!)),
+      ]
+
+      // Run both queries in parallel: embedding-based candidates + category-based fallback
+      const [embeddingCandidates, categoryCandidates] = await Promise.all([
+        allCandidateIds.length > 0
+          ? prisma.catalogProductPrice.findMany({
+              where: {
+                catalogProductId: { in: allCandidateIds },
+                storeCode: { in: relevantStoreCodes },
+                currentPrice: { not: null },
+              },
+              include: { catalogProduct: true },
+            })
+          : Promise.resolve([] as Awaited<ReturnType<typeof prisma.catalogProductPrice.findMany<{ include: { catalogProduct: true } }>>>),
+        missingCategories.length > 0
+          ? prisma.catalogProductPrice.findMany({
+              where: {
+                storeCode: { in: relevantStoreCodes },
+                currentPrice: { not: null },
+                catalogProduct: { category: { in: missingCategories } },
+              },
+              include: { catalogProduct: true },
+            })
+          : Promise.resolve([] as Awaited<ReturnType<typeof prisma.catalogProductPrice.findMany<{ include: { catalogProduct: true } }>>>),
+      ])
 
       for (const [storeCode, missingIds] of missingByStore) {
         const store = storeMap.get(storeCode)!
@@ -306,7 +326,8 @@ cartRouter.post('/match', async (req, res) => {
           const similar = similarByProductId.get(missingProductId) ?? []
           const similarIdSet = new Set(similar.map((s) => s.productId))
 
-          const candidates = candidatePrices.filter(
+          // Primary: embedding-based candidates (higher precision)
+          let candidates = embeddingCandidates.filter(
             (p) =>
               p.storeCode === storeCode &&
               similarIdSet.has(p.catalogProductId) &&
@@ -314,6 +335,18 @@ cartRouter.post('/match', async (req, res) => {
               p.catalogProduct.category === baseProduct.category &&
               hasTokenOverlap(p.catalogProduct.name, baseTokens),
           )
+
+          // Fallback: category + token-overlap match (works without embeddings)
+          if (candidates.length === 0) {
+            candidates = categoryCandidates.filter(
+              (p) =>
+                p.storeCode === storeCode &&
+                !storeAlreadyHas.has(p.catalogProductId) &&
+                p.catalogProduct.category === baseProduct.category &&
+                hasTokenOverlap(p.catalogProduct.name, baseTokens),
+            )
+          }
+
           if (candidates.length === 0) continue
 
           const scored = candidates.map((c) => ({
