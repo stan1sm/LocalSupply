@@ -3,6 +3,7 @@
  * Fetches product listings from the Kassal grocery API and upserts them into the local CatalogProduct and CatalogProductPrice tables.
  */
 
+import { Prisma } from '../generated/prisma/client.js'
 import { getPrismaClient } from './prisma.js'
 
 const KASSAL_DEFAULT_API_BASE_URL = 'https://kassal.app/api/v1'
@@ -39,10 +40,6 @@ type CatalogProductInput = {
   unit: string | null
 }
 
-type CachedCatalogProduct = {
-  data: CatalogProductInput
-  id: string
-}
 
 export type LoggerLike = Pick<Console, 'error' | 'info' | 'warn'>
 
@@ -388,67 +385,101 @@ function parseRetryAfterMs(response: Response) {
   return Math.max(DEFAULT_RATE_LIMIT_DELAY_MS, retryAt.getTime() - Date.now())
 }
 
-async function upsertCatalogProduct(catalogKey: string, nextValue: CatalogProductInput) {
+async function batchUpsertProducts(products: CatalogProductInput[]): Promise<Map<string, string>> {
+  if (products.length === 0) return new Map()
   const prisma = getPrismaClient()
 
-  return prisma.catalogProduct.upsert({
-    where: { catalogKey },
-    create: {
-      brand: nextValue.brand,
-      catalogKey: nextValue.catalogKey,
-      category: nextValue.category,
-      ...(nextValue.externalId ? { externalId: nextValue.externalId } : {}),
-      gtin: nextValue.gtin,
-      imageUrl: nextValue.imageUrl,
-      name: nextValue.name,
-      unit: nextValue.unit,
-    },
-    update: {
-      brand: nextValue.brand,
-      category: nextValue.category,
-      ...(nextValue.externalId ? { externalId: nextValue.externalId } : {}),
-      gtin: nextValue.gtin,
-      imageUrl: nextValue.imageUrl,
-      name: nextValue.name,
-      unit: nextValue.unit,
-    },
-    select: {
-      id: true,
-    },
+  const existing = await prisma.catalogProduct.findMany({
+    where: { catalogKey: { in: products.map(p => p.catalogKey) } },
+    select: { id: true, catalogKey: true },
   })
+  const idMap = new Map(existing.map(r => [r.catalogKey, r.id]))
+
+  const toCreate = products.filter(p => !idMap.has(p.catalogKey))
+  const toUpdate = products.filter(p => idMap.has(p.catalogKey))
+
+  if (toCreate.length > 0) {
+    const created = await prisma.catalogProduct.createManyAndReturn({
+      data: toCreate.map(p => ({
+        catalogKey: p.catalogKey,
+        name: p.name,
+        brand: p.brand,
+        category: p.category,
+        externalId: p.externalId ?? null,
+        gtin: p.gtin,
+        imageUrl: p.imageUrl,
+        unit: p.unit,
+      })),
+      select: { id: true, catalogKey: true },
+    })
+    for (const r of created) idMap.set(r.catalogKey, r.id)
+  }
+
+  if (toUpdate.length > 0) {
+    const vals = Prisma.join(
+      toUpdate.map(
+        p => Prisma.sql`(${p.catalogKey}, ${p.name}, ${p.brand ?? null}::text, ${p.category ?? null}::text, ${p.externalId ?? null}::text, ${p.gtin ?? null}::text, ${p.imageUrl ?? null}::text, ${p.unit ?? null}::text)`
+      )
+    )
+    await prisma.$executeRaw`
+      UPDATE "CatalogProduct" AS t
+      SET
+        name         = v.name,
+        brand        = v.brand,
+        category     = v.category,
+        "externalId" = COALESCE(v."externalId", t."externalId"),
+        gtin         = COALESCE(v.gtin, t.gtin),
+        "imageUrl"   = v."imageUrl",
+        unit         = v.unit,
+        "updatedAt"  = NOW()
+      FROM (VALUES ${vals})
+        AS v("catalogKey", name, brand, category, "externalId", gtin, "imageUrl", unit)
+      WHERE t."catalogKey" = v."catalogKey"
+    `
+  }
+
+  return idMap
 }
 
-async function upsertCatalogPrice(catalogProductId: string, entry: SyncableCatalogEntry) {
+async function batchUpsertPrices(entries: Array<SyncableCatalogEntry & { catalogProductId: string }>) {
+  if (entries.length === 0) return
   const prisma = getPrismaClient()
 
-  await prisma.catalogProductPrice.upsert({
-    where: {
-      catalogProductId_storeCode: {
-        catalogProductId,
-        storeCode: entry.storeCode,
-      },
-    },
-    create: {
-      catalogProductId,
-      currentPrice: entry.currentPrice,
-      currentUnitPrice: entry.currentUnitPrice,
-      currentUnitPriceUnit: entry.currentUnitPriceUnit,
-      externalId: entry.externalId,
-      lastCheckedAt: entry.lastCheckedAt,
-      productUrl: entry.productUrl,
-      storeCode: entry.storeCode,
-      storeName: entry.storeName,
-    },
-    update: {
-      currentPrice: entry.currentPrice,
-      currentUnitPrice: entry.currentUnitPrice,
-      currentUnitPriceUnit: entry.currentUnitPriceUnit,
-      externalId: entry.externalId,
-      lastCheckedAt: entry.lastCheckedAt,
-      productUrl: entry.productUrl,
-      storeName: entry.storeName,
-    },
-  })
+  const vals = Prisma.join(
+    entries.map(
+      e => Prisma.sql`(
+        gen_random_uuid()::text,
+        ${e.catalogProductId},
+        ${e.storeCode},
+        ${e.storeName},
+        ${e.externalId},
+        ${e.currentPrice}::numeric,
+        ${e.currentUnitPrice}::numeric,
+        ${e.currentUnitPriceUnit ?? null}::text,
+        ${e.productUrl ?? null}::text,
+        ${e.lastCheckedAt}::timestamptz,
+        NOW(),
+        NOW()
+      )`
+    )
+  )
+
+  await prisma.$executeRaw`
+    INSERT INTO "CatalogProductPrice"
+      (id, "catalogProductId", "storeCode", "storeName", "externalId",
+       "currentPrice", "currentUnitPrice", "currentUnitPriceUnit",
+       "productUrl", "lastCheckedAt", "createdAt", "updatedAt")
+    VALUES ${vals}
+    ON CONFLICT ("catalogProductId", "storeCode") DO UPDATE SET
+      "currentPrice"         = EXCLUDED."currentPrice",
+      "currentUnitPrice"     = EXCLUDED."currentUnitPrice",
+      "currentUnitPriceUnit" = EXCLUDED."currentUnitPriceUnit",
+      "externalId"           = EXCLUDED."externalId",
+      "lastCheckedAt"        = EXCLUDED."lastCheckedAt",
+      "productUrl"           = EXCLUDED."productUrl",
+      "storeName"            = EXCLUDED."storeName",
+      "updatedAt"            = NOW()
+  `
 }
 
 /**
@@ -469,10 +500,10 @@ export async function syncCatalog(options: CatalogSyncOptions = {}): Promise<Cat
   const pageSize = Math.max(1, Math.min(100, options.pageSize ?? KASSAL_DEFAULT_SYNC_PAGE_SIZE))
   const maxPages = options.maxPages && options.maxPages > 0 ? options.maxPages : Number.POSITIVE_INFINITY
   const requestDelayMs = getConfiguredRequestDelayMs(options.requestDelayMs)
-  const catalogProducts = new Map<string, CachedCatalogProduct>()
-  const upsertedPriceKeys = new Set<string>()
   const storesSeen = new Set<string>()
+  const allPriceKeys = new Set<string>()
   let fetchedListings = 0
+  let importedProducts = 0
   let importedPrices = 0
   let pagesSynced = 0
 
@@ -496,43 +527,49 @@ export async function syncCatalog(options: CatalogSyncOptions = {}): Promise<Cat
     pagesSynced += 1
     logger.info(`Catalog sync: page ${page} fetched (${items.length} listings)`)
 
+    // Normalize all entries on this page
+    const pageEntries: SyncableCatalogEntry[] = []
     for (const item of items) {
       const entry = normalizeCatalogEntry(item)
-      if (!entry) {
-        continue
-      }
-
+      if (!entry) continue
       fetchedListings += 1
       storesSeen.add(entry.storeCode)
-
-      const catalogKey = buildCatalogKey(entry)
-      const cachedProduct = catalogProducts.get(catalogKey) ?? null
-      const nextProduct = mergeCatalogProductInput(cachedProduct?.data ?? null, entry)
-      const productRecord = await upsertCatalogProduct(catalogKey, nextProduct)
-
-      catalogProducts.set(catalogKey, {
-        data: nextProduct,
-        id: productRecord.id,
-      })
-
-      await upsertCatalogPrice(productRecord.id, entry)
-      upsertedPriceKeys.add(`${productRecord.id}:${entry.storeCode}`)
-      importedPrices = upsertedPriceKeys.size
+      pageEntries.push(entry)
     }
+
+    // Deduplicate + merge product metadata in memory
+    const pageProducts = new Map<string, CatalogProductInput>()
+    for (const entry of pageEntries) {
+      const catalogKey = buildCatalogKey(entry)
+      pageProducts.set(catalogKey, mergeCatalogProductInput(pageProducts.get(catalogKey) ?? null, entry))
+    }
+
+    // 1 read + 1-2 writes for all products on this page
+    const idMap = await batchUpsertProducts(Array.from(pageProducts.values()))
+    importedProducts += pageProducts.size
+
+    // 1 write for all prices on this page
+    const priceEntries = pageEntries.flatMap(entry => {
+      const catalogProductId = idMap.get(buildCatalogKey(entry))
+      return catalogProductId ? [{ ...entry, catalogProductId }] : []
+    })
+    await batchUpsertPrices(priceEntries)
+    for (const e of priceEntries) allPriceKeys.add(`${e.catalogProductId}:${e.storeCode}`)
+    importedPrices = allPriceKeys.size
 
     if (!hasNextPage(payload, items.length, pageSize)) {
       break
     }
   }
 
-  if (catalogProducts.size === 0 && importedPrices === 0 && startPage === 1) {
+  if (importedProducts === 0 && importedPrices === 0 && startPage === 1) {
     throw new Error('Catalog sync returned no importable rows.')
   }
 
   return {
     fetchedListings,
     importedPrices,
-    importedProducts: catalogProducts.size,
+    importedProducts,
     pagesSynced,
     storesSynced: Array.from(storesSeen).sort((left, right) => left.localeCompare(right)),
   }
