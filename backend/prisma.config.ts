@@ -9,8 +9,6 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    // `prisma generate` in CI only needs a syntactically valid URL to generate the client.
-    // Runtime DB access is still enforced by backend/src/lib/prisma.ts.
     // Use || instead of ?? so empty strings from unset CI secrets fall through.
     url:
       process.env["DATABASE_URL"] ||
