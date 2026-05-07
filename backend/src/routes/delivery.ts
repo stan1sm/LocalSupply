@@ -62,67 +62,88 @@ export interface StoreLocatorEntry {
   etaMinutes: number
 }
 
-async function findNearestForChain(
-  chainKey: string,
-  labels: string[],
-  color: string,
-  displayName: string,
+// Build a label → chainKey lookup for fast matching
+const LABEL_TO_CHAIN: Map<string, string> = new Map()
+for (const [chainKey, { labels }] of Object.entries(CHAIN_BRANDS)) {
+  for (const label of labels) {
+    LABEL_TO_CHAIN.set(label, chainKey)
+  }
+}
+
+async function findNearestStoresAllChains(
   userLat: number,
   userLon: number,
   radiusM: number,
-): Promise<StoreLocatorEntry | null> {
-  const filters = labels
-    .flatMap((b) => [
-      `nwr["name"="${b}"](around:${radiusM},${userLat},${userLon});`,
-      `nwr["brand"="${b}"](around:${radiusM},${userLat},${userLon});`,
-    ])
-    .join('\n')
-  const query = `[out:json][timeout:8];\n(\n${filters}\n);\nout center 10;`
+): Promise<Record<string, StoreLocatorEntry>> {
+  // Single Overpass query for all chains — avoids 7 parallel requests getting rate-limited
+  const filters: string[] = []
+  for (const { labels } of Object.values(CHAIN_BRANDS)) {
+    for (const label of labels) {
+      filters.push(`nwr["name"="${label}"](around:${radiusM},${userLat},${userLon});`)
+      filters.push(`nwr["brand"="${label}"](around:${radiusM},${userLat},${userLon});`)
+    }
+  }
+  const query = `[out:json][timeout:20];\n(\n${filters.join('\n')}\n);\nout center 100;`
 
+  let data: OverpassResponse
   try {
     const res = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
       body: query,
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(25_000),
     })
-    if (!res.ok) return null
+    if (!res.ok) return {}
+    data = (await res.json()) as OverpassResponse
+  } catch {
+    return {}
+  }
 
-    const data = (await res.json()) as OverpassResponse
-    const elements = (data.elements ?? []).filter((e) => elLat(e) != null && elLon(e) != null)
-    if (elements.length === 0) return null
+  const elements = (data.elements ?? []).filter((e) => elLat(e) != null && elLon(e) != null)
 
-    const nearest = elements.reduce((best, el) =>
-      haversineKm(userLat, userLon, elLat(el)!, elLon(el)!) < haversineKm(userLat, userLon, elLat(best)!, elLon(best)!)
-        ? el
-        : best,
-    )
+  // Pick nearest element per chain
+  const chainBest = new Map<string, { el: OverpassElement; dist: number }>()
+  for (const el of elements) {
+    const tags = el.tags ?? {}
+    const elName = tags['name'] ?? ''
+    const elBrand = tags['brand'] ?? ''
+    const chainKey = LABEL_TO_CHAIN.get(elName) ?? LABEL_TO_CHAIN.get(elBrand)
+    if (!chainKey) continue
 
-    const tags = nearest.tags ?? {}
+    const dist = haversineKm(userLat, userLon, elLat(el)!, elLon(el)!)
+    const current = chainBest.get(chainKey)
+    if (!current || dist < current.dist) {
+      chainBest.set(chainKey, { el, dist })
+    }
+  }
+
+  const chains: Record<string, StoreLocatorEntry> = {}
+  for (const [chainKey, { el, dist }] of chainBest) {
+    const est = estimateDelivery(dist)
+    if (!est) continue
+
+    const { color, displayName } = CHAIN_BRANDS[chainKey]!
+    const tags = el.tags ?? {}
     const streetParts = [tags['addr:street'], tags['addr:housenumber']].filter(Boolean).join(' ')
     const address =
       streetParts && tags['addr:city']
         ? `${streetParts}, ${tags['addr:city']}`
         : tags['name'] ?? displayName
 
-    const distanceKm = haversineKm(userLat, userLon, elLat(nearest)!, elLon(nearest)!)
-    const est = estimateDelivery(distanceKm)
-    if (!est) return null
-
-    return {
+    chains[chainKey] = {
       chainKey,
       displayName,
       color,
       name: tags['name'] ?? displayName,
-      lat: elLat(nearest)!,
-      lon: elLon(nearest)!,
+      lat: elLat(el)!,
+      lon: elLon(el)!,
       address,
-      distanceKm: Math.round(distanceKm * 10) / 10,
+      distanceKm: Math.round(dist * 10) / 10,
       feeNok: est.feeNok,
       etaMinutes: est.etaMinutes,
     }
-  } catch {
-    return null
   }
+
+  return chains
 }
 
 // GET /api/delivery/store-locator?lat=X&lon=Y[&radius=15000]
@@ -136,19 +157,7 @@ router.get('/store-locator', async (req: Request, res: Response) => {
     return
   }
 
-  const settled = await Promise.allSettled(
-    Object.entries(CHAIN_BRANDS).map(([key, { labels, color, displayName }]) =>
-      findNearestForChain(key, labels, color, displayName, lat, lon, radius),
-    ),
-  )
-
-  const chains: Record<string, StoreLocatorEntry> = {}
-  for (const result of settled) {
-    if (result.status === 'fulfilled' && result.value) {
-      chains[result.value.chainKey] = result.value
-    }
-  }
-
+  const chains = await findNearestStoresAllChains(lat, lon, radius)
   res.json({ chains })
 })
 
