@@ -3,6 +3,8 @@
  * Navigation sidebar component for the supplier-facing area of the application.
  */
 
+'use client'
+
 /**
  * Minimal supplier identity data displayed in the sidebar header.
  *
@@ -119,7 +121,7 @@ export default function SupplierSidebar({
         })}
       </nav>
 
-      <div className="mt-3 border-t border-[#eef2ec] pt-3">
+      <div className="mt-3 border-t border-[#eef2ec] pt-3 space-y-0.5">
         <a
           aria-current={activeId === 'settings' ? 'page' : undefined}
           className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
@@ -134,6 +136,22 @@ export default function SupplierSidebar({
           </span>
           Store settings
         </a>
+        <button
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#4f5d52] transition-colors hover:bg-[#fff5f5] hover:text-[#9b2c2c]"
+          onClick={() => {
+            window.localStorage.removeItem('localsupply-supplier')
+            window.localStorage.removeItem('localsupply-supplier-token')
+            window.location.href = '/supplier/login'
+          }}
+          type="button"
+        >
+          <span className="shrink-0 text-[#8a9e8f]">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
+            </svg>
+          </span>
+          Log out
+        </button>
       </div>
     </aside>
   )
