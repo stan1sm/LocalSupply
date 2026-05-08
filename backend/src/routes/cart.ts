@@ -8,7 +8,7 @@ import { getPrismaClient } from '../lib/prisma.js'
 import { findSimilarProductsForProduct } from '../lib/embeddings.js'
 import { tokenise, hasTokenOverlap } from '../lib/substitutions.js'
 import { planMealFromText } from '../lib/intentCartPlanner.js'
-import { getEmbeddings } from '../lib/aiClient.js'
+import { getEmbeddings, completeJson } from '../lib/aiClient.js'
 
 /** Express router providing cart matching and AI-powered intent planning endpoints. */
 const cartRouter = Router()
@@ -427,6 +427,111 @@ cartRouter.post('/match', async (req, res) => {
   } catch (error) {
     console.error('Cart match failed', error)
     res.status(503).json({ message: 'Unable to match cart right now.' })
+  }
+})
+
+/**
+ * AI-powered substitute finder for a single unavailable cart item.
+ * Asks the LLM for Norwegian grocery substitute names, embeds them, and
+ * returns the top 3 most similar products available at the given store.
+ *
+ * @route {POST} /api/cart/ai-substitute
+ * @access {public}
+ * @param req.body.itemName {string} Name of the unavailable product.
+ * @param req.body.storeCode {string} Store chain code to search within (e.g. "kiwi").
+ * @returns {200} `{ candidates: [{ catalogProductId, name, brand, imageUrl, unitPrice }] }`
+ * @returns {400} When itemName or storeCode is missing.
+ * @returns {503} On LLM or database errors.
+ */
+cartRouter.post('/ai-substitute', async (req, res) => {
+  const itemName = typeof req.body?.itemName === 'string' ? req.body.itemName.trim() : ''
+  const storeCode = typeof req.body?.storeCode === 'string' ? req.body.storeCode.trim() : ''
+
+  if (!itemName || !storeCode) {
+    res.status(400).json({ message: 'itemName and storeCode are required.' })
+    return
+  }
+
+  try {
+    const prisma = getPrismaClient()
+
+    const { result } = await completeJson<{ substitutes: string[] }>({
+      systemPrompt:
+        'You are a Norwegian grocery store assistant. Given a product name, suggest up to 3 alternative products commonly found in Norwegian supermarkets (KIWI, Rema 1000, Meny, SPAR, Joker, Coop). Return JSON: { "substitutes": ["name1", "name2", "name3"] }.',
+      userPrompt: `What are good substitutes for "${itemName}"? List product names as they appear on Norwegian grocery store shelves.`,
+    })
+
+    const suggestedNames: string[] = (result.substitutes ?? []).filter((s) => typeof s === 'string' && s.trim()).slice(0, 3)
+    const queries = [itemName, ...suggestedNames]
+    const queryEmbeddings = await getEmbeddings(queries)
+
+    const modelName = process.env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
+
+    const storeProducts = await prisma.catalogProductPrice.findMany({
+      where: { storeCode, currentPrice: { not: null } },
+      select: {
+        catalogProductId: true,
+        currentPrice: true,
+        catalogProduct: {
+          select: {
+            id: true,
+            name: true,
+            brand: true,
+            imageUrl: true,
+            embeddings: {
+              where: { modelName },
+              select: { vectorJson: true },
+              take: 1,
+            },
+          },
+        },
+      },
+    })
+
+    const cheapestByProduct = new Map<string, typeof storeProducts[0]>()
+    for (const row of storeProducts) {
+      const existing = cheapestByProduct.get(row.catalogProductId)
+      if (!existing) {
+        cheapestByProduct.set(row.catalogProductId, row)
+      } else {
+        const a = asNumber(existing.currentPrice) ?? Infinity
+        const b = asNumber(row.currentPrice) ?? Infinity
+        if (b < a) cheapestByProduct.set(row.catalogProductId, row)
+      }
+    }
+
+    const scored: Array<{ catalogProductId: string; name: string; brand: string | null; imageUrl: string | null; unitPrice: number; score: number }> = []
+
+    for (const row of cheapestByProduct.values()) {
+      const emb = row.catalogProduct.embeddings[0]?.vectorJson
+      if (!Array.isArray(emb)) continue
+
+      let maxScore = 0
+      for (const qEmb of queryEmbeddings) {
+        const s = cosineSimilarity(qEmb as number[], emb as number[])
+        if (s > maxScore) maxScore = s
+      }
+
+      if (maxScore >= 0.45) {
+        scored.push({
+          catalogProductId: row.catalogProductId,
+          name: row.catalogProduct.name,
+          brand: row.catalogProduct.brand,
+          imageUrl: row.catalogProduct.imageUrl,
+          unitPrice: asNumber(row.currentPrice) ?? 0,
+          score: maxScore,
+        })
+      }
+    }
+
+    scored.sort((a, b) => b.score - a.score)
+
+    res.json({
+      candidates: scored.slice(0, 3).map(({ score: _score, ...rest }) => rest),
+    })
+  } catch (error) {
+    console.error('AI substitute failed', error)
+    res.status(503).json({ message: 'Unable to find a substitute right now.' })
   }
 })
 

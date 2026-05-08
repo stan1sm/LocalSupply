@@ -289,6 +289,12 @@ export default function CheckoutPage() {
 
   const [expandedStore, setExpandedStore] = useState<string | null>(null)
 
+  // AI substitutes
+  type AiCandidate = { catalogProductId: string; name: string; brand: string | null; imageUrl: string | null; unitPrice: number }
+  const [aiSubstitutes, setAiSubstitutes] = useState<Record<string, AiCandidate[]>>({})
+  const [aiSubstituteLoading, setAiSubstituteLoading] = useState<Record<string, boolean>>({})
+  const [acceptedSubstitutes, setAcceptedSubstitutes] = useState<(AiCandidate & { quantity: number; originalName: string })[]>([])
+
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(BUYER_STORAGE_KEY)
@@ -569,6 +575,39 @@ export default function CheckoutPage() {
     )
   }
 
+  // Reset AI substitutes when selected store changes
+  useEffect(() => {
+    setAcceptedSubstitutes([])
+    setAiSubstitutes({})
+    setAiSubstituteLoading({})
+  }, [selectedStore?.storeCode])
+
+  async function findAiSubstitute(itemName: string) {
+    if (!selectedStore) return
+    setAiSubstituteLoading((prev) => ({ ...prev, [itemName]: true }))
+    try {
+      const res = await fetch(buildApiUrl('/api/cart/ai-substitute'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemName, storeCode: selectedStore.storeCode }),
+      })
+      const data = (await res.json()) as { candidates?: AiCandidate[] }
+      setAiSubstitutes((prev) => ({ ...prev, [itemName]: data.candidates ?? [] }))
+    } catch {
+      setAiSubstitutes((prev) => ({ ...prev, [itemName]: [] }))
+    } finally {
+      setAiSubstituteLoading((prev) => ({ ...prev, [itemName]: false }))
+    }
+  }
+
+  function acceptSubstitute(candidate: AiCandidate, originalName: string, quantity: number) {
+    setAcceptedSubstitutes((prev) => {
+      const without = prev.filter((s) => s.originalName !== originalName)
+      return [...without, { ...candidate, quantity, originalName }]
+    })
+    setAiSubstitutes((prev) => ({ ...prev, [originalName]: [] }))
+  }
+
   function effectiveDeliveryCost(store: MatchedStore): number {
     const locator = storeLocatorData?.[store.storeCode.toLowerCase()]
     if (locator) return locator.feeNok
@@ -583,8 +622,12 @@ export default function CheckoutPage() {
     return store.eta
   }
 
+  function acceptedSubtotal(): number {
+    return acceptedSubstitutes.reduce((s, i) => s + i.unitPrice * i.quantity, 0)
+  }
+
   function effectiveTotal(store: MatchedStore): number {
-    return Math.round((store.subtotal + effectiveDeliveryCost(store)) * 100) / 100
+    return Math.round((store.subtotal + acceptedSubtotal() + effectiveDeliveryCost(store)) * 100) / 100
   }
 
   // Build store markers for map: backend locator data for all chains +
@@ -645,12 +688,20 @@ export default function CheckoutPage() {
           paymentMethod,
           ...(selectedAddressId !== 'manual' ? { deliveryAddressId: selectedAddressId } : {}),
           storeCode: selectedStore.storeCode,
-          items: selectedStore.items.map((item) => ({
-            catalogProductId: item.catalogProductId,
-            name: item.name,
-            unit: 'unit',
-            quantity: item.quantity,
-          })),
+          items: [
+            ...selectedStore.items.map((item) => ({
+              catalogProductId: item.catalogProductId,
+              name: item.name,
+              unit: 'unit',
+              quantity: item.quantity,
+            })),
+            ...acceptedSubstitutes.map((s) => ({
+              catalogProductId: s.catalogProductId,
+              name: s.name,
+              unit: 'unit',
+              quantity: s.quantity,
+            })),
+          ],
           notes: [
             `Store: ${selectedStore.storeName}`,
             `Delivery to: ${addressQuery.trim()}`,
@@ -977,13 +1028,66 @@ export default function CheckoutPage() {
                                 <span className="shrink-0 font-semibold text-[#2f9f4f]">{formatCurrency(item.lineTotal)}</span>
                               </div>
                             ))}
-                            {unavailable.map((item) => (
-                              <div className="flex items-center gap-2 text-xs" key={item.id}>
-                                <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#fef0ef] text-[9px] font-bold text-[#9b2c2c]">✕</span>
-                                <span className="min-w-0 flex-1 truncate text-[#9b2c2c] line-through">{item.name}</span>
-                                <span className="shrink-0 text-[#c0a0a0]">not available</span>
-                              </div>
-                            ))}
+                            {unavailable.map((item) => {
+                              const isLoadingAi = aiSubstituteLoading[item.name] ?? false
+                              const aiResults = aiSubstitutes[item.name]
+                              const accepted = acceptedSubstitutes.find((s) => s.originalName === item.name)
+                              return (
+                                <div key={item.id}>
+                                  <div className="flex items-center gap-2 text-xs">
+                                    <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#fef0ef] text-[9px] font-bold text-[#9b2c2c]">✕</span>
+                                    <span className="min-w-0 flex-1 truncate text-[#9b2c2c] line-through">{item.name}</span>
+                                    {accepted ? (
+                                      <span className="shrink-0 text-[10px] font-semibold text-[#2f9f4f]">replaced</span>
+                                    ) : (
+                                      <button
+                                        className="ml-auto shrink-0 flex items-center gap-1 rounded-full bg-[#f0faf2] px-2 py-0.5 text-[10px] font-semibold text-[#2f9f4f] hover:bg-[#dcf5e2] disabled:opacity-60"
+                                        disabled={isLoadingAi}
+                                        onClick={() => findAiSubstitute(item.name)}
+                                        type="button"
+                                      >
+                                        {isLoadingAi ? (
+                                          <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-[#2f9f4f]/40 border-t-[#2f9f4f]" />
+                                        ) : (
+                                          <span className="rounded bg-[#2f9f4f] px-1 py-px text-[8px] font-bold text-white">AI</span>
+                                        )}
+                                        {isLoadingAi ? 'Finding…' : 'Find substitute'}
+                                      </button>
+                                    )}
+                                  </div>
+                                  {accepted ? (
+                                    <div className="mt-1 ml-6 flex items-center gap-2 rounded-lg border border-[#b2d4bc] bg-[#f0faf2] px-2 py-1.5 text-xs">
+                                      <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#2f9f4f] text-[9px] text-white">↔</span>
+                                      <span className="flex-1 truncate font-medium text-[#1f2b22]">{accepted.name}</span>
+                                      <span className="shrink-0 font-semibold text-[#2f9f4f]">{formatCurrency(accepted.unitPrice * accepted.quantity)}</span>
+                                      <button
+                                        className="shrink-0 text-[10px] text-[#9b2c2c] hover:underline"
+                                        onClick={() => setAcceptedSubstitutes((prev) => prev.filter((s) => s.originalName !== item.name))}
+                                        type="button"
+                                      >remove</button>
+                                    </div>
+                                  ) : null}
+                                  {aiResults && aiResults.length > 0 && !accepted ? (
+                                    <div className="mt-1.5 ml-6 space-y-1">
+                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#6b7b70]">AI suggestions</p>
+                                      {aiResults.map((c) => (
+                                        <div className="flex items-center gap-2 rounded-lg border border-[#dce5d7] bg-[#f8fbf7] px-2 py-1.5 text-xs" key={c.catalogProductId}>
+                                          <span className="flex-1 truncate text-[#1f2b22]">{c.name}{c.brand ? <span className="ml-1 text-[#8a9e8f]">({c.brand})</span> : null}</span>
+                                          <span className="shrink-0 font-semibold text-[#2f9f4f]">{formatCurrency(c.unitPrice)}</span>
+                                          <button
+                                            className="shrink-0 rounded-full bg-[#2f9f4f] px-2 py-0.5 text-[10px] font-semibold text-white hover:bg-[#25813f]"
+                                            onClick={() => acceptSubstitute(c, item.name, item.quantity)}
+                                            type="button"
+                                          >Add</button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : aiResults && aiResults.length === 0 && !accepted ? (
+                                    <p className="mt-1 ml-6 text-[10px] text-[#8a9e8f]">No substitutes found at this store.</p>
+                                  ) : null}
+                                </div>
+                              )
+                            })}
                           </div>
                           {unavailable.length > 0 ? (
                             <p className="mt-2 text-[11px] text-[#c07e00]">
@@ -1226,8 +1330,8 @@ export default function CheckoutPage() {
                 <dl className="space-y-1.5 text-sm text-[#647267]">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7b70]">Order summary · {selectedStore.storeName}</p>
                   <div className="flex justify-between">
-                    <dt>Subtotal ({selectedStore.itemsAvailable} items)</dt>
-                    <dd className="font-semibold text-[#1f2b22]">{formatCurrency(selectedStore.subtotal)}</dd>
+                    <dt>Subtotal ({selectedStore.itemsAvailable + acceptedSubstitutes.length} items)</dt>
+                    <dd className="font-semibold text-[#1f2b22]">{formatCurrency(selectedStore.subtotal + acceptedSubtotal())}</dd>
                   </div>
                   <div className="flex justify-between">
                     <dt>
