@@ -243,6 +243,7 @@ suppliersRouter.get('/:supplierId/products', async (req, res) => {
         stockQty: product.stockQty,
         imageUrl: product.imageUrl ?? null,
         isActive: product.isActive,
+        approvalStatus: product.approvalStatus,
         createdAt: product.createdAt,
       })),
     )
@@ -350,6 +351,7 @@ suppliersRouter.post('/:supplierId/products', requireSupplierAuth, (req, res, ne
       stockQty: product.stockQty,
       imageUrl: product.imageUrl,
       isActive: product.isActive,
+      approvalStatus: product.approvalStatus,
       createdAt: product.createdAt,
     })
   } catch (error) {

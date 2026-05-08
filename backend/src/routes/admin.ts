@@ -304,4 +304,55 @@ adminRouter.get('/orders', requireAdminAuth, async (_req, res) => {
   }
 })
 
+adminRouter.get('/products', requireAdminAuth, async (req, res) => {
+  const status = typeof req.query.status === 'string' ? req.query.status : ''
+  try {
+    const prisma = getPrismaClient()
+    const products = await prisma.product.findMany({
+      where: status ? { approvalStatus: status as 'PENDING' | 'APPROVED' | 'REJECTED' } : {},
+      orderBy: { createdAt: 'desc' },
+      include: { supplier: { select: { id: true, businessName: true } } },
+      take: 200,
+    })
+    res.json(products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      unit: p.unit,
+      price: Number(p.price),
+      imageUrl: p.imageUrl,
+      approvalStatus: p.approvalStatus,
+      createdAt: p.createdAt,
+      supplier: (p as typeof p & { supplier: { id: string; businessName: string } }).supplier,
+    })))
+  } catch (error) {
+    console.error('Admin get products failed', error)
+    res.status(503).json({ message: 'Unable to load products right now.' })
+  }
+})
+
+adminRouter.patch('/products/:productId/approve', requireAdminAuth, async (req, res) => {
+  const productId = String(req.params['productId'] ?? '')
+  try {
+    const prisma = getPrismaClient()
+    await prisma.product.update({ where: { id: productId }, data: { approvalStatus: 'APPROVED' } })
+    res.json({ ok: true })
+  } catch (error) {
+    console.error('Admin approve product failed', error)
+    res.status(503).json({ message: 'Unable to approve product right now.' })
+  }
+})
+
+adminRouter.patch('/products/:productId/reject', requireAdminAuth, async (req, res) => {
+  const productId = String(req.params['productId'] ?? '')
+  try {
+    const prisma = getPrismaClient()
+    await prisma.product.update({ where: { id: productId }, data: { approvalStatus: 'REJECTED' } })
+    res.json({ ok: true })
+  } catch (error) {
+    console.error('Admin reject product failed', error)
+    res.status(503).json({ message: 'Unable to reject product right now.' })
+  }
+})
+
 export default adminRouter

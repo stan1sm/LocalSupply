@@ -338,9 +338,15 @@ productsRouter.get('/', async (req, res) => {
   if (isLocalSuppliers) {
     try {
       const prisma = getPrismaClient()
-      const where: { isActive: boolean; supplier?: { showInMarketplace: boolean }; OR?: Array<{ name?: { contains: string; mode: 'insensitive' }; description?: { contains: string; mode: 'insensitive' } }> } = {
-        isActive: true,
+      const where = {
+        isActive: true as const,
+        approvalStatus: 'APPROVED' as const,
         supplier: { showInMarketplace: true },
+      } as {
+        isActive: boolean
+        approvalStatus: 'APPROVED'
+        supplier?: { showInMarketplace: boolean }
+        OR?: Array<{ name?: { contains: string; mode: 'insensitive' }; description?: { contains: string; mode: 'insensitive' } }>
       }
       if (hasSearch) {
         const term = q.trim().toLowerCase()

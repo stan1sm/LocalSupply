@@ -93,8 +93,20 @@ type Order = {
   woltStatus: string | null
 }
 
+type PendingProduct = {
+  id: string
+  name: string
+  description: string | null
+  unit: string
+  price: number
+  imageUrl: string | null
+  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
+  createdAt: string
+  supplier: { id: string; businessName: string }
+}
+
 /** Active tab in the admin dashboard navigation. */
-type Tab = 'suppliers' | 'users' | 'orders'
+type Tab = 'suppliers' | 'users' | 'orders' | 'products'
 
 const STATUS_COLORS: Record<string, string> = {
   VERIFIED: 'bg-green-100 text-green-700',
@@ -133,6 +145,7 @@ export default function AdminDashboardPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [orders, setOrders] = useState<Order[]>([])
+  const [pendingProducts, setPendingProducts] = useState<PendingProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [actionMessage, setActionMessage] = useState('')
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({})
@@ -169,11 +182,13 @@ export default function AdminDashboardPage() {
         fetch(buildApiUrl('/api/admin/suppliers'), { headers }).then((r) => r.json()),
         fetch(buildApiUrl('/api/admin/users'), { headers }).then((r) => r.json()),
         fetch(buildApiUrl('/api/admin/orders'), { headers }).then((r) => r.json()),
+        fetch(buildApiUrl('/api/admin/products?status=PENDING'), { headers }).then((r) => r.json()),
       ])
-        .then(([s, u, o]) => {
+        .then(([s, u, o, p]) => {
           if (Array.isArray(s)) setSuppliers(s as Supplier[])
           if (Array.isArray(u)) setUsers(u as User[])
           if (Array.isArray(o)) setOrders(o as Order[])
+          if (Array.isArray(p)) setPendingProducts(p as PendingProduct[])
         })
         .catch(() => { /* ignore */ })
         .finally(() => setLoading(false))
@@ -232,12 +247,26 @@ export default function AdminDashboardPage() {
     } catch { setActionMessage('Delete failed.') }
   }
 
+  async function handleProductAction(productId: string, action: 'approve' | 'reject') {
+    try {
+      const res = await fetch(buildApiUrl(`/api/admin/products/${productId}/${action}`), {
+        method: 'PATCH',
+        headers: getAuthHeader(),
+      })
+      if (!res.ok) { setActionMessage('Action failed.'); return }
+      setPendingProducts((prev) => prev.filter((p) => p.id !== productId))
+      setActionMessage(action === 'approve' ? 'Product approved.' : 'Product rejected.')
+      setTimeout(() => setActionMessage(''), 3000)
+    } catch { setActionMessage('Action failed.') }
+  }
+
   if (!admin) return null
 
-  const tabs: { id: Tab; label: string; count: number }[] = [
+  const tabs: { id: Tab; label: string; count: number; badge?: boolean }[] = [
     { id: 'suppliers', label: 'Suppliers', count: suppliers.length },
     { id: 'users', label: 'Users', count: users.length },
     { id: 'orders', label: 'Orders', count: orders.length },
+    { id: 'products', label: 'Products', count: pendingProducts.length, badge: pendingProducts.length > 0 },
   ]
 
   return (
@@ -280,11 +309,12 @@ export default function AdminDashboardPage() {
         <div className="mb-4 flex gap-1 rounded-xl border border-[#e5e7eb] bg-white p-1 shadow-sm">
           {tabs.map((t) => (
             <button
-              className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === t.id ? 'bg-[#1f2937] text-white' : 'text-[#374151] hover:bg-[#f9fafb]'}`}
+              className={`relative flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === t.id ? 'bg-[#1f2937] text-white' : 'text-[#374151] hover:bg-[#f9fafb]'}`}
               key={t.id}
               onClick={() => setTab(t.id)}
             >
               {t.label} <span className={`ml-1 text-xs ${tab === t.id ? 'text-white/70' : 'text-[#6b7280]'}`}>({t.count})</span>
+              {t.badge ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#e53e3e]" /> : null}
             </button>
           ))}
         </div>
@@ -456,6 +486,59 @@ export default function AdminDashboardPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Products tab */}
+            {tab === 'products' && (
+              <div className="space-y-3">
+                {pendingProducts.length === 0 ? (
+                  <div className="rounded-xl border border-[#e5e7eb] bg-white px-6 py-12 text-center">
+                    <p className="text-sm font-semibold text-[#111827]">No products awaiting approval</p>
+                    <p className="mt-1 text-xs text-[#6b7280]">New supplier products will appear here for review.</p>
+                  </div>
+                ) : (
+                  pendingProducts.map((p) => (
+                    <div className="rounded-xl border border-[#e5e7eb] bg-white p-4 shadow-sm" key={p.id}>
+                      <div className="flex items-start gap-4">
+                        {p.imageUrl ? (
+                          <img alt="" className="h-16 w-16 shrink-0 rounded-lg border border-[#e5e7eb] object-cover" src={p.imageUrl} />
+                        ) : (
+                          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f9fafb] text-[#d1d5db]">
+                            <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-[#111827]">{p.name}</p>
+                            <span className="rounded-full bg-[#fef9c3] px-2 py-0.5 text-[10px] font-semibold text-[#854d0e]">Pending approval</span>
+                          </div>
+                          <p className="mt-0.5 text-xs text-[#6b7280]">
+                            {p.supplier.businessName} · {p.unit} · {Number(p.price).toFixed(2)} kr
+                          </p>
+                          {p.description ? <p className="mt-1 text-xs text-[#374151]">{p.description}</p> : null}
+                          <p className="mt-1 text-[10px] text-[#9ca3af]">Submitted {formatDate(p.createdAt)}</p>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <button
+                            className="rounded-lg bg-[#dcfce7] px-3 py-1.5 text-xs font-semibold text-[#166534] transition hover:bg-[#bbf7d0]"
+                            onClick={() => handleProductAction(p.id, 'approve')}
+                            type="button"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="rounded-lg bg-[#fee2e2] px-3 py-1.5 text-xs font-semibold text-[#991b1b] transition hover:bg-[#fecaca]"
+                            onClick={() => handleProductAction(p.id, 'reject')}
+                            type="button"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </>

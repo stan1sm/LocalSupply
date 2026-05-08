@@ -47,6 +47,7 @@ type Product = {
   stockQty: number
   imageUrl?: string | null
   isActive?: boolean
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'
 }
 
 const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
@@ -609,6 +610,7 @@ export default function SupplierDashboardPage() {
                       <th className="py-2 pr-4">Name &amp; description</th>
                       <th className="py-2 pr-4">Unit</th>
                       <th className="py-2 pr-4">Price</th>
+                      <th className="py-2 pr-4">Status</th>
                       <th className="py-2 text-right">Stock</th>
                     </tr>
                   </thead>
@@ -639,6 +641,15 @@ export default function SupplierDashboardPage() {
                           <td className="py-2 pr-4 text-xs text-[#6d7b70]">{product.unit}</td>
                           <td className="py-2 pr-4 text-sm font-semibold text-[#1f2b22]">
                             {product.price.toFixed ? `${product.price.toFixed(2)} kr` : `${Number(product.price).toFixed(2)} kr`}
+                          </td>
+                          <td className="py-2 pr-4">
+                            {product.approvalStatus === 'APPROVED' ? (
+                              <span className="rounded-full bg-[#dcf5e2] px-2 py-0.5 text-[10px] font-semibold text-[#1a7a34]">Approved</span>
+                            ) : product.approvalStatus === 'REJECTED' ? (
+                              <span className="rounded-full bg-[#fef0ef] px-2 py-0.5 text-[10px] font-semibold text-[#9b2c2c]">Rejected</span>
+                            ) : (
+                              <span className="rounded-full bg-[#fff4e0] px-2 py-0.5 text-[10px] font-semibold text-[#92600a]">Pending</span>
+                            )}
                           </td>
                           <td className="py-2 text-right">
                             <span className={`text-sm font-semibold ${product.stockQty === 0 ? 'text-[#c53030]' : 'text-[#1f2b22]'}`}>

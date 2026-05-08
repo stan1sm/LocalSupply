@@ -27,6 +27,12 @@ enum SupplierVerificationStatus {
   REJECTED
 }
 
+enum ProductApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id                         String   @id @default(cuid())
   email                      String   @unique
@@ -131,9 +137,10 @@ model Product {
   unit        String
   price       Decimal  @db.Decimal(10, 2)
   stockQty    Int      @default(0)
-  imageUrl    String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  imageUrl       String?
+  isActive       Boolean              @default(true)
+  approvalStatus ProductApprovalStatus @default(PENDING)
+  createdAt      DateTime             @default(now())
   updatedAt   DateTime @updatedAt
 
   supplier   Supplier    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
