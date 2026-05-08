@@ -1,6 +1,25 @@
 import { Router, type Request, type Response } from 'express'
+import { requireBuyerAuth } from '../middleware/requireBuyerAuth.js'
 
 const router = Router()
+
+const WOLT_BASE = (process.env.WOLT_API_BASE_URL ?? 'https://daas-staging.wolt.com').replace(/\/$/, '')
+
+// GET /api/delivery/track/:deliveryId — proxies to the delivery service tracking endpoint
+router.get('/track/:deliveryId', requireBuyerAuth, async (req: Request, res: Response) => {
+  const deliveryId = String(req.params['deliveryId'] ?? '')
+  if (!deliveryId) { res.status(400).json({ message: 'Missing delivery ID.' }); return }
+  try {
+    const r = await fetch(`${WOLT_BASE}/track/${encodeURIComponent(deliveryId)}`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!r.ok) { res.status(r.status).json({ message: 'Tracking unavailable.' }); return }
+    res.json(await r.json())
+  } catch {
+    res.status(503).json({ message: 'Tracking unavailable.' })
+  }
+})
 
 const CHAIN_BRANDS: Record<string, { labels: string[]; color: string; displayName: string }> = {
   kiwi:     { labels: ['KIWI', 'Kiwi'],                                                      color: '#f9c000', displayName: 'KIWI' },

@@ -453,6 +453,7 @@ ordersRouter.get('/buyer/:buyerId', requireBuyerAuth, async (req, res) => {
         deliveryFee: order.deliveryFee,
         total: order.total,
         notes: order.notes,
+        woltDeliveryId: order.woltDeliveryId ?? null,
         woltTrackingUrl: order.woltTrackingUrl ?? null,
         woltStatus: order.woltStatus ?? null,
         createdAt: order.createdAt,

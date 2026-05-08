@@ -73,6 +73,34 @@ function mapRow(a: AdresseRow): GeonorgeAdresse {
  * @param {number} [limit=10] - Maximum number of address suggestions to return.
  * @returns {Promise<GeonorgeAdresse[]>} Resolves to an array of matching address records.
  */
+/**
+ * Geocodes a free-text Norwegian address to a WGS-84 coordinate pair.
+ * Returns null when the address cannot be resolved or the request fails.
+ *
+ * @param {string} address - The address string to geocode.
+ * @returns {Promise<{lat: number, lon: number} | null>}
+ */
+export async function geocodeAddress(address: string): Promise<{ lat: number; lon: number } | null> {
+  const trimmed = address.trim()
+  if (!trimmed) return null
+
+  const useBackend = Boolean(API_BASE_URL)
+  const url = useBackend
+    ? `${buildApiUrl('/api/addresses/sok')}?${new URLSearchParams({ q: trimmed, limit: '1' }).toString()}`
+    : `https://ws.geonorge.no/adresser/v1/sok?${new URLSearchParams({ sok: trimmed, treffPerSide: '1', side: '0' }).toString()}`
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return null
+    const data = (await res.json()) as { adresser?: { representasjonspunkt?: { lat?: number; lon?: number } }[] }
+    const pt = data.adresser?.[0]?.representasjonspunkt
+    if (pt?.lat == null || pt?.lon == null) return null
+    return { lat: pt.lat, lon: pt.lon }
+  } catch {
+    return null
+  }
+}
+
 export async function searchAddresses(query: string, limit = 10): Promise<GeonorgeAdresse[]> {
   const trimmed = query.trim()
   if (trimmed.length === 0) return []

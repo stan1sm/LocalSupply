@@ -19,7 +19,15 @@ trackingRouter.get('/:deliveryId', async (req, res) => {
     }
 
     if (req.headers.accept?.includes('application/json')) {
-      res.json({ id: delivery.id, status: delivery.status, etaMinutes: delivery.etaMinutes, distanceKm: delivery.distanceKm, updatedAt: delivery.updatedAt })
+      res.json({
+        id: delivery.id,
+        status: delivery.status,
+        etaMinutes: delivery.etaMinutes,
+        distanceKm: delivery.distanceKm,
+        updatedAt: delivery.updatedAt,
+        pickupAddress: `${delivery.pickupStreet}, ${delivery.pickupCity}`,
+        dropoffAddress: `${delivery.dropoffStreet}, ${delivery.dropoffCity}`,
+      })
       return
     }
 
