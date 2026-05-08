@@ -757,9 +757,49 @@ export default function CheckoutPage() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto grid w-full max-w-[1300px] items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)_360px]">
+      <div className="mx-auto grid w-full max-w-[1500px] items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)_360px] xl:grid-cols-[220px_260px_minmax(0,1fr)_320px]">
 
         <BuyerSidebar />
+
+        {/* Cart items — visible only at xl breakpoint */}
+        <section className="hidden xl:block rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+          <div className="border-b border-[#e5ece2] px-5 py-5">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Cart</p>
+            <h2 className="mt-2 text-xl font-bold text-[#1f2b22]">Your items</h2>
+            <p className="mt-1 text-sm text-[#617166]">{cartItems.length} item{cartItems.length !== 1 ? 's' : ''}</p>
+          </div>
+
+          <div className="px-4 py-4 space-y-2 max-h-[calc(100vh-260px)] overflow-y-auto">
+            {cartItems.map((item) => (
+              <div className="flex items-start gap-3 rounded-xl border border-[#eef2ec] bg-[#f8fbf7] px-3 py-2.5" key={item.id}>
+                {item.imageUrl ? (
+                  <img alt={item.name} className="h-10 w-10 shrink-0 rounded-lg object-cover" src={item.imageUrl} />
+                ) : (
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#e5ece2] text-[#8a9e8f]">
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                      <path d="M20 7H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1Z" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold text-[#1f2b22]">{item.name}</p>
+                  {item.unitInfo ? <p className="text-[11px] text-[#6d7b70]">{item.unitInfo}</p> : null}
+                  <p className="text-[11px] text-[#6d7b70]">{item.quantity} × {formatCurrency(item.price)}</p>
+                </div>
+                <p className="shrink-0 text-xs font-bold text-[#1f2b22]">{formatCurrency(item.price * item.quantity)}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-[#e5ece2] px-4 py-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-[#6d7b70]">Items total</span>
+              <span className="font-bold text-[#1f2b22]">{formatCurrency(cartItems.reduce((s, i) => s + i.price * i.quantity, 0))}</span>
+            </div>
+            <a className="mt-2 block text-center text-xs text-[#2f9f4f] hover:underline" href="/cart">Edit cart →</a>
+          </div>
+        </section>
 
         {/* Store selection */}
         <section className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
