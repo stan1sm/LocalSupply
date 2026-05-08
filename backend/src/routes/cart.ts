@@ -8,7 +8,7 @@ import { getPrismaClient } from '../lib/prisma.js'
 import { findSimilarProductsForProduct } from '../lib/embeddings.js'
 import { tokenise, hasTokenOverlap } from '../lib/substitutions.js'
 import { planMealFromText } from '../lib/intentCartPlanner.js'
-import { getEmbeddings, completeJson } from '../lib/aiClient.js'
+import { getEmbedding, getEmbeddings } from '../lib/aiClient.js'
 
 /** Express router providing cart matching and AI-powered intent planning endpoints. */
 const cartRouter = Router()
@@ -455,16 +455,9 @@ cartRouter.post('/ai-substitute', async (req, res) => {
   try {
     const prisma = getPrismaClient()
 
-    const { result } = await completeJson<{ substitutes: string[] }>({
-      systemPrompt:
-        'You are a Norwegian grocery store assistant. Given a product name, suggest up to 3 alternative products commonly found in Norwegian supermarkets (KIWI, Rema 1000, Meny, SPAR, Joker, Coop). Return JSON: { "substitutes": ["name1", "name2", "name3"] }.',
-      userPrompt: `What are good substitutes for "${itemName}"? List product names as they appear on Norwegian grocery store shelves.`,
-    })
-
-    const suggestedNames: string[] = (result.substitutes ?? []).filter((s) => typeof s === 'string' && s.trim()).slice(0, 3)
-    const queries = [itemName, ...suggestedNames]
-    const queryEmbeddings = await getEmbeddings(queries)
-
+    // Embed the item name directly — vector similarity finds semantically close
+    // catalog products without LLM name-guessing causing false positives.
+    const itemEmbedding = await getEmbedding(itemName)
     const modelName = process.env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
 
     const storeProducts = await prisma.catalogProductPrice.findMany({
@@ -506,20 +499,15 @@ cartRouter.post('/ai-substitute', async (req, res) => {
       const emb = row.catalogProduct.embeddings[0]?.vectorJson
       if (!Array.isArray(emb)) continue
 
-      let maxScore = 0
-      for (const qEmb of queryEmbeddings) {
-        const s = cosineSimilarity(qEmb as number[], emb as number[])
-        if (s > maxScore) maxScore = s
-      }
-
-      if (maxScore >= 0.45) {
+      const score = cosineSimilarity(itemEmbedding, emb as number[])
+      if (score >= 0.60) {
         scored.push({
           catalogProductId: row.catalogProductId,
           name: row.catalogProduct.name,
           brand: row.catalogProduct.brand,
           imageUrl: row.catalogProduct.imageUrl,
           unitPrice: asNumber(row.currentPrice) ?? 0,
-          score: maxScore,
+          score,
         })
       }
     }
