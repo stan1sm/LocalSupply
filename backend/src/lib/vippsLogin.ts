@@ -3,9 +3,9 @@
  * Implements the Vipps OAuth 2.0 login flow: builds authorization URLs, exchanges authorization codes for access tokens, and fetches user profile information.
  */
 
-const VIPPS_BASE_URL = process.env.VIPPS_BASE_URL ?? 'https://apitest.vipps.no'
-const CLIENT_ID = process.env.VIPPS_CLIENT_ID ?? ''
-const CLIENT_SECRET = process.env.VIPPS_CLIENT_SECRET ?? ''
+const VIPPS_BASE_URL = (process.env.VIPPS_BASE_URL ?? 'https://apitest.vipps.no').trim()
+const CLIENT_ID = (process.env.VIPPS_CLIENT_ID ?? '').trim()
+const CLIENT_SECRET = (process.env.VIPPS_CLIENT_SECRET ?? '').trim()
 
 const AUTH_ENDPOINT = `${VIPPS_BASE_URL}/access-management-1.0/access/oauth2/auth`
 const TOKEN_ENDPOINT = `${VIPPS_BASE_URL}/access-management-1.0/access/oauth2/token`
@@ -63,8 +63,6 @@ export async function exchangeCode(code: string, redirectUri: string): Promise<s
     grant_type: 'authorization_code',
     code,
     redirect_uri: redirectUri,
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET,
   })
 
   const response = await fetch(TOKEN_ENDPOINT, {
