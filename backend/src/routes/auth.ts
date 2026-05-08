@@ -778,7 +778,7 @@ function parseCookies(header: string | undefined): Record<string, string> {
 authRouter.get('/vipps', (req, res) => {
   const state = randomBytes(16).toString('hex')
   const baseUrl = getRequestBaseUrl(req) ?? `https://${req.get('host')}`
-  const redirectUri = `${baseUrl}/api/auth/vipps/callback`
+  const redirectUri = process.env.VIPPS_REDIRECT_URI ?? `${baseUrl}/api/auth/vipps/callback`
   const authUrl = buildAuthorizationUrl(state, redirectUri)
 
   const isSecure = req.get('x-forwarded-proto') === 'https' || req.protocol === 'https'
@@ -821,7 +821,7 @@ authRouter.get('/vipps/callback', async (req, res) => {
 
   try {
     const baseUrl = getRequestBaseUrl(req) ?? `https://${req.get('host')}`
-    const redirectUri = `${baseUrl}/api/auth/vipps/callback`
+    const redirectUri = process.env.VIPPS_REDIRECT_URI ?? `${baseUrl}/api/auth/vipps/callback`
     const accessToken = await exchangeCode(code, redirectUri)
     const userInfo = await getUserInfo(accessToken)
 
@@ -870,8 +870,9 @@ authRouter.get('/vipps/callback', async (req, res) => {
 
     res.redirect(`${frontendUrl}/auth/vipps-return?token=${token}&user=${userParam}`)
   } catch (err) {
+    const detail = err instanceof Error ? err.message.slice(0, 120) : 'unknown'
     console.error('Vipps callback failed', err)
-    res.redirect(`${frontendUrl}/login?error=vipps_failed`)
+    res.redirect(`${frontendUrl}/login?error=vipps_failed&detail=${encodeURIComponent(detail)}`)
   }
 })
 

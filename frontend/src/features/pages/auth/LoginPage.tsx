@@ -7,7 +7,7 @@
 
 import { type FormEvent, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { buildApiUrl } from '../../../lib/api'
 import { EMAIL_REGEX, passwordPolicyError, sanitizeEmailInput } from '../../../utils/inputSecurity'
 
@@ -50,6 +50,9 @@ const errorClass = 'text-[10px] text-[#c53030]'
  */
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const vippsError = searchParams?.get('error') === 'vipps_failed'
+  const vippsErrorDetail = searchParams?.get('detail') ?? ''
   const [formData, setFormData] = useState<LoginFormData>({ email: '', password: '' })
   const [errors, setErrors] = useState<LoginFormErrors>({})
   const [submitMessage, setSubmitMessage] = useState('')
@@ -187,6 +190,13 @@ export default function LoginPage() {
             <path d="M58.2 15.4c.8.8 2 1.3 3.2 1.3 1 0 1.7-.4 1.7-1s-.5-.9-2-1.2c-2.6-.6-4-1.6-4-3.6 0-2.2 1.9-3.7 4.7-3.7 1.7 0 3.2.5 4.4 1.4l-1.7 2.3c-.8-.6-1.7-1-2.7-1-.9 0-1.5.4-1.5.9s.4.8 1.9 1.1c2.7.6 4.1 1.7 4.1 3.7 0 2.3-2 3.8-5 3.8-1.9 0-3.6-.6-4.9-1.7z"/>
           </svg>
         </a>
+
+        {vippsError ? (
+          <div className="mt-3 rounded-xl border border-[#f0d4d4] bg-[#fff5f5] px-4 py-3 text-xs text-[#9b2c2c]">
+            <p className="font-semibold">Vipps login failed.</p>
+            {vippsErrorDetail ? <p className="mt-0.5 opacity-80">{vippsErrorDetail}</p> : null}
+          </div>
+        ) : null}
 
         <div className="relative mt-5 flex items-center gap-3">
           <div className="h-px flex-1 bg-[#e5ece2]" />
