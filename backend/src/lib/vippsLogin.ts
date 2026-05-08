@@ -62,6 +62,8 @@ export async function exchangeCode(code: string, redirectUri: string): Promise<s
     grant_type: 'authorization_code',
     code,
     redirect_uri: redirectUri,
+    client_id: CLIENT_ID,
+    client_secret: CLIENT_SECRET,
   })
 
   const response = await fetch(TOKEN_ENDPOINT, {
