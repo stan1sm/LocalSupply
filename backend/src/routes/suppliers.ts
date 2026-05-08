@@ -8,8 +8,8 @@ import { Router } from 'express'
 import { signSupplierToken } from '../lib/jwt.js'
 import { getPrismaClient } from '../lib/prisma.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
-import { productImageUrl, uploadProductImage } from '../lib/uploadProductImage.js'
-import { supplierImageUrl, uploadSupplierImage } from '../lib/uploadSupplierImage.js'
+import { saveProductImage, uploadProductImage } from '../lib/uploadProductImage.js'
+import { saveSupplierImage, uploadSupplierImage } from '../lib/uploadSupplierImage.js'
 import {
   validateSupplierLoginPayload,
   validateSupplierRegistrationPayload,
@@ -327,7 +327,7 @@ suppliersRouter.post('/:supplierId/products', requireSupplierAuth, (req, res, ne
       return
     }
 
-    const imageUrl = req.file ? productImageUrl(req.file.filename) : null
+    const imageUrl = req.file ? await saveProductImage(req.file) : null
 
     const product = await prisma.product.create({
       data: {
@@ -509,7 +509,7 @@ suppliersRouter.post('/:supplierId/logo', requireSupplierAuth, (req, res, next) 
   }
   try {
     const prisma = getPrismaClient()
-    const logoUrl = supplierImageUrl(req.file.filename)
+    const logoUrl = await saveSupplierImage(req.file)
     await prisma.supplier.update({ where: { id: supplierId }, data: { logoUrl } })
     res.status(200).json({ logoUrl })
   } catch (error) {
@@ -549,7 +549,7 @@ suppliersRouter.post('/:supplierId/banner', requireSupplierAuth, (req, res, next
   }
   try {
     const prisma = getPrismaClient()
-    const heroImageUrl = supplierImageUrl(req.file.filename)
+    const heroImageUrl = await saveSupplierImage(req.file)
     await prisma.supplier.update({ where: { id: supplierId }, data: { heroImageUrl } })
     res.status(200).json({ heroImageUrl })
   } catch (error) {

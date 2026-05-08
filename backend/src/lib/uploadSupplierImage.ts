@@ -1,38 +1,12 @@
-/**
- * @module uploadSupplierImage
- * Configures a multer middleware instance and URL helper for uploading supplier images to disk.
- */
-
-import fs from 'fs'
-import path from 'path'
 import { randomBytes } from 'crypto'
 import multer from 'multer'
+import { put } from '@vercel/blob'
 
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'suppliers')
-const MAX_SIZE = 5 * 1024 * 1024 // 5MB
+const MAX_SIZE = 5 * 1024 * 1024
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 
-const storage = multer.diskStorage({
-  destination(_req, _file, cb) {
-    fs.mkdir(UPLOAD_DIR, { recursive: true }, (err: Error | null) => {
-      cb(err, UPLOAD_DIR)
-    })
-  },
-  filename(_req, file, cb) {
-    const ext = path.extname(file.originalname) || '.jpg'
-    const safeExt = /^\.(jpe?g|png|webp|gif)$/i.test(ext) ? ext : '.jpg'
-    const name = randomBytes(12).toString('hex') + safeExt
-    cb(null, name)
-  },
-})
-
-/**
- * Multer middleware for handling single or multi-file supplier image uploads.
- * Accepts JPEG, PNG, WebP, and GIF files up to 5 MB; stores them under `uploads/suppliers/` with a random hex filename.
- * @type {multer.Multer}
- */
 export const uploadSupplierImage = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: MAX_SIZE },
   fileFilter(_req, file, cb) {
     if (ALLOWED_TYPES.includes(file.mimetype)) {
@@ -43,11 +17,10 @@ export const uploadSupplierImage = multer({
   },
 })
 
-/**
- * Returns the public URL path for a stored supplier image file.
- * @param {string} filename - The stored filename (as returned by multer, e.g. `a3f9...hex.jpg`).
- * @returns {string} The URL path string in the form `/uploads/suppliers/<filename>`.
- */
-export function supplierImageUrl(filename: string): string {
-  return `/uploads/suppliers/${filename}`
+export async function saveSupplierImage(file: Express.Multer.File): Promise<string> {
+  const ext = file.originalname.split('.').pop()?.toLowerCase() ?? 'jpg'
+  const safeExt = /^(jpe?g|png|webp|gif)$/.test(ext) ? ext : 'jpg'
+  const filename = `suppliers/${randomBytes(12).toString('hex')}.${safeExt}`
+  const blob = await put(filename, file.buffer, { access: 'public', contentType: file.mimetype })
+  return blob.url
 }
