@@ -135,7 +135,7 @@ describe('GET /api/suppliers/:supplierId/products', () => {
     expect(res.body[0].name).toBe('Farm Eggs')
     expect(res.body[0].price).toBe(65.0)
     expect(findManyProductMock).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { supplierId: 'sup_1' } }),
+      expect.objectContaining({ where: { supplierId: 'sup_1', approvalStatus: 'APPROVED', isActive: true } }),
     )
   })
 

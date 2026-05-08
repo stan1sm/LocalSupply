@@ -227,6 +227,15 @@ export default function SupplierProductsPage() {
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto w-full max-w-[1100px] rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
         <header className="border-b border-[#e5ece2] px-5 py-5 sm:px-6">
+          <a
+            className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-[#617166] transition hover:text-[#2f9f4f]"
+            href="/marketplace/dashboard"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Back to marketplace
+          </a>
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Supplier</p>
           <h1 className="mt-2 text-2xl font-bold text-[#1f2b22]">{supplier.businessName}</h1>
           <p className="mt-1 text-sm text-[#617166]">{supplier.address}</p>

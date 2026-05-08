@@ -185,7 +185,10 @@ export default function SupplierDashboardPage() {
     async function loadProducts() {
       setErrorMessage('')
       try {
-        const response = await fetch(buildApiUrl(`/api/suppliers/${encodeURIComponent(supplierId)}/products`))
+        const token = typeof window !== 'undefined' ? window.localStorage.getItem(SUPPLIER_TOKEN_KEY) : null
+        const response = await fetch(buildApiUrl(`/api/suppliers/${encodeURIComponent(supplierId)}/products`), {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
         const payload = (await response.json().catch(() => ({}))) as Product[] | { message?: string }
         if (!response.ok) throw new Error((payload as { message?: string }).message ?? 'Unable to load products right now.')
         if (!cancelled && Array.isArray(payload)) setProducts(payload)

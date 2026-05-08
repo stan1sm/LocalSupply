@@ -5,7 +5,7 @@
  * All routes are mounted under /api/suppliers.
  */
 import { Router } from 'express'
-import { signSupplierToken } from '../lib/jwt.js'
+import { signSupplierToken, verifySupplierToken } from '../lib/jwt.js'
 import { getPrismaClient } from '../lib/prisma.js'
 import { hashPassword, verifyPassword } from '../lib/password.js'
 import { saveProductImage, uploadProductImage } from '../lib/uploadProductImage.js'
@@ -226,10 +226,24 @@ suppliersRouter.get('/:supplierId/products', async (req, res) => {
     return
   }
 
+  // Allow the owning supplier to see all their products (including pending/rejected).
+  // Everyone else only sees approved, active products.
+  let isOwner = false
+  try {
+    const token = (req.headers.authorization ?? '').replace('Bearer ', '')
+    if (token) {
+      const payload = verifySupplierToken(token)
+      isOwner = payload?.supplierId === supplierId
+    }
+  } catch { /* unauthenticated */ }
+
   try {
     const prisma = getPrismaClient()
+    const where = isOwner
+      ? { supplierId }
+      : { supplierId, approvalStatus: 'APPROVED' as const, isActive: true }
     const products = await prisma.product.findMany({
-      where: { supplierId },
+      where,
       orderBy: { createdAt: 'desc' },
     })
 
