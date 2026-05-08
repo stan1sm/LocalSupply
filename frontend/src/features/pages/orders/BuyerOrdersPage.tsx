@@ -142,6 +142,7 @@ export default function BuyerOrdersPage() {
   const [buyer, setBuyer] = useState<BuyerSession | null>(null)
   const [orders, setOrders] = useState<OrderSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingOrders, setIsLoadingOrders] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
@@ -189,6 +190,8 @@ export default function BuyerOrdersPage() {
           setOrders([])
           setErrorMessage(error instanceof Error ? error.message : 'Unable to load orders right now.')
         }
+      } finally {
+        if (!cancelled) setIsLoadingOrders(false)
       }
     }
 
@@ -256,7 +259,29 @@ export default function BuyerOrdersPage() {
               </div>
             ) : null}
 
-            {orders.length === 0 ? (
+            {isLoadingOrders ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div className="animate-pulse rounded-3xl border border-[#e5ece2] bg-white p-4" key={i}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <div className="h-3 w-28 rounded-full bg-[#e5ece2]" />
+                        <div className="h-2.5 w-40 rounded-full bg-[#eef2ec]" />
+                        <div className="h-2.5 w-32 rounded-full bg-[#eef2ec]" />
+                      </div>
+                      <div className="space-y-2 text-right">
+                        <div className="h-3 w-16 rounded-full bg-[#e5ece2]" />
+                        <div className="h-5 w-20 rounded-full bg-[#eef2ec]" />
+                      </div>
+                    </div>
+                    <div className="mt-4 border-t border-[#eef2ec] pt-3 space-y-2">
+                      <div className="h-2.5 w-48 rounded-full bg-[#eef2ec]" />
+                      <div className="h-2.5 w-36 rounded-full bg-[#eef2ec]" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : orders.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-[#d2dcd0] bg-[#f8fbf7] px-5 py-16 text-center">
                 <p className="text-lg font-semibold text-[#304136]">No orders yet</p>
                 <p className="mt-2 text-sm text-[#728176]">
