@@ -5,7 +5,7 @@
 
 'use client'
 
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { buildApiUrl } from '../../../lib/api'
@@ -48,11 +48,20 @@ const errorClass = 'text-[10px] text-[#c53030]'
  * Buyer login page supporting Vipps OAuth and email/password sign-in.
  * Redirects to /email-not-verified if the account exists but email is unverified.
  */
+function VippsErrorBanner() {
+  const searchParams = useSearchParams()
+  if (searchParams?.get('error') !== 'vipps_failed') return null
+  const detail = searchParams.get('detail') ?? ''
+  return (
+    <div className="mt-3 rounded-xl border border-[#f0d4d4] bg-[#fff5f5] px-4 py-3 text-xs text-[#9b2c2c]">
+      <p className="font-semibold">Vipps login failed.</p>
+      {detail ? <p className="mt-0.5 opacity-80">{detail}</p> : null}
+    </div>
+  )
+}
+
 export default function LoginPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const vippsError = searchParams?.get('error') === 'vipps_failed'
-  const vippsErrorDetail = searchParams?.get('detail') ?? ''
   const [formData, setFormData] = useState<LoginFormData>({ email: '', password: '' })
   const [errors, setErrors] = useState<LoginFormErrors>({})
   const [submitMessage, setSubmitMessage] = useState('')
@@ -191,12 +200,9 @@ export default function LoginPage() {
           </svg>
         </a>
 
-        {vippsError ? (
-          <div className="mt-3 rounded-xl border border-[#f0d4d4] bg-[#fff5f5] px-4 py-3 text-xs text-[#9b2c2c]">
-            <p className="font-semibold">Vipps login failed.</p>
-            {vippsErrorDetail ? <p className="mt-0.5 opacity-80">{vippsErrorDetail}</p> : null}
-          </div>
-        ) : null}
+        <Suspense>
+          <VippsErrorBanner />
+        </Suspense>
 
         <div className="relative mt-5 flex items-center gap-3">
           <div className="h-px flex-1 bg-[#e5ece2]" />
