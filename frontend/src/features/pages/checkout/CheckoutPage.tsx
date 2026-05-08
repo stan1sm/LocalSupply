@@ -582,14 +582,14 @@ export default function CheckoutPage() {
     setAiSubstituteLoading({})
   }, [selectedStore?.storeCode])
 
-  async function findAiSubstitute(itemName: string) {
+  async function findAiSubstitute(itemName: string, priceId: string) {
     if (!selectedStore) return
     setAiSubstituteLoading((prev) => ({ ...prev, [itemName]: true }))
     try {
       const res = await fetch(buildApiUrl('/api/cart/ai-substitute'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemName, storeCode: selectedStore.storeCode }),
+        body: JSON.stringify({ priceId, itemName, storeCode: selectedStore.storeCode }),
       })
       const data = (await res.json()) as { candidates?: AiCandidate[] }
       setAiSubstitutes((prev) => ({ ...prev, [itemName]: data.candidates ?? [] }))
@@ -1043,7 +1043,7 @@ export default function CheckoutPage() {
                                       <button
                                         className="ml-auto shrink-0 flex items-center gap-1 rounded-full bg-[#f0faf2] px-2 py-0.5 text-[10px] font-semibold text-[#2f9f4f] hover:bg-[#dcf5e2] disabled:opacity-60"
                                         disabled={isLoadingAi}
-                                        onClick={() => findAiSubstitute(item.name)}
+                                        onClick={() => findAiSubstitute(item.name, item.id)}
                                         type="button"
                                       >
                                         {isLoadingAi ? (

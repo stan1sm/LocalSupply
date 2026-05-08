@@ -431,19 +431,24 @@ cartRouter.post('/match', async (req, res) => {
 })
 
 /**
- * AI-powered substitute finder for a single unavailable cart item.
- * Asks the LLM for Norwegian grocery substitute names, embeds them, and
- * returns the top 3 most similar products available at the given store.
+ * Finds the top 3 substitute products available at a given store for an unavailable cart item.
+ *
+ * Strategy: look up the item's stored ProductEmbedding (name + brand + category + unit —
+ * the same vector used to index the catalog) and rank every product at the target store by
+ * cosine similarity. Falls back to embedding the bare item name when no stored vector exists.
+ * Always returns the best available matches; no arbitrary similarity threshold.
  *
  * @route {POST} /api/cart/ai-substitute
  * @access {public}
- * @param req.body.itemName {string} Name of the unavailable product.
+ * @param req.body.priceId {string} CatalogProductPrice ID of the unavailable item (preferred).
+ * @param req.body.itemName {string} Display name of the unavailable product (fallback).
  * @param req.body.storeCode {string} Store chain code to search within (e.g. "kiwi").
  * @returns {200} `{ candidates: [{ catalogProductId, name, brand, imageUrl, unitPrice }] }`
  * @returns {400} When itemName or storeCode is missing.
- * @returns {503} On LLM or database errors.
+ * @returns {503} On database or embedding errors.
  */
 cartRouter.post('/ai-substitute', async (req, res) => {
+  const priceId = typeof req.body?.priceId === 'string' ? req.body.priceId.trim() : ''
   const itemName = typeof req.body?.itemName === 'string' ? req.body.itemName.trim() : ''
   const storeCode = typeof req.body?.storeCode === 'string' ? req.body.storeCode.trim() : ''
 
@@ -454,12 +459,37 @@ cartRouter.post('/ai-substitute', async (req, res) => {
 
   try {
     const prisma = getPrismaClient()
-
-    // Embed the item name directly — vector similarity finds semantically close
-    // catalog products without LLM name-guessing causing false positives.
-    const itemEmbedding = await getEmbedding(itemName)
     const modelName = process.env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
 
+    // Prefer the stored embedding for this product (name + brand + category + unit),
+    // which is more informative than re-embedding the bare display name.
+    let itemEmbedding: number[] | null = null
+
+    if (priceId) {
+      const priceRow = await prisma.catalogProductPrice.findUnique({
+        where: { id: priceId },
+        select: {
+          catalogProduct: {
+            select: {
+              embeddings: {
+                where: { modelName },
+                select: { vectorJson: true },
+                take: 1,
+              },
+            },
+          },
+        },
+      })
+      const stored = priceRow?.catalogProduct?.embeddings[0]?.vectorJson
+      if (Array.isArray(stored)) itemEmbedding = stored as number[]
+    }
+
+    // Fallback: embed the item name if no stored vector was found
+    if (!itemEmbedding) {
+      itemEmbedding = await getEmbedding(itemName)
+    }
+
+    // Load all products available at the target store with their embeddings
     const storeProducts = await prisma.catalogProductPrice.findMany({
       where: { storeCode, currentPrice: { not: null } },
       select: {
@@ -481,6 +511,7 @@ cartRouter.post('/ai-substitute', async (req, res) => {
       },
     })
 
+    // Keep cheapest price per product
     const cheapestByProduct = new Map<string, typeof storeProducts[0]>()
     for (const row of storeProducts) {
       const existing = cheapestByProduct.get(row.catalogProductId)
@@ -500,18 +531,17 @@ cartRouter.post('/ai-substitute', async (req, res) => {
       if (!Array.isArray(emb)) continue
 
       const score = cosineSimilarity(itemEmbedding, emb as number[])
-      if (score >= 0.60) {
-        scored.push({
-          catalogProductId: row.catalogProductId,
-          name: row.catalogProduct.name,
-          brand: row.catalogProduct.brand,
-          imageUrl: row.catalogProduct.imageUrl,
-          unitPrice: asNumber(row.currentPrice) ?? 0,
-          score,
-        })
-      }
+      scored.push({
+        catalogProductId: row.catalogProductId,
+        name: row.catalogProduct.name,
+        brand: row.catalogProduct.brand,
+        imageUrl: row.catalogProduct.imageUrl,
+        unitPrice: asNumber(row.currentPrice) ?? 0,
+        score,
+      })
     }
 
+    // Sort by similarity descending; top 3 are the best available substitutes
     scored.sort((a, b) => b.score - a.score)
 
     res.json({
