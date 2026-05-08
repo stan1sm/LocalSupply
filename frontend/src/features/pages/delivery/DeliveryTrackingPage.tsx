@@ -145,10 +145,12 @@ export default function DeliveryTrackingPage() {
     async function load() {
       try {
         const token = typeof window !== 'undefined' ? window.localStorage.getItem('localsupply-token') : null
-        if (!token) { window.location.href = '/login'; return }
+        const buyerRaw = typeof window !== 'undefined' ? window.localStorage.getItem('localsupply-user') : null
+        const buyerId: string = buyerRaw ? ((JSON.parse(buyerRaw) as { id?: string }).id ?? '') : ''
+        if (!token || !buyerId) { window.location.href = '/login'; return }
         const headers = { Authorization: `Bearer ${token}` }
 
-        const res = await fetch(buildApiUrl('/api/orders'), { headers })
+        const res = await fetch(buildApiUrl(`/api/orders/buyer/${encodeURIComponent(buyerId)}`), { headers })
         if (!res.ok) {
           if (res.status === 401) { window.location.href = '/login'; return }
           throw new Error('Failed to load orders')
