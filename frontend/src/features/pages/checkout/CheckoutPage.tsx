@@ -630,6 +630,48 @@ export default function CheckoutPage() {
     return Math.round((store.subtotal + acceptedSubtotal() + effectiveDeliveryCost(store)) * 100) / 100
   }
 
+  // Re-rank stores using real delivery costs once storeLocatorData / woltEstimate is available.
+  // Primary sort: items available descending. Secondary: effective total ascending.
+  const { rankedStores, rerankedBest, rerankedSavings } = useMemo(() => {
+    const raw = matchResult?.stores ?? []
+    if (raw.length === 0) return { rankedStores: raw, rerankedBest: null, rerankedSavings: 0 }
+
+    const sorted = [...raw].sort((a, b) => {
+      if (b.itemsAvailable !== a.itemsAvailable) return b.itemsAvailable - a.itemsAvailable
+      return effectiveTotal(a) - effectiveTotal(b)
+    })
+
+    const best = sorted[0] ?? null
+    const worst = sorted[sorted.length - 1]
+    const savings = best && worst && sorted.length > 1
+      ? Math.round((effectiveTotal(worst) - effectiveTotal(best)) * 100) / 100
+      : 0
+
+    return { rankedStores: sorted, rerankedBest: best, rerankedSavings: savings }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchResult?.stores, storeLocatorData, woltEstimate])
+
+  // When real delivery data first arrives and changes the winner, switch selectedStore.
+  const initialBestCode = useRef<string | null>(null)
+  const selectedStoreCode = useRef<string | null>(null)
+  selectedStoreCode.current = selectedStore?.storeCode ?? null
+
+  useEffect(() => {
+    if (!rerankedBest) return
+    if (initialBestCode.current === null) {
+      initialBestCode.current = rerankedBest.storeCode
+      return
+    }
+    if (
+      selectedStoreCode.current === initialBestCode.current &&
+      rerankedBest.storeCode !== initialBestCode.current
+    ) {
+      setSelectedStore(rerankedBest)
+      setExpandedStore(rerankedBest.storeCode)
+      initialBestCode.current = rerankedBest.storeCode
+    }
+  }, [rerankedBest])
+
   // Build store markers for map: backend locator data for all chains +
   // client-side Overpass fallback for the selected chain if backend has no entry
   const mapStores = useMemo<StoreMarker[]>(() => {
@@ -799,8 +841,8 @@ export default function CheckoutPage() {
     )
   }
 
-  const stores = matchResult?.stores ?? []
-  const savings = matchResult?.savings ?? 0
+  const stores = rankedStores
+  const savings = rerankedSavings
   const woltDeliveryClosed = woltError && WOLT_CLOSED_CODES.has(woltError.errorCode)
   const woltOutsideArea = woltError && WOLT_OUTSIDE_AREA_CODES.has(woltError.errorCode)
   const woltUnavailable = woltError && woltError.errorCode === 'WOLT_UNAVAILABLE'
@@ -900,8 +942,8 @@ export default function CheckoutPage() {
               </div>
             ) : (
               <>
-                {matchResult?.bestMatch && stores.length > 0 ? (() => {
-                  const best = matchResult.bestMatch!
+                {rerankedBest && stores.length > 0 ? (() => {
+                  const best = rerankedBest
                   const fastestStore = [...stores].sort((a, b) => a.etaMinutes - b.etaMinutes)[0]!
                   const isBestAlsoFastest = best.storeCode === fastestStore.storeCode
                   const speedPremium = Math.round((effectiveTotal(fastestStore) - effectiveTotal(best)) * 100) / 100
@@ -935,7 +977,7 @@ export default function CheckoutPage() {
 
                 {stores.map((store) => {
                   const isSelected = selectedStore?.storeCode === store.storeCode
-                  const isBest = store.storeCode === matchResult?.bestMatch?.storeCode
+                  const isBest = store.storeCode === rerankedBest?.storeCode
                   const fastestEta = stores.length > 1 ? Math.min(...stores.map(s => s.etaMinutes)) : Infinity
                   const isFastest = stores.length > 1 && store.etaMinutes === fastestEta && !isBest
                   const unavailable = getUnavailableItems(store)
