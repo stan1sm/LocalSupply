@@ -461,57 +461,72 @@ cartRouter.post('/ai-substitute', async (req, res) => {
     const prisma = getPrismaClient()
     const modelName = process.env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
 
-    // Prefer the stored embedding for this product (name + brand + category + unit),
-    // which is more informative than re-embedding the bare display name.
+    // Step 1: Fetch source product metadata and stored embedding via priceId
+    let sourceCategory: string | null = null
+    let sourceBrand: string | null = null
+    let sourcePrice: number | null = null
     let itemEmbedding: number[] | null = null
 
     if (priceId) {
       const priceRow = await prisma.catalogProductPrice.findUnique({
         where: { id: priceId },
         select: {
+          currentPrice: true,
           catalogProduct: {
             select: {
-              embeddings: {
-                where: { modelName },
-                select: { vectorJson: true },
-                take: 1,
-              },
+              category: true,
+              brand: true,
+              embeddings: { where: { modelName }, select: { vectorJson: true }, take: 1 },
             },
           },
         },
       })
-      const stored = priceRow?.catalogProduct?.embeddings[0]?.vectorJson
-      if (Array.isArray(stored)) itemEmbedding = stored as number[]
+      if (priceRow) {
+        sourceCategory = priceRow.catalogProduct.category
+        sourceBrand = priceRow.catalogProduct.brand
+        sourcePrice = asNumber(priceRow.currentPrice)
+        const stored = priceRow.catalogProduct.embeddings[0]?.vectorJson
+        if (Array.isArray(stored)) itemEmbedding = stored as number[]
+      }
     }
 
-    // Fallback: embed the item name if no stored vector was found
-    if (!itemEmbedding) {
-      itemEmbedding = await getEmbedding(itemName)
-    }
+    // Fallback: embed the bare item name when no stored vector exists
+    if (!itemEmbedding) itemEmbedding = await getEmbedding(itemName)
 
-    // Load all products available at the target store with their embeddings
-    const storeProducts = await prisma.catalogProductPrice.findMany({
-      where: { storeCode, currentPrice: { not: null } },
-      select: {
-        catalogProductId: true,
-        currentPrice: true,
-        catalogProduct: {
-          select: {
-            id: true,
-            name: true,
-            brand: true,
-            imageUrl: true,
-            embeddings: {
-              where: { modelName },
-              select: { vectorJson: true },
-              take: 1,
+    // Step 2: Fetch candidate products from the store.
+    // Prefer same-category products; fall back to all store products if too few.
+    const fetchCandidates = (categoryFilter: string | null) =>
+      prisma.catalogProductPrice.findMany({
+        where: {
+          storeCode,
+          currentPrice: { not: null },
+          ...(categoryFilter ? { catalogProduct: { category: categoryFilter } } : {}),
+        },
+        select: {
+          catalogProductId: true,
+          currentPrice: true,
+          catalogProduct: {
+            select: {
+              id: true,
+              name: true,
+              brand: true,
+              category: true,
+              imageUrl: true,
+              embeddings: { where: { modelName }, select: { vectorJson: true }, take: 1 },
             },
           },
         },
-      },
-    })
+      })
 
-    // Keep cheapest price per product
+    let storeProducts = sourceCategory ? await fetchCandidates(sourceCategory) : []
+    const inCategory = storeProducts.length
+
+    // If fewer than 5 products in the exact category, broaden to all store products
+    if (inCategory < 5) {
+      storeProducts = await fetchCandidates(null)
+    }
+
+    // Step 3: Keep cheapest price per product
     const cheapestByProduct = new Map<string, typeof storeProducts[0]>()
     for (const row of storeProducts) {
       const existing = cheapestByProduct.get(row.catalogProductId)
@@ -524,24 +539,34 @@ cartRouter.post('/ai-substitute', async (req, res) => {
       }
     }
 
+    // Step 4: Composite scoring
+    // semantic_similarity (0.55) + same_category (0.25) + same_brand (0.12) + price_proximity (0.08)
     const scored: Array<{ catalogProductId: string; name: string; brand: string | null; imageUrl: string | null; unitPrice: number; score: number }> = []
 
     for (const row of cheapestByProduct.values()) {
       const emb = row.catalogProduct.embeddings[0]?.vectorJson
       if (!Array.isArray(emb)) continue
 
-      const score = cosineSimilarity(itemEmbedding, emb as number[])
+      const semSim = cosineSimilarity(itemEmbedding, emb as number[])
+      const catBonus = sourceCategory && row.catalogProduct.category === sourceCategory ? 1 : 0
+      const brandBonus = sourceBrand && row.catalogProduct.brand === sourceBrand ? 1 : 0
+      const unitPrice = asNumber(row.currentPrice) ?? 0
+      const priceScore = sourcePrice && sourcePrice > 0
+        ? Math.max(0, 1 - Math.abs(unitPrice - sourcePrice) / sourcePrice)
+        : 0.5
+
+      const composite = semSim * 0.55 + catBonus * 0.25 + brandBonus * 0.12 + priceScore * 0.08
+
       scored.push({
         catalogProductId: row.catalogProductId,
         name: row.catalogProduct.name,
         brand: row.catalogProduct.brand,
         imageUrl: row.catalogProduct.imageUrl,
-        unitPrice: asNumber(row.currentPrice) ?? 0,
-        score,
+        unitPrice,
+        score: composite,
       })
     }
 
-    // Sort by similarity descending; top 3 are the best available substitutes
     scored.sort((a, b) => b.score - a.score)
 
     res.json({
