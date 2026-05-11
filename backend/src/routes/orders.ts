@@ -198,6 +198,19 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
       }
     }
 
+    // Pre-fetch all catalog product stubs in one query to avoid N+1 inside the loop
+    const neededCatalogNames = catalogProductIds
+      .map((id) => catalogNameMap.get(id) ?? null)
+      .filter((n): n is string => n !== null)
+
+    const existingCatalogProducts =
+      neededCatalogNames.length > 0
+        ? await prisma.product.findMany({
+            where: { supplierId: supplier.id, name: { in: neededCatalogNames } },
+          })
+        : []
+    const catalogProductByName = new Map(existingCatalogProducts.map((p) => [p.name, p]))
+
     let subtotal = 0
     const orderItemsData: { productId: string; quantity: number; unitPrice: number }[] = []
     const stockDecrements: { id: string; qty: number }[] = []
@@ -227,9 +240,7 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
 
         // Upsert a thin Product record so OrderItem has a valid FK
         const catalogName = catalogNameMap.get(item.catalogProductId) ?? item.name ?? 'Catalog item'
-        let product = await prisma.product.findFirst({
-          where: { supplierId: supplier.id, name: catalogName },
-        })
+        let product = catalogProductByName.get(catalogName) ?? null
         if (!product) {
           product = await prisma.product.create({
             data: {
@@ -241,6 +252,7 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
               stockQty: 0,
             },
           })
+          catalogProductByName.set(catalogName, product)
         }
 
         subtotal += unitPrice * item.quantity
