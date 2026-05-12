@@ -38,6 +38,7 @@ function VippsReturnContent() {
         lastName: string
         email: string
       }
+      window.localStorage.removeItem('localsupply-marketplace-cart')
       window.localStorage.setItem('localsupply-token', token)
       window.localStorage.setItem('localsupply-user', JSON.stringify(user))
       router.replace('/marketplace/dashboard')

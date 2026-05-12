@@ -138,6 +138,7 @@ export default function LoginPage() {
 
       if (payload.user && typeof window !== 'undefined') {
         try {
+          window.localStorage.removeItem('localsupply-marketplace-cart')
           window.localStorage.setItem(BUYER_STORAGE_KEY, JSON.stringify({
             id: payload.user.id,
             firstName: payload.user.firstName,
