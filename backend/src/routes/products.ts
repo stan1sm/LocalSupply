@@ -136,9 +136,20 @@ function formatPrice(price: number | null) {
  * Builds a human-readable unit price string (e.g. `"49.90 kr/kg"`). Falls
  * back to the raw unit label when the per-unit price or unit string is absent.
  */
+const UNIT_DISPLAY_MAP: Record<string, string> = {
+  g: 'kg',
+  ml: 'l',
+  cl: 'l',
+  dl: 'l',
+  stk: 'stk',
+  kg: 'kg',
+  l: 'l',
+}
+
 function formatUnitInfo(currentUnitPrice: number | null, currentUnitPriceUnit: string | null, fallbackUnit: string | null) {
   if (currentUnitPrice !== null && currentUnitPriceUnit) {
-    return `${currentUnitPrice.toFixed(2)} kr/${currentUnitPriceUnit}`
+    const displayUnit = UNIT_DISPLAY_MAP[currentUnitPriceUnit.toLowerCase()] ?? currentUnitPriceUnit
+    return `${currentUnitPrice.toFixed(2)} kr/${displayUnit}`
   }
 
   return fallbackUnit
