@@ -212,6 +212,7 @@ export default function MarketplaceDashboardPage() {
   const [substitutions, setSubstitutions] = useState<Record<string, Substitution[] | null>>({})
   const [loadingSubstitutions, setLoadingSubstitutions] = useState<Set<string>>(new Set())
   const [hiddenProductIds, setHiddenProductIds] = useState<Set<string>>(new Set())
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   const deferredSearchQuery = useDeferredValue(searchQuery)
@@ -593,7 +594,11 @@ export default function MarketplaceDashboardPage() {
 
                     return (
                       <article className="group flex flex-col overflow-hidden rounded-3xl border border-[#e5ece2] bg-white shadow-[0_12px_24px_rgba(18,38,24,0.06)]" key={product.id}>
-                        <div className="relative h-40 shrink-0 overflow-hidden bg-white">
+                        <button
+                          className="relative h-40 shrink-0 cursor-pointer overflow-hidden bg-white text-left"
+                          onClick={() => setSelectedProduct(product)}
+                          type="button"
+                        >
                           {product.imageUrl ? (
                             <img
                               alt={product.name}
@@ -612,25 +617,31 @@ export default function MarketplaceDashboardPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
                             </svg>
                           </div>
-                        </div>
+                        </button>
                         <div className="flex flex-1 flex-col p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[#1f2b22]">{product.name}</h3>
-                              <p className="mt-1 truncate text-xs text-[#647267]">{product.brand ?? product.store ?? 'Store product'}</p>
+                          <button
+                            className="cursor-pointer text-left"
+                            onClick={() => setSelectedProduct(product)}
+                            type="button"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[#1f2b22]">{product.name}</h3>
+                                <p className="mt-1 truncate text-xs text-[#647267]">{product.brand ?? product.store ?? 'Store product'}</p>
+                              </div>
+                              {product.store ? (
+                                <span className="shrink-0 rounded-full bg-[#eef7ef] px-2 py-1 text-[10px] font-semibold text-[#2f9f4f]">
+                                  {product.store}
+                                </span>
+                              ) : null}
                             </div>
-                            {product.store ? (
-                              <span className="shrink-0 rounded-full bg-[#eef7ef] px-2 py-1 text-[10px] font-semibold text-[#2f9f4f]">
-                                {product.store}
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="mt-2">
-                            <p className="text-lg font-extrabold text-[#2f9f4f]">{product.priceText ?? 'Price unavailable'}</p>
-                            <p className="truncate text-[11px] text-[#7b8b80]">
-                              {product.unitInfo ?? product.category ?? (product.source === 'supplier' ? 'From local supplier' : 'Updated from store catalog')}
-                            </p>
-                          </div>
+                            <div className="mt-2">
+                              <p className="text-lg font-extrabold text-[#2f9f4f]">{product.priceText ?? 'Price unavailable'}</p>
+                              <p className="truncate text-[11px] text-[#7b8b80]">
+                                {product.unitInfo ?? product.category ?? (product.source === 'supplier' ? 'From local supplier' : 'Updated from store catalog')}
+                              </p>
+                            </div>
+                          </button>
                           <div className="mt-auto pt-3">
                             {product.source === 'supplier' && product.supplierId ? (
                               <div className="flex gap-2">
@@ -831,6 +842,150 @@ export default function MarketplaceDashboardPage() {
           </div>
         </aside>
       </div>
+
+      {selectedProduct && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setSelectedProduct(null)}
+        >
+          <div
+            className="relative mx-4 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-[#dce5d7] bg-white shadow-[0_32px_80px_rgba(18,38,24,0.18)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/80 text-[#516056] shadow backdrop-blur transition hover:bg-white"
+              onClick={() => setSelectedProduct(null)}
+              type="button"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="flex h-56 shrink-0 items-center justify-center overflow-hidden bg-[#f7faf6]">
+              {selectedProduct.imageUrl ? (
+                <img
+                  alt={selectedProduct.name}
+                  className="h-full w-full object-contain p-6"
+                  src={productImageSrc(selectedProduct.imageUrl) ?? ''}
+                />
+              ) : (
+                <svg className="h-20 w-20 text-[#c5d4c0]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                </svg>
+              )}
+            </div>
+
+            <div className="overflow-y-auto px-6 pb-6 pt-5">
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="text-xl font-bold text-[#1f2b22]">{selectedProduct.name}</h2>
+                {selectedProduct.store && (
+                  <span className="shrink-0 rounded-full bg-[#eef7ef] px-3 py-1 text-xs font-semibold text-[#2f9f4f]">
+                    {selectedProduct.store}
+                  </span>
+                )}
+              </div>
+
+              {selectedProduct.brand && (
+                <p className="mt-1 text-sm text-[#647267]">{selectedProduct.brand}</p>
+              )}
+
+              <div className="mt-4 flex items-baseline gap-3">
+                <p className="text-2xl font-extrabold text-[#2f9f4f]">{selectedProduct.priceText ?? 'Price unavailable'}</p>
+                {selectedProduct.unitInfo && (
+                  <p className="text-sm text-[#7b8b80]">{selectedProduct.unitInfo}</p>
+                )}
+              </div>
+
+              <dl className="mt-5 space-y-2.5 rounded-2xl bg-[#f7faf6] p-4 text-sm">
+                {selectedProduct.category && (
+                  <div className="flex justify-between">
+                    <dt className="text-[#6b7b70]">Category</dt>
+                    <dd className="font-medium text-[#1f2b22]">{selectedProduct.category}</dd>
+                  </div>
+                )}
+                {selectedProduct.ean && (
+                  <div className="flex justify-between">
+                    <dt className="text-[#6b7b70]">EAN</dt>
+                    <dd className="font-mono text-xs font-medium text-[#1f2b22]">{selectedProduct.ean}</dd>
+                  </div>
+                )}
+                {selectedProduct.description && (
+                  <div className="flex flex-col gap-1">
+                    <dt className="text-[#6b7b70]">Description</dt>
+                    <dd className="text-[#1f2b22]">{selectedProduct.description}</dd>
+                  </div>
+                )}
+              </dl>
+
+              <div className="mt-5">
+                {selectedProduct.source === 'supplier' && selectedProduct.supplierId ? (
+                  <div className="flex gap-3">
+                    <a
+                      className="flex-1 rounded-2xl border-2 border-[#2f9f4f] bg-white py-3 text-center text-sm font-semibold text-[#2f9f4f] transition hover:bg-[#eaf7ee]"
+                      href={`/suppliers/${selectedProduct.supplierId}`}
+                    >
+                      View supplier
+                    </a>
+                    <a
+                      className="flex-1 rounded-2xl bg-[#2f9f4f] py-3 text-center text-sm font-semibold text-white transition hover:bg-[#25813f]"
+                      href={`/suppliers/${selectedProduct.supplierId}?buy=${encodeURIComponent(selectedProduct.id)}`}
+                    >
+                      Buy item
+                    </a>
+                  </div>
+                ) : (
+                  (() => {
+                    const qty = getProductQuantity(selectedProduct.id)
+                    return qty > 0 ? (
+                      <div className="flex h-12 w-full items-center justify-between rounded-2xl bg-[#2f9f4f] px-4 text-sm font-semibold text-white">
+                        <button
+                          className="grid h-8 w-8 place-items-center rounded-xl bg-white/10 hover:bg-white/20"
+                          onClick={() => updateQuantity(selectedProduct, Math.max(qty - 1, 0))}
+                          type="button"
+                        >
+                          -
+                        </button>
+                        <span>{qty} in cart</span>
+                        <button
+                          className="grid h-8 w-8 place-items-center rounded-xl bg-white/10 hover:bg-white/20"
+                          onClick={() => updateQuantity(selectedProduct, qty + 1)}
+                          type="button"
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="h-12 w-full rounded-2xl bg-[#2f9f4f] text-sm font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#a0c6ab]"
+                        disabled={selectedProduct.price === null}
+                        onClick={() => {
+                          updateQuantity(selectedProduct, 1)
+                          setSelectedProduct(null)
+                        }}
+                        type="button"
+                      >
+                        Add to Cart
+                      </button>
+                    )
+                  })()
+                )}
+              </div>
+
+              {selectedProduct.url && (
+                <a
+                  className="mt-3 block text-center text-xs text-[#7b8b80] underline transition hover:text-[#2f9f4f]"
+                  href={selectedProduct.url}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  View on store website
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
