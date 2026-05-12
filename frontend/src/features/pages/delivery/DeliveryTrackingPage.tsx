@@ -191,7 +191,7 @@ export default function DeliveryTrackingPage() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(45,155,79,0.12),transparent_30%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)]">
-      <div className="mx-auto grid max-w-[1200px] grid-cols-[220px_1fr] gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-[1200px] gap-6 px-4 py-6 pb-20 sm:px-6 lg:grid-cols-[220px_1fr] lg:px-8 lg:pb-6">
         <BuyerSidebar />
 
         <main className="min-w-0">

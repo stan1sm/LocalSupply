@@ -128,67 +128,98 @@ function handleSignOut() {
  *   (e.g. `'marketplace'`, `'orders'`, `'settings'`).
  * @returns {JSX.Element} The rendered sidebar `<aside>` element.
  */
+const mobileNavItems = [
+  navItems.find((i) => i.id === 'marketplace')!,
+  navItems.find((i) => i.id === 'my-cart')!,
+  navItems.find((i) => i.id === 'orders')!,
+  navItems.find((i) => i.id === 'chats')!,
+  { id: 'settings' as const, label: 'Settings', href: '/settings', icon: settingsIcon },
+]
+
 export default function BuyerSidebar() {
   const pathname = usePathname()
   const activeId = getActiveId(pathname)
 
   return (
-    <aside className="sticky top-6 flex h-[calc(100vh-3rem)] flex-col rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
-      <div className="px-2 pb-5">
-        <a
-          className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#2f9f4f] hover:text-[#1f2937]"
-          href="/"
-        >
-          <span aria-hidden="true">←</span>
-          <span>LocalSupply</span>
-        </a>
-      </div>
+    <>
+      {/* Desktop sidebar — hidden on mobile */}
+      <aside className="sticky top-6 hidden h-[calc(100vh-3rem)] flex-col rounded-[28px] border border-[#dce5d7] bg-white/95 p-4 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur lg:flex">
+        <div className="px-2 pb-5">
+          <a
+            className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#2f9f4f] hover:text-[#1f2937]"
+            href="/"
+          >
+            <span aria-hidden="true">←</span>
+            <span>LocalSupply</span>
+          </a>
+        </div>
 
-      <nav aria-label="Buyer navigation" className="flex-1 space-y-0.5">
-        {navItems.map((item) => {
+        <nav aria-label="Buyer navigation" className="flex-1 space-y-0.5">
+          {navItems.map((item) => {
+            const isActive = item.id === activeId
+            return (
+              <a
+                key={item.id}
+                aria-current={isActive ? 'page' : undefined}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-[#eef6f0] text-[#1a7a34]'
+                    : 'text-[#4f5d52] hover:bg-[#f6faf5] hover:text-[#1f2b22]'
+                }`}
+                href={item.href}
+              >
+                <span className={`shrink-0 ${isActive ? 'text-[#2f9f4f]' : 'text-[#8a9e8f]'}`}>{item.icon}</span>
+                {item.label}
+              </a>
+            )
+          })}
+        </nav>
+
+        <div className="mt-3 border-t border-[#eef2ec] pt-3 space-y-0.5">
+          <a
+            aria-current={activeId === 'settings' ? 'page' : undefined}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+              activeId === 'settings'
+                ? 'bg-[#eef6f0] text-[#1a7a34]'
+                : 'text-[#4f5d52] hover:bg-[#f6faf5] hover:text-[#1f2b22]'
+            }`}
+            href="/settings"
+          >
+            <span className={`shrink-0 ${activeId === 'settings' ? 'text-[#2f9f4f]' : 'text-[#8a9e8f]'}`}>
+              {settingsIcon}
+            </span>
+            Settings
+          </a>
+          <button
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#7a3a3a] transition-colors hover:bg-[#fff5f5] hover:text-[#9b2c2c]"
+            onClick={handleSignOut}
+            type="button"
+          >
+            <span className="shrink-0 text-[#c07070]">{signOutIcon}</span>
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      {/* Mobile bottom nav — visible only on mobile */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-around border-t border-[#dce5d7] bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Mobile navigation">
+        {mobileNavItems.map((item) => {
           const isActive = item.id === activeId
           return (
             <a
               key={item.id}
-              aria-current={isActive ? 'page' : undefined}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-[#eef6f0] text-[#1a7a34]'
-                  : 'text-[#4f5d52] hover:bg-[#f6faf5] hover:text-[#1f2b22]'
-              }`}
               href={item.href}
+              aria-current={isActive ? 'page' : undefined}
+              className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors ${
+                isActive ? 'text-[#2f9f4f]' : 'text-[#6d7b70]'
+              }`}
             >
-              <span className={`shrink-0 ${isActive ? 'text-[#2f9f4f]' : 'text-[#8a9e8f]'}`}>{item.icon}</span>
-              {item.label}
+              <span className="shrink-0">{item.icon}</span>
+              <span className="truncate">{item.label}</span>
             </a>
           )
         })}
       </nav>
-
-      <div className="mt-3 border-t border-[#eef2ec] pt-3 space-y-0.5">
-        <a
-          aria-current={activeId === 'settings' ? 'page' : undefined}
-          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-            activeId === 'settings'
-              ? 'bg-[#eef6f0] text-[#1a7a34]'
-              : 'text-[#4f5d52] hover:bg-[#f6faf5] hover:text-[#1f2b22]'
-          }`}
-          href="/settings"
-        >
-          <span className={`shrink-0 ${activeId === 'settings' ? 'text-[#2f9f4f]' : 'text-[#8a9e8f]'}`}>
-            {settingsIcon}
-          </span>
-          Settings
-        </a>
-        <button
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#7a3a3a] transition-colors hover:bg-[#fff5f5] hover:text-[#9b2c2c]"
-          onClick={handleSignOut}
-          type="button"
-        >
-          <span className="shrink-0 text-[#c07070]">{signOutIcon}</span>
-          Sign out
-        </button>
-      </div>
-    </aside>
+    </>
   )
 }

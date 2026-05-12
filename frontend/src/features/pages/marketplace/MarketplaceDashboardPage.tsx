@@ -213,6 +213,7 @@ export default function MarketplaceDashboardPage() {
   const [loadingSubstitutions, setLoadingSubstitutions] = useState<Set<string>>(new Set())
   const [hiddenProductIds, setHiddenProductIds] = useState<Set<string>>(new Set())
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [mobileCartOpen, setMobileCartOpen] = useState(false)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   const deferredSearchQuery = useDeferredValue(searchQuery)
@@ -462,7 +463,7 @@ export default function MarketplaceDashboardPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 pb-20 pt-6 sm:px-6 lg:px-8 lg:pb-6">
       <ToastContainer toasts={toasts} />
       <div className="mx-auto grid w-full max-w-[1600px] items-start gap-6 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
         <BuyerSidebar />
@@ -713,7 +714,65 @@ export default function MarketplaceDashboardPage() {
           </div>
         </section>
 
-        <aside className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+        {/* Mobile floating cart button */}
+        {cartCount > 0 && !mobileCartOpen && (
+          <button
+            className="fixed bottom-16 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#2f9f4f] text-white shadow-lg transition hover:bg-[#25813f] xl:hidden"
+            onClick={() => setMobileCartOpen(true)}
+            type="button"
+            aria-label={`Open cart (${cartCount} items)`}
+          >
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+            </svg>
+            <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-white text-[11px] font-bold text-[#2f9f4f] shadow">{cartCount}</span>
+          </button>
+        )}
+
+        {/* Mobile cart overlay */}
+        {mobileCartOpen && (
+          <div className="fixed inset-0 z-50 flex flex-col xl:hidden">
+            <div className="flex-1 bg-black/30" onClick={() => setMobileCartOpen(false)} />
+            <div className="max-h-[75vh] overflow-y-auto rounded-t-[28px] border-t border-[#dce5d7] bg-white pb-20 shadow-[0_-8px_30px_rgba(0,0,0,0.12)]">
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#e5ece2] bg-white px-5 py-4 rounded-t-[28px]">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Your Cart</p>
+                  <p className="text-xs text-[#6d7b70]">{cartCount} item{cartCount !== 1 ? 's' : ''}</p>
+                </div>
+                <button onClick={() => setMobileCartOpen(false)} className="rounded-full p-2 text-[#6d7b70] hover:bg-[#f0f4ee]" type="button" aria-label="Close cart">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="px-5 py-4 space-y-3">
+                {cartItems.map((item) => (
+                  <div className="flex items-start gap-3 rounded-xl border border-[#eef2ec] bg-[#f8fbf7] px-3 py-2.5" key={item.id}>
+                    {item.imageUrl ? (
+                      <img alt={item.name} className="h-10 w-10 shrink-0 rounded-lg object-cover" src={productImageSrc(item.imageUrl) ?? undefined} />
+                    ) : (
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#e5ece2] text-[#8a9e8f]">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M20 7H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" /></svg>
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-semibold text-[#1f2b22]">{item.name}</p>
+                      <p className="text-[11px] text-[#6d7b70]">{item.quantity} × {item.price.toFixed(2)} kr</p>
+                    </div>
+                    <p className="shrink-0 text-xs font-bold text-[#1f2b22]">{(item.price * item.quantity).toFixed(2)} kr</p>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-[#e5ece2] px-5 py-4">
+                <div className="flex items-center justify-between text-sm font-bold text-[#1f2b22]">
+                  <span>Total</span>
+                  <span>{cartTotal.toFixed(2)} kr</span>
+                </div>
+                <a href="/checkout" className="mt-3 block w-full rounded-2xl bg-[#2f9f4f] py-3 text-center text-sm font-semibold text-white hover:bg-[#25813f]">Go to Checkout</a>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <aside className="hidden rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur xl:block">
           <div className="border-b border-[#e5ece2] px-5 py-5">
             <div className="flex items-center justify-between">
               <div>

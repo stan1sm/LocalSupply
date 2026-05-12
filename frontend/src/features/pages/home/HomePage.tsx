@@ -94,6 +94,7 @@ const smartCartFeatures = [
 export default function HomePage() {
   const [loggedInName, setLoggedInName] = useState<string | null>(null)
   const [supplierName, setSupplierName] = useState<string | null>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     function readStorage() {
@@ -134,54 +135,92 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-[#f3f4f6] text-[#1f2937]">
       <section className="mx-auto w-full max-w-6xl px-4 pb-12 pt-5 sm:px-6 lg:px-8">
-        <header className="flex items-center justify-between rounded-xl border border-[#e5e7eb] bg-white/95 px-4 py-3 shadow-sm backdrop-blur-sm">
-          <Link className="inline-flex items-center gap-2.5 text-[15px] font-bold text-[#1f2937] transition hover:text-[#2f9f4f]" href="/">
-            <img src="/icons/localsupply-64.png" alt="LocalSupply" className="h-8 w-8 shrink-0 rounded-lg" />
-            <span>LocalSupply</span>
-          </Link>
+        <header className="rounded-xl border border-[#e5e7eb] bg-white/95 shadow-sm backdrop-blur-sm">
+          <div className="flex items-center justify-between px-4 py-3">
+            <Link className="inline-flex items-center gap-2.5 text-[15px] font-bold text-[#1f2937] transition hover:text-[#2f9f4f]" href="/">
+              <img src="/icons/localsupply-64.png" alt="LocalSupply" className="h-8 w-8 shrink-0 rounded-lg" />
+              <span>LocalSupply</span>
+            </Link>
 
-          <nav className="flex items-center gap-2">
-            {loggedInName ? (
-              <>
-                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/marketplace/dashboard">
-                  My Marketplace
-                </Link>
-                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/settings">
-                  Settings
-                </Link>
-                <button onClick={handleLogout} className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600">
-                  Log out
-                </button>
-              </>
-            ) : supplierName ? (
-              <>
-                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/supplier">
-                  My Dashboard
-                </Link>
-                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/supplier/settings">
-                  Settings
-                </Link>
-                <button onClick={handleSupplierLogout} className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600">
-                  Log out
-                </button>
-              </>
-            ) : (
-              <>
-                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/marketplace/dashboard">
-                  Marketplace
-                </Link>
-                <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/login">
-                  Login
-                </Link>
-                <Link className="rounded-full bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#25813f]" href="/register">
-                  Register
-                </Link>
-                <Link className="hidden rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a] sm:inline-block" href="/supplier/login">
-                  Supplier login
-                </Link>
-              </>
-            )}
-          </nav>
+            {/* Desktop nav */}
+            <nav className="hidden items-center gap-2 sm:flex">
+              {loggedInName ? (
+                <>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/marketplace/dashboard">
+                    My Marketplace
+                  </Link>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/settings">
+                    Settings
+                  </Link>
+                  <button onClick={handleLogout} className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600">
+                    Log out
+                  </button>
+                </>
+              ) : supplierName ? (
+                <>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/supplier">
+                    My Dashboard
+                  </Link>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/supplier/settings">
+                    Settings
+                  </Link>
+                  <button onClick={handleSupplierLogout} className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600">
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/marketplace/dashboard">
+                    Marketplace
+                  </Link>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/login">
+                    Login
+                  </Link>
+                  <Link className="rounded-full bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#25813f]" href="/register">
+                    Register
+                  </Link>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/supplier/login">
+                    Supplier login
+                  </Link>
+                </>
+              )}
+            </nav>
+
+            {/* Mobile hamburger */}
+            <button className="rounded-lg p-2 text-[#374151] hover:bg-[#f3f4f6] sm:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} type="button" aria-label="Toggle menu">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                {mobileMenuOpen
+                  ? <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  : <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />}
+              </svg>
+            </button>
+          </div>
+
+          {/* Mobile dropdown nav */}
+          {mobileMenuOpen && (
+            <nav className="flex flex-col gap-1 border-t border-[#e5e7eb] px-4 py-3 sm:hidden">
+              {loggedInName ? (
+                <>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/marketplace/dashboard" onClick={() => setMobileMenuOpen(false)}>My Marketplace</Link>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/settings" onClick={() => setMobileMenuOpen(false)}>Settings</Link>
+                  <button onClick={() => { handleLogout(); setMobileMenuOpen(false) }} className="rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50">Log out</button>
+                </>
+              ) : supplierName ? (
+                <>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/supplier" onClick={() => setMobileMenuOpen(false)}>My Dashboard</Link>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/supplier/settings" onClick={() => setMobileMenuOpen(false)}>Settings</Link>
+                  <button onClick={() => { handleSupplierLogout(); setMobileMenuOpen(false) }} className="rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50">Log out</button>
+                </>
+              ) : (
+                <>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/marketplace/dashboard" onClick={() => setMobileMenuOpen(false)}>Marketplace</Link>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/login" onClick={() => setMobileMenuOpen(false)}>Login</Link>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-white bg-[#2f9f4f] hover:bg-[#25813f]" href="/register" onClick={() => setMobileMenuOpen(false)}>Register</Link>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/supplier/login" onClick={() => setMobileMenuOpen(false)}>Supplier login</Link>
+                </>
+              )}
+            </nav>
+          )}
         </header>
 
         <div className="mt-6 grid items-center gap-6 rounded-2xl border border-[#e5e7eb] bg-white p-6 shadow-sm sm:mt-8 sm:gap-8 sm:p-8 lg:grid-cols-2">

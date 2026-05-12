@@ -273,7 +273,7 @@ export default function ChatConversationPage({
   const isSupplierView = myType === 'supplier' && supplierSession !== null
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 py-6 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 pb-20 pt-6 sm:px-6 lg:px-8 lg:pb-6">
       <div className="mx-auto grid w-full max-w-[1400px] items-start gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
         {isSupplierView && supplierSession
           ? <SupplierSidebar activeId="chats" supplier={supplierSession} />
