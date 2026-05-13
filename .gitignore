@@ -1,3 +1,6 @@
 CLAUDE.md
 .claude/
 requirements.md
+.env.local
+.vercel/
+backend/coverage/
