@@ -9,6 +9,7 @@ import { getPrismaClient } from '../lib/prisma.js'
 import type { OrderStatus } from '../generated/prisma/enums.js'
 import { createDelivery, parseAddressString } from '../lib/woltDrive.js'
 import { findNearestStoreAddress } from '../lib/storeLocator.js'
+import { MARKETPLACE_SUPPLIER_EMAIL } from '../lib/marketplaceSupplier.js'
 import { requireSupplierAuth } from '../middleware/requireSupplierAuth.js'
 import { requireBuyerAuth } from '../middleware/requireBuyerAuth.js'
 
@@ -143,7 +144,6 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
 
     // Resolve supplier. If a specific supplierId is provided and found, use it.
     // Otherwise fall back to a virtual "Marketplace" supplier for grocery orders.
-    const marketplaceEmail = 'marketplace@localsupply.local'
     let supplier =
       supplierIdInput.length > 0
         ? await prisma.supplier.findUnique({ where: { id: supplierIdInput } })
@@ -151,13 +151,13 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
 
     if (!supplier) {
       supplier = await prisma.supplier.upsert({
-        where: { email: marketplaceEmail },
+        where: { email: MARKETPLACE_SUPPLIER_EMAIL },
         update: {},
         create: {
           businessName: 'Marketplace Store',
           contactName: 'Marketplace',
           phoneNumber: '00000000',
-          email: marketplaceEmail,
+          email: MARKETPLACE_SUPPLIER_EMAIL,
           passwordHash: 'not-used',
           address: 'Virtual marketplace',
         },
@@ -250,6 +250,7 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
               unit: item.unit && item.unit.length > 0 ? item.unit : 'unit',
               price: unitPrice,
               stockQty: 0,
+              approvalStatus: 'APPROVED',
             },
           })
           catalogProductByName.set(catalogName, product)

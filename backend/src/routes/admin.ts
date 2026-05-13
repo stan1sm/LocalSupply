@@ -11,6 +11,7 @@ import { hashPassword, verifyPassword } from '../lib/password.js'
 import { signAdminToken } from '../lib/jwt.js'
 import { requireAdminAuth } from '../middleware/requireAdminAuth.js'
 import { sendSupplierVerificationApprovedEmail, sendSupplierVerificationRejectedEmail } from '../lib/email.js'
+import { MARKETPLACE_SUPPLIER_EMAIL } from '../lib/marketplaceSupplier.js'
 
 /**
  * Express router providing admin panel endpoints.
@@ -308,8 +309,19 @@ adminRouter.get('/products', requireAdminAuth, async (req, res) => {
   const status = typeof req.query.status === 'string' ? req.query.status : ''
   try {
     const prisma = getPrismaClient()
+    const approvalFilter = status === 'PENDING' || status === 'APPROVED' || status === 'REJECTED'
+      ? (status as 'PENDING' | 'APPROVED' | 'REJECTED')
+      : null
+    // Kassal catalog checkout creates Product stubs under the synthetic marketplace supplier;
+    // those are not supplier-submitted listings and must not appear in the moderation queue.
+    const where =
+      approvalFilter === 'PENDING'
+        ? { approvalStatus: 'PENDING' as const, supplier: { email: { not: MARKETPLACE_SUPPLIER_EMAIL } } }
+        : approvalFilter
+          ? { approvalStatus: approvalFilter }
+          : {}
     const products = await prisma.product.findMany({
-      where: status ? { approvalStatus: status as 'PENDING' | 'APPROVED' | 'REJECTED' } : {},
+      where,
       orderBy: { createdAt: 'desc' },
       include: { supplier: { select: { id: true, businessName: true } } },
       take: 200,
