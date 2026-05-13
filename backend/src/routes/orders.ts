@@ -198,18 +198,19 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
       }
     }
 
-    // Pre-fetch all catalog product stubs in one query to avoid N+1 inside the loop
-    const neededCatalogNames = catalogProductIds
-      .map((id) => catalogNameMap.get(id) ?? null)
-      .filter((n): n is string => n !== null)
-
+    // Pre-fetch catalog product stubs keyed by catalogProductId stored in description
+    // (format: "catalog:<catalogProductId>"). This avoids false matches when two catalog
+    // products share the same display name.
+    const catalogStubKeys = catalogProductIds.map((id) => `catalog:${id}`)
     const existingCatalogProducts =
-      neededCatalogNames.length > 0
+      catalogStubKeys.length > 0
         ? await prisma.product.findMany({
-            where: { supplierId: supplier.id, name: { in: neededCatalogNames } },
+            where: { supplierId: supplier.id, description: { in: catalogStubKeys } },
           })
         : []
-    const catalogProductByName = new Map(existingCatalogProducts.map((p) => [p.name, p]))
+    const catalogProductByCatalogId = new Map(
+      existingCatalogProducts.map((p) => [p.description?.replace('catalog:', '') ?? '', p]),
+    )
 
     let subtotal = 0
     const orderItemsData: { productId: string; quantity: number; unitPrice: number }[] = []
@@ -238,22 +239,24 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
         const unitPrice = catalogPriceMap.get(item.catalogProductId)
         if (!unitPrice) continue // product not found in this store's catalog
 
-        // Upsert a thin Product record so OrderItem has a valid FK
+        // Upsert a thin Product record so OrderItem has a valid FK.
+        // The description field stores "catalog:<catalogProductId>" as a unique lookup key,
+        // preventing collisions when two catalog products share the same display name.
         const catalogName = catalogNameMap.get(item.catalogProductId) ?? item.name ?? 'Catalog item'
-        let product = catalogProductByName.get(catalogName) ?? null
+        let product = catalogProductByCatalogId.get(item.catalogProductId) ?? null
         if (!product) {
           product = await prisma.product.create({
             data: {
               supplierId: supplier.id,
               name: catalogName,
-              description: null,
+              description: `catalog:${item.catalogProductId}`,
               unit: item.unit && item.unit.length > 0 ? item.unit : 'unit',
               price: unitPrice,
               stockQty: 0,
               approvalStatus: 'APPROVED',
             },
           })
-          catalogProductByName.set(catalogName, product)
+          catalogProductByCatalogId.set(item.catalogProductId, product)
         }
 
         subtotal += unitPrice * item.quantity
@@ -310,40 +313,43 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
       resolvedAddressPhone = addr.phone
     }
 
-    const order = await prisma.order.create({
-      data: {
-        buyerId,
-        supplierId: supplier.id,
-        subtotal: roundedSubtotal,
-        deliveryFee: roundedDeliveryFee,
-        total,
-        notes: notes || null,
-        paymentMethod: paymentMethod || null,
-        ...(deliveryAddressId ? { deliveryAddressId } : {}),
-        items: {
-          createMany: {
-            data: orderItemsData,
+    const order = await prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          buyerId,
+          supplierId: supplier.id,
+          subtotal: roundedSubtotal,
+          deliveryFee: roundedDeliveryFee,
+          total,
+          notes: notes || null,
+          paymentMethod: paymentMethod || null,
+          ...(deliveryAddressId ? { deliveryAddressId } : {}),
+          items: {
+            createMany: {
+              data: orderItemsData,
+            },
           },
         },
-      },
-      include: {
-        items: { include: { product: true } },
-        supplier: true,
-        buyer: true,
-      },
-    })
+        include: {
+          items: { include: { product: true } },
+          supplier: true,
+          buyer: true,
+        },
+      })
 
-    // Decrement stock for supplier-owned products (best-effort, floor at 0)
-    if (stockDecrements.length > 0) {
-      await Promise.all(
-        stockDecrements.map(({ id, qty }) =>
-          prisma.product.updateMany({
-            where: { id, stockQty: { gt: 0 } },
-            data: { stockQty: { decrement: qty } },
-          }),
-        ),
-      )
-    }
+      if (stockDecrements.length > 0) {
+        await Promise.all(
+          stockDecrements.map(({ id, qty }) =>
+            tx.product.updateMany({
+              where: { id, stockQty: { gt: 0 } },
+              data: { stockQty: { decrement: qty } },
+            }),
+          ),
+        )
+      }
+
+      return created
+    })
 
     // Attempt Wolt delivery creation (best-effort — order is already saved)
     let woltDeliveryId: string | null = null

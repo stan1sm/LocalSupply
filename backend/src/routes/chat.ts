@@ -300,17 +300,7 @@ chatRouter.get('/conversations/:id/messages', async (req, res) => {
   try {
     const prisma = getPrismaClient()
 
-    const [conversation, messages] = await Promise.all([
-      prisma.conversation.findUnique({ where: { id } }),
-      prisma.message.findMany({
-        where: {
-          conversationId: id,
-          ...(after && !Number.isNaN(after.getTime()) ? { createdAt: { gt: after } } : {}),
-        },
-        orderBy: { createdAt: 'asc' },
-        take: 200,
-      }),
-    ])
+    const conversation = await prisma.conversation.findUnique({ where: { id } })
 
     if (!conversation) {
       res.status(404).json({ message: 'Conversation not found.' })
@@ -325,6 +315,15 @@ chatRouter.get('/conversations/:id/messages', async (req, res) => {
       res.status(403).json({ message: 'Forbidden.' })
       return
     }
+
+    const messages = await prisma.message.findMany({
+      where: {
+        conversationId: id,
+        ...(after && !Number.isNaN(after.getTime()) ? { createdAt: { gt: after } } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+    })
 
     res.status(200).json(messages)
   } catch (error) {

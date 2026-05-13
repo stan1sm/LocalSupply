@@ -441,9 +441,13 @@ authRouter.get('/verify-email', async (req, res) => {
  */
 authRouter.get('/addresses', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
-  const prisma = getPrismaClient()
-  const addresses = await prisma.userAddress.findMany({ where: { userId: buyerId }, orderBy: { createdAt: 'asc' } })
-  res.json(addresses)
+  try {
+    const prisma = getPrismaClient()
+    const addresses = await prisma.userAddress.findMany({ where: { userId: buyerId }, orderBy: { createdAt: 'asc' } })
+    res.json(addresses)
+  } catch {
+    res.status(503).json({ message: 'Unable to load addresses right now.' })
+  }
 })
 
 /**
@@ -471,14 +475,14 @@ authRouter.post('/addresses', requireBuyerAuth, async (req, res) => {
   }
 
   const prisma = getPrismaClient()
-  const existing = await prisma.userAddress.count({ where: { userId: buyerId } })
-
-  if (makeDefault || existing === 0) {
-    await prisma.userAddress.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
-  }
-
-  const created = await prisma.userAddress.create({
-    data: { userId: buyerId, address, label: label || null, phone: rawPhone || null, isDefault: makeDefault || existing === 0 },
+  const created = await prisma.$transaction(async (tx) => {
+    const existing = await tx.userAddress.count({ where: { userId: buyerId } })
+    if (makeDefault || existing === 0) {
+      await tx.userAddress.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
+    }
+    return tx.userAddress.create({
+      data: { userId: buyerId, address, label: label || null, phone: rawPhone || null, isDefault: makeDefault || existing === 0 },
+    })
   })
   res.status(201).json(created)
 })
@@ -508,18 +512,19 @@ authRouter.patch('/addresses/:id', requireBuyerAuth, async (req, res) => {
     }
   }
 
-  if (body.isDefault === true) {
-    await prisma.userAddress.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
-  }
-
-  const updated = await prisma.userAddress.update({
-    where: { id },
-    data: {
-      ...(typeof body.address === 'string' ? { address: body.address.trim() } : {}),
-      ...(typeof body.label === 'string' ? { label: body.label.trim() || null } : {}),
-      ...(typeof body.phone === 'string' ? { phone: body.phone.trim() || null } : {}),
-      ...(body.isDefault === true ? { isDefault: true } : {}),
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    if (body.isDefault === true) {
+      await tx.userAddress.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
+    }
+    return tx.userAddress.update({
+      where: { id },
+      data: {
+        ...(typeof body.address === 'string' ? { address: body.address.trim() } : {}),
+        ...(typeof body.label === 'string' ? { label: body.label.trim() || null } : {}),
+        ...(typeof body.phone === 'string' ? { phone: body.phone.trim() || null } : {}),
+        ...(body.isDefault === true ? { isDefault: true } : {}),
+      },
+    })
   })
   res.json(updated)
 })
@@ -561,9 +566,13 @@ authRouter.delete('/addresses/:id', requireBuyerAuth, async (req, res) => {
  */
 authRouter.get('/payment-methods', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
-  const prisma = getPrismaClient()
-  const methods = await prisma.userPaymentMethod.findMany({ where: { userId: buyerId }, orderBy: { createdAt: 'asc' } })
-  res.json(methods)
+  try {
+    const prisma = getPrismaClient()
+    const methods = await prisma.userPaymentMethod.findMany({ where: { userId: buyerId }, orderBy: { createdAt: 'asc' } })
+    res.json(methods)
+  } catch {
+    res.status(503).json({ message: 'Unable to load payment methods right now.' })
+  }
 })
 
 /**
@@ -591,22 +600,22 @@ authRouter.post('/payment-methods', requireBuyerAuth, async (req, res) => {
   }
 
   const prisma = getPrismaClient()
-  const existing = await prisma.userPaymentMethod.count({ where: { userId: buyerId } })
-
-  if (makeDefault || existing === 0) {
-    await prisma.userPaymentMethod.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
-  }
-
-  const created = await prisma.userPaymentMethod.create({
-    data: {
-      userId: buyerId,
-      cardholderName,
-      lastFour,
-      maskedNumber: maskedNumber || `•••• •••• •••• ${lastFour}`,
-      expiry,
-      cardType: cardType || null,
-      isDefault: makeDefault || existing === 0,
-    },
+  const created = await prisma.$transaction(async (tx) => {
+    const existing = await tx.userPaymentMethod.count({ where: { userId: buyerId } })
+    if (makeDefault || existing === 0) {
+      await tx.userPaymentMethod.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
+    }
+    return tx.userPaymentMethod.create({
+      data: {
+        userId: buyerId,
+        cardholderName,
+        lastFour,
+        maskedNumber: maskedNumber || `•••• •••• •••• ${lastFour}`,
+        expiry,
+        cardType: cardType || null,
+        isDefault: makeDefault || existing === 0,
+      },
+    })
   })
   res.status(201).json(created)
 })
@@ -628,13 +637,14 @@ authRouter.patch('/payment-methods/:id', requireBuyerAuth, async (req, res) => {
   const existing = await prisma.userPaymentMethod.findUnique({ where: { id } })
   if (!existing || existing.userId !== buyerId) { res.status(404).json({ message: 'Payment method not found.' }); return }
 
-  if (body.isDefault === true) {
-    await prisma.userPaymentMethod.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
-  }
-
-  const updated = await prisma.userPaymentMethod.update({
-    where: { id },
-    data: { ...(body.isDefault === true ? { isDefault: true } : {}) },
+  const updated = await prisma.$transaction(async (tx) => {
+    if (body.isDefault === true) {
+      await tx.userPaymentMethod.updateMany({ where: { userId: buyerId, isDefault: true }, data: { isDefault: false } })
+    }
+    return tx.userPaymentMethod.update({
+      where: { id },
+      data: { ...(body.isDefault === true ? { isDefault: true } : {}) },
+    })
   })
   res.json(updated)
 })

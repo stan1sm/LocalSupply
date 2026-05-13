@@ -80,14 +80,17 @@ adminRouter.post('/seed', async (req, res) => {
 
   try {
     const prisma = getPrismaClient()
-    const existing = await prisma.admin.findFirst()
-    if (existing) {
+    const passwordHash = await hashPassword(password)
+    const admin = await prisma.$transaction(async (tx) => {
+      const existing = await tx.admin.findFirst()
+      if (existing) return null
+      return tx.admin.create({ data: { email, name, passwordHash } })
+    }, { isolationLevel: 'Serializable' })
+
+    if (!admin) {
       res.status(409).json({ message: 'Admin already exists. Use login.' })
       return
     }
-
-    const passwordHash = await hashPassword(password)
-    const admin = await prisma.admin.create({ data: { email, name, passwordHash } })
     res.status(201).json({ admin: { id: admin.id, email: admin.email, name: admin.name } })
   } catch (error) {
     console.error('Admin seed failed', error)
