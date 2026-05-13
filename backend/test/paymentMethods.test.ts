@@ -23,18 +23,22 @@ const {
 }))
 
 vi.mock('../src/lib/prisma.js', () => ({
-  getPrismaClient: () => ({
-    userPaymentMethod: {
-      findMany: findManyPaymentMock,
-      count: countPaymentMock,
-      create: createPaymentMock,
-      findUnique: findUniquePaymentMock,
-      update: updatePaymentMock,
-      updateMany: updateManyPaymentMock,
-      delete: deletePaymentMock,
-      findFirst: findFirstPaymentMock,
-    },
-  }),
+  getPrismaClient: () => {
+    const client = {
+      userPaymentMethod: {
+        findMany: findManyPaymentMock,
+        count: countPaymentMock,
+        create: createPaymentMock,
+        findUnique: findUniquePaymentMock,
+        update: updatePaymentMock,
+        updateMany: updateManyPaymentMock,
+        delete: deletePaymentMock,
+        findFirst: findFirstPaymentMock,
+      },
+      $transaction: (callback: (tx: unknown) => Promise<unknown>) => callback(client),
+    }
+    return client
+  },
 }))
 
 import app from '../src/app.js'

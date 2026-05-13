@@ -23,18 +23,22 @@ const {
 }))
 
 vi.mock('../src/lib/prisma.js', () => ({
-  getPrismaClient: () => ({
-    userAddress: {
-      findMany: findManyAddressMock,
-      count: countAddressMock,
-      create: createAddressMock,
-      findUnique: findUniqueAddressMock,
-      update: updateAddressMock,
-      updateMany: updateManyAddressMock,
-      delete: deleteAddressMock,
-      findFirst: findFirstAddressMock,
-    },
-  }),
+  getPrismaClient: () => {
+    const client = {
+      userAddress: {
+        findMany: findManyAddressMock,
+        count: countAddressMock,
+        create: createAddressMock,
+        findUnique: findUniqueAddressMock,
+        update: updateAddressMock,
+        updateMany: updateManyAddressMock,
+        delete: deleteAddressMock,
+        findFirst: findFirstAddressMock,
+      },
+      $transaction: (callback: (tx: unknown) => Promise<unknown>) => callback(client),
+    }
+    return client
+  },
 }))
 
 import app from '../src/app.js'
