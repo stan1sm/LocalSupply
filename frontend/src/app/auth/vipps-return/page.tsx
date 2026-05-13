@@ -22,29 +22,30 @@ function VippsReturnContent() {
   const params = useSearchParams()
 
   useEffect(() => {
-    const token = params.get('token')
-    const userRaw = params.get('user')
+    const code = params.get('code')
     const error = params.get('error')
 
-    if (error || !token || !userRaw) {
+    if (error || !code) {
       router.replace(`/login?error=${error ?? 'vipps_failed'}`)
       return
     }
 
-    try {
-      const user = JSON.parse(decodeURIComponent(userRaw)) as {
-        id: string
-        firstName: string
-        lastName: string
-        email: string
-      }
-      window.localStorage.removeItem('localsupply-marketplace-cart')
-      window.localStorage.setItem('localsupply-token', token)
-      window.localStorage.setItem('localsupply-user', JSON.stringify(user))
-      router.replace('/marketplace/dashboard')
-    } catch {
-      router.replace('/login?error=vipps_failed')
-    }
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001'
+    fetch(`${apiBase}/api/auth/vipps/session?code=${encodeURIComponent(code)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: { token: string; user: string }) => {
+        const user = JSON.parse(data.user) as {
+          id: string
+          firstName: string
+          lastName: string
+          email: string
+        }
+        window.localStorage.removeItem('localsupply-marketplace-cart')
+        window.localStorage.setItem('localsupply-token', data.token)
+        window.localStorage.setItem('localsupply-user', JSON.stringify(user))
+        router.replace('/marketplace/dashboard')
+      })
+      .catch(() => router.replace('/login?error=vipps_failed'))
   }, [params, router])
 
   return <Spinner />

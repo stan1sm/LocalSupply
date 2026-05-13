@@ -167,9 +167,13 @@ export default function SupplierProductsPage() {
 
     setIsPlacingOrder(true)
     try {
+      const buyerToken = window.localStorage.getItem('localsupply-token')
       const response = await fetch(buildApiUrl('/api/orders'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(buyerToken ? { Authorization: `Bearer ${buyerToken}` } : {}),
+        },
         body: JSON.stringify({
           buyerId,
           supplierId: supplier.id,

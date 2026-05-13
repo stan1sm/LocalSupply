@@ -7,7 +7,7 @@ import { Router } from 'express'
 import { sendBuyerOrderStatusEmail, sendSupplierOrderEmail } from '../lib/email.js'
 import { getPrismaClient } from '../lib/prisma.js'
 import type { OrderStatus } from '../generated/prisma/enums.js'
-import { createDelivery, parseAddressString } from '../lib/woltDrive.js'
+import { createDelivery, getDeliveryEstimate, parseAddressString } from '../lib/woltDrive.js'
 import { findNearestStoreAddress } from '../lib/storeLocator.js'
 import { MARKETPLACE_SUPPLIER_EMAIL } from '../lib/marketplaceSupplier.js'
 import { requireSupplierAuth } from '../middleware/requireSupplierAuth.js'
@@ -87,7 +87,7 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
   const buyerId = res.locals.buyerId as string
   const supplierIdInput = typeof body.supplierId === 'string' ? body.supplierId.trim() : ''
   const notes = typeof body.notes === 'string' ? body.notes.trim() : ''
-  const deliveryFee = typeof body.deliveryFee === 'number' && Number.isFinite(body.deliveryFee) ? body.deliveryFee : 0
+  const deliveryAddress = typeof body.deliveryAddress === 'string' ? body.deliveryAddress.trim() : ''
   // storeCode is required when catalog items are included so prices can be validated server-side
   const storeCode = typeof body.storeCode === 'string' ? body.storeCode.trim() : ''
   const VALID_PAYMENT_METHODS = ['vipps', 'card', 'invoice'] as const
@@ -266,6 +266,31 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
       return
     }
 
+    // Resolve pickup address for server-side delivery fee computation
+    let pickupAddr: ReturnType<typeof parseAddressString> | null = supplier.address
+      ? parseAddressString(supplier.address)
+      : null
+
+    if (!pickupAddr && storeCode && deliveryAddress) {
+      const nearest = await findNearestStoreAddress(storeCode, deliveryAddress)
+      if (nearest) pickupAddr = nearest
+    }
+
+    if (!pickupAddr) {
+      const fallback = process.env.WOLT_DEFAULT_PICKUP_ADDRESS ?? ''
+      if (fallback) pickupAddr = parseAddressString(fallback)
+    }
+
+    // Compute delivery fee server-side — never trust the client-provided value
+    let deliveryFee = 0
+    if (deliveryAddress && pickupAddr) {
+      const estimate = await getDeliveryEstimate({
+        pickup: { ...pickupAddr },
+        dropoff: parseAddressString(deliveryAddress),
+      })
+      if (estimate.ok) deliveryFee = estimate.fee
+    }
+
     const roundedSubtotal = Math.round(subtotal * 100) / 100
     const roundedDeliveryFee = Math.max(0, Math.round(deliveryFee * 100) / 100)
     const total = Math.round((roundedSubtotal + roundedDeliveryFee) * 100) / 100
@@ -324,24 +349,6 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
     let woltDeliveryId: string | null = null
     let woltTrackingUrl: string | null = null
     let woltStatus: string | null = null
-
-    const deliveryAddress = typeof body.deliveryAddress === 'string' ? body.deliveryAddress.trim() : ''
-
-    // For catalog store orders, find the nearest physical store to the delivery address.
-    // For supplier orders, use the supplier's registered address.
-    let pickupAddr = supplier.address
-      ? parseAddressString(supplier.address)
-      : null
-
-    if (!pickupAddr && storeCode && deliveryAddress) {
-      const nearest = await findNearestStoreAddress(storeCode, deliveryAddress)
-      if (nearest) pickupAddr = nearest
-    }
-
-    if (!pickupAddr) {
-      const fallback = process.env.WOLT_DEFAULT_PICKUP_ADDRESS ?? ''
-      if (fallback) pickupAddr = parseAddressString(fallback)
-    }
 
     if (deliveryAddress && pickupAddr) {
       const woltResult = await createDelivery({

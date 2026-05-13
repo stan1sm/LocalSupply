@@ -17,6 +17,10 @@ import { buildAuthorizationUrl, exchangeCode, getUserInfo } from '../lib/vippsLo
 /** Express router providing buyer authentication and account management endpoints. */
 const authRouter = Router()
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
+
+// Short-lived one-time session store for the Vipps OAuth callback.
+// Keys are UUID codes; entries expire after 60 seconds.
+const vippsSessionStore = new Map<string, { token: string; user: string; expiresAt: number }>()
 const EMAIL_NOT_VERIFIED_MESSAGE = 'Please verify your email before signing in.'
 const RESEND_VERIFICATION_MESSAGE = 'If an unverified account exists for this email, a verification email has been sent.'
 
@@ -861,19 +865,43 @@ authRouter.get('/vipps/callback', async (req, res) => {
     }
 
     const token = signBuyerToken(user.id)
-    const userParam = encodeURIComponent(JSON.stringify({
+    const userParam = JSON.stringify({
       id: user.id,
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
-    }))
+    })
 
-    res.redirect(`${frontendUrl}/auth/vipps-return?token=${token}&user=${userParam}`)
+    // Store token+user in a short-lived one-time store and redirect with only an opaque code.
+    // This keeps the JWT out of browser history, server logs, and Referer headers.
+    const sessionCode = randomBytes(16).toString('hex')
+    vippsSessionStore.set(sessionCode, { token, user: userParam, expiresAt: Date.now() + 60_000 })
+
+    res.redirect(`${frontendUrl}/auth/vipps-return?code=${sessionCode}`)
   } catch (err) {
     const detail = err instanceof Error ? err.message.slice(0, 120) : 'unknown'
     console.error('Vipps callback failed', err)
     res.redirect(`${frontendUrl}/login?error=vipps_failed&detail=${encodeURIComponent(detail)}`)
   }
+})
+
+// GET /api/auth/vipps/session?code=<code>
+// Exchanges a one-time Vipps session code for the buyer JWT and user object.
+// The entry is deleted on first use and expires after 60 seconds.
+authRouter.get('/vipps/session', (req, res) => {
+  const code = typeof req.query.code === 'string' ? req.query.code.trim() : ''
+  if (!code) {
+    res.status(400).json({ message: 'Missing code.' })
+    return
+  }
+  const entry = vippsSessionStore.get(code)
+  if (!entry || entry.expiresAt < Date.now()) {
+    vippsSessionStore.delete(code)
+    res.status(401).json({ message: 'Invalid or expired session code.' })
+    return
+  }
+  vippsSessionStore.delete(code)
+  res.json({ token: entry.token, user: entry.user })
 })
 
 /**
