@@ -1,6 +1,9 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
+
+const BUYER_TOKEN_KEY = 'localsupply-token'
 
 /**
  * @module BuyerSidebar
@@ -115,10 +118,11 @@ function handleSignOut() {
 }
 
 /**
- * Sidebar navigation for authenticated buyers.
+ * Sidebar navigation for the buyer marketplace area.
  *
  * Renders the main buyer navigation links (Marketplace, Suppliers, Cart, Orders,
- * Chats, Delivery Tracking) followed by a Settings link and a Sign-out button.
+ * Chats, Delivery Tracking) followed by Settings. **Sign out** is shown only when
+ * a buyer JWT is present (`localsupply-token`).
  * The currently active item is highlighted and receives `aria-current="page"`.
  * Signing out clears the `localsupply-user` and `localsupply-token` keys from
  * `localStorage` before redirecting to `/login`.
@@ -139,6 +143,21 @@ const mobileNavItems = [
 export default function BuyerSidebar() {
   const pathname = usePathname()
   const activeId = getActiveId(pathname)
+  const [hasBuyerSession, setHasBuyerSession] = useState(false)
+
+  useEffect(() => {
+    function readSession() {
+      try {
+        const token = window.localStorage.getItem(BUYER_TOKEN_KEY)
+        setHasBuyerSession(Boolean(token && token.trim().length > 0))
+      } catch {
+        setHasBuyerSession(false)
+      }
+    }
+    readSession()
+    window.addEventListener('storage', readSession)
+    return () => window.removeEventListener('storage', readSession)
+  }, [])
 
   return (
     <>
@@ -190,14 +209,16 @@ export default function BuyerSidebar() {
             </span>
             Settings
           </a>
-          <button
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#7a3a3a] transition-colors hover:bg-[#fff5f5] hover:text-[#9b2c2c]"
-            onClick={handleSignOut}
-            type="button"
-          >
-            <span className="shrink-0 text-[#c07070]">{signOutIcon}</span>
-            Sign out
-          </button>
+          {hasBuyerSession ? (
+            <button
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#7a3a3a] transition-colors hover:bg-[#fff5f5] hover:text-[#9b2c2c]"
+              onClick={handleSignOut}
+              type="button"
+            >
+              <span className="shrink-0 text-[#c07070]">{signOutIcon}</span>
+              Sign out
+            </button>
+          ) : null}
         </div>
       </aside>
 

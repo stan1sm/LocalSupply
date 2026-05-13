@@ -504,9 +504,15 @@ export default function MyCartPage() {
                   value={intentText}
                 />
                 <button
-                  className="mt-2 inline-flex items-center justify-center rounded-2xl bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25813f] sm:mt-0"
-                  disabled={!isAiLoggedIn || isPlanningIntent || !intentText.trim()}
-                  onClick={planIntentCart}
+                  className="mt-2 inline-flex items-center justify-center rounded-2xl bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#2f9f4f] sm:mt-0"
+                  disabled={isAiLoggedIn ? isPlanningIntent || !intentText.trim() : false}
+                  onClick={() => {
+                    if (!isAiLoggedIn) {
+                      window.location.href = '/login'
+                      return
+                    }
+                    void planIntentCart()
+                  }}
                   type="button"
                 >
                   {!isAiLoggedIn ? 'Login to use AI features' : isPlanningIntent ? 'Planning…' : 'Plan meal'}
