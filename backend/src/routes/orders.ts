@@ -135,7 +135,7 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
 
   try {
     const prisma = getPrismaClient()
-    const [buyer] = await Promise.all([prisma.user.findUnique({ where: { id: buyerId } })])
+    const buyer = await prisma.user.findUnique({ where: { id: buyerId } })
 
     if (!buyer) {
       res.status(404).json({ message: 'Buyer not found.' })

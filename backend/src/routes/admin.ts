@@ -125,8 +125,8 @@ adminRouter.get('/suppliers', requireAdminAuth, async (_req, res) => {
       verificationRejectedReason: s.verificationRejectedReason,
       showInMarketplace: s.showInMarketplace,
       createdAt: s.createdAt,
-      productCount: (s as any)._count.products,
-      orderCount: (s as any)._count.orders,
+      productCount: s._count.products,
+      orderCount: s._count.orders,
     })))
   } catch (error) {
     console.error('Admin get suppliers failed', error)
@@ -239,7 +239,7 @@ adminRouter.get('/users', requireAdminAuth, async (_req, res) => {
       email: u.email,
       emailVerified: u.emailVerified,
       createdAt: u.createdAt,
-      orderCount: (u as any)._count.orders,
+      orderCount: u._count.orders,
     })))
   } catch (error) {
     console.error('Admin get users failed', error)
@@ -279,12 +279,15 @@ adminRouter.delete('/users/:id', requireAdminAuth, async (req, res) => {
  * @route {GET} /orders
  * @access {authenticated}
  */
-adminRouter.get('/orders', requireAdminAuth, async (_req, res) => {
+adminRouter.get('/orders', requireAdminAuth, async (req, res) => {
+  const limit = Math.min(parseInt(String(req.query.limit ?? ''), 10) || 200, 1000)
+  const offset = parseInt(String(req.query.offset ?? ''), 10) || 0
   try {
     const prisma = getPrismaClient()
     const orders = await prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
-      take: 200,
+      take: limit,
+      skip: offset,
       include: {
         buyer: { select: { firstName: true, lastName: true, email: true } },
         supplier: { select: { businessName: true } },
@@ -299,7 +302,7 @@ adminRouter.get('/orders', requireAdminAuth, async (_req, res) => {
       createdAt: o.createdAt,
       buyer: o.buyer,
       supplierName: o.supplier.businessName,
-      itemCount: (o as any)._count.items,
+      itemCount: o._count.items,
       woltStatus: o.woltStatus,
     })))
   } catch (error) {
@@ -310,6 +313,8 @@ adminRouter.get('/orders', requireAdminAuth, async (_req, res) => {
 
 adminRouter.get('/products', requireAdminAuth, async (req, res) => {
   const status = typeof req.query.status === 'string' ? req.query.status : ''
+  const limit = Math.min(parseInt(String(req.query.limit ?? ''), 10) || 200, 1000)
+  const offset = parseInt(String(req.query.offset ?? ''), 10) || 0
   try {
     const prisma = getPrismaClient()
     const approvalFilter = status === 'PENDING' || status === 'APPROVED' || status === 'REJECTED'
@@ -327,7 +332,8 @@ adminRouter.get('/products', requireAdminAuth, async (req, res) => {
       where,
       orderBy: { createdAt: 'desc' },
       include: { supplier: { select: { id: true, businessName: true } } },
-      take: 200,
+      take: limit,
+      skip: offset,
     })
     res.json(products.map((p) => ({
       id: p.id,
@@ -353,6 +359,10 @@ adminRouter.patch('/products/:productId/approve', requireAdminAuth, async (req, 
     await prisma.product.update({ where: { id: productId }, data: { approvalStatus: 'APPROVED' } })
     res.json({ ok: true })
   } catch (error) {
+    if ((error as { code?: string }).code === 'P2025') {
+      res.status(404).json({ message: 'Product not found.' })
+      return
+    }
     console.error('Admin approve product failed', error)
     res.status(503).json({ message: 'Unable to approve product right now.' })
   }
@@ -365,6 +375,10 @@ adminRouter.patch('/products/:productId/reject', requireAdminAuth, async (req, r
     await prisma.product.update({ where: { id: productId }, data: { approvalStatus: 'REJECTED' } })
     res.json({ ok: true })
   } catch (error) {
+    if ((error as { code?: string }).code === 'P2025') {
+      res.status(404).json({ message: 'Product not found.' })
+      return
+    }
     console.error('Admin reject product failed', error)
     res.status(503).json({ message: 'Unable to reject product right now.' })
   }

@@ -229,13 +229,16 @@ suppliersRouter.get('/:supplierId/products', async (req, res) => {
   // Allow the owning supplier to see all their products (including pending/rejected).
   // Everyone else only sees approved, active products.
   let isOwner = false
-  try {
-    const token = (req.headers.authorization ?? '').replace('Bearer ', '')
-    if (token) {
-      const payload = verifySupplierToken(token)
+  const rawToken = (req.headers.authorization ?? '').replace('Bearer ', '').trim()
+  if (rawToken) {
+    try {
+      const payload = verifySupplierToken(rawToken)
       isOwner = payload?.supplierId === supplierId
+    } catch {
+      res.status(401).json({ message: 'Invalid or expired token.' })
+      return
     }
-  } catch { /* unauthenticated */ }
+  }
 
   try {
     const prisma = getPrismaClient()
@@ -624,9 +627,21 @@ suppliersRouter.put('/:supplierId/profile', requireSupplierAuth, async (req, res
     return trimmed.slice(0, maxLength)
   }
 
+  function asHttpUrl(value: unknown, maxLength: number): string | null {
+    const str = asString(value, maxLength)
+    if (!str) return null
+    try {
+      const parsed = new URL(str)
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null
+      return str
+    } catch {
+      return null
+    }
+  }
+
   const data: Record<string, unknown> = {
-    logoUrl: asString(body.logoUrl, 2048),
-    heroImageUrl: asString(body.heroImageUrl, 2048),
+    logoUrl: asHttpUrl(body.logoUrl, 2048),
+    heroImageUrl: asHttpUrl(body.heroImageUrl, 2048),
     tagline: asString(body.tagline, 160),
     description: asString(body.description, 4000),
     storeType: asString(body.storeType, 80),
