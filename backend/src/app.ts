@@ -24,7 +24,7 @@ const configuredOrigins = (process.env.CORS_ORIGINS ?? '')
   .map((origin) => origin.trim())
   .filter(Boolean)
 
-const allowVercelPreviews = (process.env.CORS_ALLOW_VERCEL_PREVIEWS ?? 'true').toLowerCase() !== 'false'
+const allowVercelPreviews = (process.env.CORS_ALLOW_VERCEL_PREVIEWS ?? 'false').toLowerCase() !== 'false'
 const allowedOrigins = new Set([...localDevOrigins, ...configuredOrigins])
 
 /**
@@ -123,6 +123,7 @@ app.use('/api/suppliers/register', authLimiter)
 app.use('/api/admin/login', authLimiter)
 app.use('/api/auth/forgot-password', authLimiter)
 app.use('/api/auth/reset-password', authLimiter)
+app.use('/api/auth/vipps', authLimiter)
 app.use('/api/products', searchLimiter)
 app.use('/api/orders', orderLimiter)
 app.use('/api/suppliers', uploadLimiter)

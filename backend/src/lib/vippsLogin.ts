@@ -57,7 +57,6 @@ export function buildAuthorizationUrl(state: string, redirectUri: string): strin
  * @throws {Error} If the token endpoint responds with a non-OK HTTP status.
  */
 export async function exchangeCode(code: string, redirectUri: string): Promise<string> {
-  console.log(`[vipps] exchangeCode: client_id set=${Boolean(CLIENT_ID)}, client_secret set=${Boolean(CLIENT_SECRET)}, base_url=${VIPPS_BASE_URL}, redirect_uri=${redirectUri}`)
   const credentials = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')
   const body = new URLSearchParams({
     grant_type: 'authorization_code',

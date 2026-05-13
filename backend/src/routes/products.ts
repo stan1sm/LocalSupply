@@ -3,6 +3,7 @@
  * Express router for the product catalog, search, and sync operations.
  * All routes are mounted under /api/products.
  */
+import crypto from 'crypto'
 import { Router } from 'express'
 import { syncCatalog } from '../lib/catalogSync.js'
 import { getPrismaClient } from '../lib/prisma.js'
@@ -737,10 +738,19 @@ productsRouter.get('/:productId/substitutions', async (req, res) => {
  *       catalog.
  */
 productsRouter.post('/sync', async (req, res) => {
-  const configuredSecret = process.env.CATALOG_SYNC_SECRET?.trim()
-  const providedSecret = req.get('x-catalog-sync-secret')?.trim()
+  const configuredSecret = process.env.CATALOG_SYNC_SECRET?.trim() ?? ''
+  const providedSecret = req.get('x-catalog-sync-secret')?.trim() ?? ''
 
-  if (!configuredSecret || !providedSecret || providedSecret !== configuredSecret) {
+  let authorized = false
+  if (configuredSecret && providedSecret && configuredSecret.length === providedSecret.length) {
+    try {
+      authorized = crypto.timingSafeEqual(Buffer.from(configuredSecret, 'utf8'), Buffer.from(providedSecret, 'utf8'))
+    } catch {
+      authorized = false
+    }
+  }
+
+  if (!authorized) {
     res.status(401).json({
       message: 'Catalog sync is not authorized.',
     })

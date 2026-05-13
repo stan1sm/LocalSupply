@@ -33,12 +33,9 @@ function verifyWoltSignature(rawBody: Buffer, signatureHeader: string | undefine
     return false
   }
   if (!signatureHeader) return false
+  if (!/^[0-9a-f]{64}$/.test(signatureHeader)) return false
   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
-  try {
-    return crypto.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expected))
-  } catch {
-    return false
-  }
+  return crypto.timingSafeEqual(Buffer.from(signatureHeader, 'hex'), Buffer.from(expected, 'hex'))
 }
 
 /**

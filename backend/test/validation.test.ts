@@ -86,10 +86,9 @@ describe('validateSupplierLoginPayload', () => {
     if (!result.ok) expect(result.errors.email).toBeDefined()
   })
 
-  it('rejects a password shorter than 8 characters', () => {
+  it('accepts a password shorter than 8 characters (policy not enforced at login)', () => {
     const result = validateSupplierLoginPayload({ email: 'green@farm.no', password: 'short' })
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.errors.password).toBeDefined()
+    expect(result.ok).toBe(true)
   })
 })
 

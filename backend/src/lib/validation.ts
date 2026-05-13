@@ -4,7 +4,7 @@
  */
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
-const HUMAN_NAME_REGEX = /^[A-Za-z][A-Za-z '-]{1,49}$/
+const HUMAN_NAME_REGEX = /^[\p{L}][\p{L} '-]{1,49}$/u
 const BUSINESS_NAME_REGEX = /^[A-Za-z0-9][A-Za-z0-9 '&().,-]{1,79}$/
 // Norwegian phone numbers, canonical form +47XXXXXXXX
 const PHONE_REGEX = /^\+47[0-9]{8}$/
@@ -230,9 +230,8 @@ export function validateUserLoginPayload(payload: unknown): LoginValidationResul
     errors.email = 'Enter a valid email address.'
   }
 
-  const passwordError = passwordPolicyError(data.password)
-  if (passwordError) {
-    errors.password = passwordError
+  if (!data.password) {
+    errors.password = 'Password is required.'
   }
 
   if (Object.keys(errors).length > 0) {
@@ -342,9 +341,8 @@ export function validateSupplierLoginPayload(payload: unknown): SupplierLoginVal
     errors.email = 'Enter a valid business email address.'
   }
 
-  const passwordError = passwordPolicyError(data.password)
-  if (passwordError) {
-    errors.password = passwordError
+  if (!data.password) {
+    errors.password = 'Password is required.'
   }
 
   if (Object.keys(errors).length > 0) {

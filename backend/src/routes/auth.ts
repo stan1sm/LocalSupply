@@ -21,6 +21,13 @@ const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
 // Short-lived one-time session store for the Vipps OAuth callback.
 // Keys are UUID codes; entries expire after 60 seconds.
 const vippsSessionStore = new Map<string, { token: string; user: string; expiresAt: number }>()
+// Purge expired entries every 2 minutes to prevent unbounded memory growth
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, entry] of vippsSessionStore) {
+    if (entry.expiresAt < now) vippsSessionStore.delete(key)
+  }
+}, 120_000).unref()
 const EMAIL_NOT_VERIFIED_MESSAGE = 'Please verify your email before signing in.'
 const RESEND_VERIFICATION_MESSAGE = 'If an unverified account exists for this email, a verification email has been sent.'
 
@@ -889,9 +896,8 @@ authRouter.get('/vipps/callback', async (req, res) => {
 
     res.redirect(`${frontendUrl}/auth/vipps-return?code=${sessionCode}`)
   } catch (err) {
-    const detail = err instanceof Error ? err.message.slice(0, 120) : 'unknown'
     console.error('Vipps callback failed', err)
-    res.redirect(`${frontendUrl}/login?error=vipps_failed&detail=${encodeURIComponent(detail)}`)
+    res.redirect(`${frontendUrl}/login?error=vipps_failed`)
   }
 })
 
@@ -911,7 +917,7 @@ authRouter.get('/vipps/session', (req, res) => {
     return
   }
   vippsSessionStore.delete(code)
-  res.json({ token: entry.token, user: entry.user })
+  res.json({ token: entry.token, user: JSON.parse(entry.user) })
 })
 
 /**

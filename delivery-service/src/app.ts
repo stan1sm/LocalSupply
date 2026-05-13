@@ -30,9 +30,12 @@ const merchantLimiter = rateLimit({ windowMs: 60_000, max: 10, standardHeaders: 
 
 // API key auth for merchant endpoints (called only by LocalSupply backend)
 const DELIVERY_API_KEY = process.env.WOLT_API_KEY ?? ''
+if (!DELIVERY_API_KEY) {
+  console.error('FATAL: WOLT_API_KEY is not set — merchant endpoints are unprotected. Set this variable before starting the service.')
+}
 function requireApiKey(req: Request, res: Response, next: NextFunction): void {
   const auth = req.headers.authorization ?? ''
-  if (!DELIVERY_API_KEY || auth === `Bearer ${DELIVERY_API_KEY}`) {
+  if (DELIVERY_API_KEY && auth === `Bearer ${DELIVERY_API_KEY}`) {
     next()
     return
   }
@@ -52,7 +55,7 @@ app.use('/track', trackingRouter)
 // Cron endpoint — called by cron-job.org every minute
 const CRON_SECRET = process.env.CRON_SECRET ?? ''
 app.get('/api/cron/advance-deliveries', async (req: Request, res: Response) => {
-  if (CRON_SECRET && req.headers.authorization !== `Bearer ${CRON_SECRET}`) {
+  if (!CRON_SECRET || req.headers.authorization !== `Bearer ${CRON_SECRET}`) {
     res.status(401).json({ error: 'Unauthorized' })
     return
   }

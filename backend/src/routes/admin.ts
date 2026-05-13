@@ -68,6 +68,17 @@ adminRouter.post('/login', async (req, res) => {
  * @param req.body.name     - Display name for the admin (defaults to "Admin").
  */
 adminRouter.post('/seed', async (req, res) => {
+  const seedSecret = process.env.ADMIN_SEED_SECRET?.trim()
+  if (!seedSecret) {
+    res.status(403).json({ message: 'Seed endpoint is disabled. Set ADMIN_SEED_SECRET to enable it.' })
+    return
+  }
+  const providedSecret = req.get('x-seed-secret')?.trim() ?? ''
+  if (providedSecret !== seedSecret) {
+    res.status(403).json({ message: 'Invalid seed secret.' })
+    return
+  }
+
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const password = typeof body.password === 'string' ? body.password : ''
@@ -209,7 +220,20 @@ adminRouter.delete('/suppliers/:id', requireAdminAuth, async (req, res) => {
   }
   try {
     const prisma = getPrismaClient()
-    await prisma.supplier.delete({ where: { id: supplierId } })
+    // onDelete: Restrict on Order→Supplier and OrderItem→Product means we must
+    // delete order items and orders before deleting the supplier and their products.
+    await prisma.$transaction(async (tx) => {
+      const supplierProducts = await tx.product.findMany({
+        where: { supplierId },
+        select: { id: true },
+      })
+      const productIds = supplierProducts.map((p) => p.id)
+      if (productIds.length > 0) {
+        await tx.orderItem.deleteMany({ where: { productId: { in: productIds } } })
+      }
+      await tx.order.deleteMany({ where: { supplierId } })
+      await tx.supplier.delete({ where: { id: supplierId } })
+    })
     res.json({ ok: true })
   } catch (error) {
     console.error('Admin delete supplier failed', error)

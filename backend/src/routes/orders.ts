@@ -86,7 +86,7 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
 
   const buyerId = res.locals.buyerId as string
   const supplierIdInput = typeof body.supplierId === 'string' ? body.supplierId.trim() : ''
-  const notes = typeof body.notes === 'string' ? body.notes.trim() : ''
+  const notes = typeof body.notes === 'string' ? body.notes.trim().slice(0, 1000) : ''
   const deliveryAddress = typeof body.deliveryAddress === 'string' ? body.deliveryAddress.trim() : ''
   // storeCode is required when catalog items are included so prices can be validated server-side
   const storeCode = typeof body.storeCode === 'string' ? body.storeCode.trim() : ''
@@ -144,10 +144,17 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
 
     // Resolve supplier. If a specific supplierId is provided and found, use it.
     // Otherwise fall back to a virtual "Marketplace" supplier for grocery orders.
-    let supplier =
+    let resolvedByIdSupplier =
       supplierIdInput.length > 0
         ? await prisma.supplier.findUnique({ where: { id: supplierIdInput } })
         : null
+
+    if (resolvedByIdSupplier && !resolvedByIdSupplier.acceptDirectOrders) {
+      res.status(403).json({ message: 'This supplier is not accepting direct orders.' })
+      return
+    }
+
+    let supplier = resolvedByIdSupplier
 
     if (!supplier) {
       supplier = await prisma.supplier.upsert({
@@ -212,59 +219,45 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
       existingCatalogProducts.map((p) => [p.description?.replace('catalog:', '') ?? '', p]),
     )
 
+    type ValidItem =
+      | { type: 'product'; id: string; quantity: number; unitPrice: number; decrementStock: boolean }
+      | { type: 'catalog'; catalogProductId: string; quantity: number; unitPrice: number; name: string; unit: string; existingProductId: string | null }
+
     let subtotal = 0
-    const orderItemsData: { productId: string; quantity: number; unitPrice: number }[] = []
-    const stockDecrements: { id: string; qty: number }[] = []
+    const validItems: ValidItem[] = []
 
     for (const item of items) {
       // Path 1: named Product (supplier-direct orders) — price comes from DB
       if (item.productId) {
         const product = productById.get(item.productId)
         if (!product) continue
-
         const unitPrice = Number(product.price)
         if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue
-
         subtotal += unitPrice * item.quantity
-        orderItemsData.push({ productId: product.id, quantity: item.quantity, unitPrice })
-        if (product.stockQty > 0) {
-          stockDecrements.push({ id: product.id, qty: item.quantity })
-        }
+        validItems.push({ type: 'product', id: product.id, quantity: item.quantity, unitPrice, decrementStock: product.stockQty > 0 })
         continue
       }
 
       // Path 2: catalog item — look up authoritative price server-side, never trust client
       if (item.catalogProductId) {
-        if (!storeCode) continue // storeCode required to resolve catalog price
+        if (!storeCode) continue
         const unitPrice = catalogPriceMap.get(item.catalogProductId)
-        if (!unitPrice) continue // product not found in this store's catalog
-
-        // Upsert a thin Product record so OrderItem has a valid FK.
-        // The description field stores "catalog:<catalogProductId>" as a unique lookup key,
-        // preventing collisions when two catalog products share the same display name.
-        const catalogName = catalogNameMap.get(item.catalogProductId) ?? item.name ?? 'Catalog item'
-        let product = catalogProductByCatalogId.get(item.catalogProductId) ?? null
-        if (!product) {
-          product = await prisma.product.create({
-            data: {
-              supplierId: supplier.id,
-              name: catalogName,
-              description: `catalog:${item.catalogProductId}`,
-              unit: item.unit && item.unit.length > 0 ? item.unit : 'unit',
-              price: unitPrice,
-              stockQty: 0,
-              approvalStatus: 'APPROVED',
-            },
-          })
-          catalogProductByCatalogId.set(item.catalogProductId, product)
-        }
-
+        if (!unitPrice) continue
+        const existingStub = catalogProductByCatalogId.get(item.catalogProductId)
         subtotal += unitPrice * item.quantity
-        orderItemsData.push({ productId: product.id, quantity: item.quantity, unitPrice })
+        validItems.push({
+          type: 'catalog',
+          catalogProductId: item.catalogProductId,
+          quantity: item.quantity,
+          unitPrice,
+          name: catalogNameMap.get(item.catalogProductId) ?? item.name ?? 'Catalog item',
+          unit: item.unit && item.unit.length > 0 ? item.unit : 'unit',
+          existingProductId: existingStub?.id ?? null,
+        })
       }
     }
 
-    if (orderItemsData.length === 0) {
+    if (validItems.length === 0) {
       res.status(400).json({ message: 'No valid products found for this supplier.' })
       return
     }
@@ -314,6 +307,59 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
     }
 
     const order = await prisma.$transaction(async (tx) => {
+      const orderItemsData: { productId: string; quantity: number; unitPrice: number }[] = []
+      const stockDecrements: { id: string; qty: number }[] = []
+
+      for (const validItem of validItems) {
+        if (validItem.type === 'product') {
+          orderItemsData.push({ productId: validItem.id, quantity: validItem.quantity, unitPrice: validItem.unitPrice })
+          if (validItem.decrementStock) stockDecrements.push({ id: validItem.id, qty: validItem.quantity })
+          continue
+        }
+
+        // Catalog item: findOrCreate stub atomically inside the transaction to prevent
+        // duplicate stubs from concurrent requests for the same catalog product.
+        const description = `catalog:${validItem.catalogProductId}`
+        let productId = validItem.existingProductId
+        if (!productId) {
+          let stub = await tx.product.findFirst({ where: { supplierId: supplier.id, description } })
+          if (!stub) {
+            try {
+              stub = await tx.product.create({
+                data: {
+                  supplierId: supplier.id,
+                  name: validItem.name,
+                  description,
+                  unit: validItem.unit,
+                  price: validItem.unitPrice,
+                  stockQty: 0,
+                  approvalStatus: 'APPROVED',
+                },
+              })
+            } catch (err: unknown) {
+              if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
+                stub = await tx.product.findFirst({ where: { supplierId: supplier.id, description } })
+              } else throw err
+            }
+          }
+          if (!stub) continue
+          productId = stub.id
+        }
+        orderItemsData.push({ productId, quantity: validItem.quantity, unitPrice: validItem.unitPrice })
+      }
+
+      // Merge duplicate productIds — same product listed twice in one order gets quantities summed
+      const merged = new Map<string, { productId: string; quantity: number; unitPrice: number }>()
+      for (const row of orderItemsData) {
+        const prev = merged.get(row.productId)
+        if (prev) {
+          prev.quantity += row.quantity
+        } else {
+          merged.set(row.productId, { ...row })
+        }
+      }
+      const deduplicatedItems = [...merged.values()]
+
       const created = await tx.order.create({
         data: {
           buyerId,
@@ -326,7 +372,7 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
           ...(deliveryAddressId ? { deliveryAddressId } : {}),
           items: {
             createMany: {
-              data: orderItemsData,
+              data: deduplicatedItems,
             },
           },
         },
@@ -369,7 +415,7 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
           contactName: `${order.buyer.firstName} ${order.buyer.lastName}`,
           contactPhone: resolvedAddressPhone ?? '00000000',
         },
-        parcels: [{ description: `Order #${order.id.slice(-6)} — ${orderItemsData.length} items`, count: orderItemsData.length }],
+        parcels: [{ description: `Order #${order.id.slice(-6)} — ${order.items.length} items`, count: order.items.length }],
         orderReference: order.id,
       })
 
