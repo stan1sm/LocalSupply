@@ -141,8 +141,7 @@ export default function ChatConversationPage({
   useEffect(() => {
     const auth = getAuth()
     if (!auth) {
-      setErrorMessage('Sign in to use chat.')
-      setIsLoading(false)
+      window.location.replace('/login')
       return
     }
     setMyId(auth.userId)
@@ -300,12 +299,6 @@ export default function ChatConversationPage({
                 <div className="flex h-full items-center justify-center">
                   <div className="rounded-2xl border border-[#f0d4d4] bg-[#fff5f5] px-5 py-4 text-center text-sm text-[#9b2c2c]">
                     {errorMessage}
-                    {errorMessage.includes('Sign in') && (
-                      <div className="mt-3 flex justify-center gap-2">
-                        <a className="rounded-xl bg-[#2f9f4f] px-4 py-2 text-xs font-semibold text-white hover:bg-[#25813f]" href="/login">Sign in as buyer</a>
-                        <a className="rounded-xl border border-[#d4ddcf] px-4 py-2 text-xs font-semibold text-[#374740] hover:text-[#2f9f4f]" href="/supplier/login">Sign in as supplier</a>
-                      </div>
-                    )}
                   </div>
                 </div>
               ) : messages.length === 0 ? (

@@ -60,7 +60,8 @@ function formatRelative(iso: string) {
 
 /**
  * Inbox page listing all chat conversations for the logged-in buyer or supplier.
- * Adapts the layout to show the supplier sidebar when in supplier view.
+ * Unauthenticated visitors are sent straight to `/login`. The layout uses the supplier
+ * sidebar when a supplier session is active, otherwise the buyer sidebar.
  */
 export default function ChatInboxPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
@@ -94,8 +95,7 @@ export default function ChatInboxPage() {
     }
 
     if (!token || !detectedRole) {
-      setIsLoading(false)
-      setErrorMessage('Sign in to see your messages.')
+      window.location.replace('/login')
       return
     }
 
@@ -139,12 +139,6 @@ export default function ChatInboxPage() {
           ) : errorMessage ? (
             <div className="px-6 py-10 text-center">
               <p className="text-sm text-[#9b2c2c]">{errorMessage}</p>
-              {errorMessage.includes('Sign in') && (
-                <div className="mt-4 flex justify-center gap-2">
-                  <a className="rounded-xl bg-[#2f9f4f] px-4 py-2 text-xs font-semibold text-white hover:bg-[#25813f]" href="/login">Buyer sign in</a>
-                  <a className="rounded-xl border border-[#d4ddcf] px-4 py-2 text-xs font-semibold text-[#374740] hover:text-[#2f9f4f]" href="/supplier/login">Supplier sign in</a>
-                </div>
-              )}
             </div>
           ) : conversations.length === 0 ? (
             <div className="px-6 py-16 text-center">
