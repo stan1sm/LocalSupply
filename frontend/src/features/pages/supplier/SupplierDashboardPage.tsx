@@ -79,10 +79,6 @@ const initialProductForm: ProductForm = {
   stockQty: '',
 }
 
-const UNIT_SUGGESTIONS = [
-  'per kg', 'per stk', 'per liter', 'per 500g', 'per kasse', 'per boks',
-  'per pakke', 'per brett', 'per pose', 'per flaske', 'per bundle',
-]
 
 function CharCount({ value, max }: { value: string; max: number }) {
   const len = value.length
@@ -450,19 +446,17 @@ export default function SupplierDashboardPage() {
                         <span className="flex items-center justify-between">
                           Unit <span className="font-normal text-[#c53030] text-[10px]">required</span>
                         </span>
-                        <input
+                        <select
                           className={inputClass}
-                          list="unit-suggestions"
-                          maxLength={40}
                           onChange={(event) => handleFormChange('unit', event.target.value)}
-                          placeholder="per kg"
-                          type="text"
                           value={form.unit}
-                        />
-                        <datalist id="unit-suggestions">
-                          {UNIT_SUGGESTIONS.map((u) => <option key={u} value={u} />)}
-                        </datalist>
-                        <p className={hintClass}>How you sell it — e.g. "per kg", "per stk".</p>
+                        >
+                          <option value="">Select unit</option>
+                          <option value="kg">kg</option>
+                          <option value="Liters">Liters</option>
+                          <option value="stk">stk</option>
+                        </select>
+                        <p className={hintClass}>How you sell it.</p>
                         {formErrors.unit ? <p className={errorClass}>{formErrors.unit}</p> : null}
                       </label>
 
