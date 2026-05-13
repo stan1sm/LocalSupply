@@ -13,6 +13,7 @@ const {
   updateManyProductMock,
   updateOrderMock,
   findManyPriceMock,
+  getDeliveryEstimateMock,
 } = vi.hoisted(() => ({
   findUniqueUserMock: vi.fn(),
   findUniqueSupplierMock: vi.fn(),
@@ -24,27 +25,32 @@ const {
   updateManyProductMock: vi.fn(),
   updateOrderMock: vi.fn(),
   findManyPriceMock: vi.fn(),
+  getDeliveryEstimateMock: vi.fn(),
 }))
 
 vi.mock('../src/lib/prisma.js', () => ({
-  getPrismaClient: () => ({
-    user: { findUnique: findUniqueUserMock },
-    supplier: {
-      findUnique: findUniqueSupplierMock,
-      upsert: upsertSupplierMock,
-    },
-    product: {
-      findMany: findManyProductMock,
-      findFirst: findFirstProductMock,
-      create: createProductMock,
-      updateMany: updateManyProductMock,
-    },
-    order: {
-      create: createOrderMock,
-      update: updateOrderMock,
-    },
-    catalogProductPrice: { findMany: findManyPriceMock },
-  }),
+  getPrismaClient: () => {
+    const client = {
+      user: { findUnique: findUniqueUserMock },
+      supplier: {
+        findUnique: findUniqueSupplierMock,
+        upsert: upsertSupplierMock,
+      },
+      product: {
+        findMany: findManyProductMock,
+        findFirst: findFirstProductMock,
+        create: createProductMock,
+        updateMany: updateManyProductMock,
+      },
+      order: {
+        create: createOrderMock,
+        update: updateOrderMock,
+      },
+      catalogProductPrice: { findMany: findManyPriceMock },
+      $transaction: (callback: (tx: unknown) => Promise<unknown>) => callback(client),
+    }
+    return client
+  },
 }))
 
 vi.mock('../src/lib/email.js', () => ({
@@ -57,6 +63,7 @@ vi.mock('../src/lib/email.js', () => ({
 
 vi.mock('../src/lib/woltDrive.js', () => ({
   createDelivery: vi.fn().mockResolvedValue({ ok: false, message: 'Wolt disabled in tests' }),
+  getDeliveryEstimate: getDeliveryEstimateMock,
   parseAddressString: vi.fn((addr: string) => ({ street: addr, city: 'Oslo' })),
 }))
 
@@ -135,6 +142,8 @@ describe('POST /api/orders', () => {
     updateManyProductMock.mockReset()
     updateOrderMock.mockReset()
     findManyPriceMock.mockReset()
+    getDeliveryEstimateMock.mockReset()
+    getDeliveryEstimateMock.mockResolvedValue({ ok: false, message: 'Wolt disabled in tests' })
   })
 
   it('returns 401 without authentication', async () => {
@@ -238,10 +247,11 @@ describe('POST /api/orders', () => {
     expect(upsertSupplierMock).toHaveBeenCalled()
   })
 
-  it('includes deliveryFee when provided', async () => {
+  it('computes deliveryFee server-side from Wolt estimate when deliveryAddress is provided', async () => {
     findUniqueUserMock.mockResolvedValue(sampleBuyer)
     findUniqueSupplierMock.mockResolvedValue(sampleSupplier)
     findManyProductMock.mockResolvedValue([sampleProduct])
+    getDeliveryEstimateMock.mockResolvedValue({ ok: true, fee: 49, etaMinutes: 30, currency: 'NOK' })
     const orderWithFee = { ...sampleOrder, deliveryFee: 49, total: 94 }
     createOrderMock.mockResolvedValue(orderWithFee)
     updateManyProductMock.mockResolvedValue({ count: 1 })
@@ -249,9 +259,10 @@ describe('POST /api/orders', () => {
     const res = await request(app)
       .post('/api/orders')
       .set('Authorization', `Bearer ${buyerToken}`)
-      .send({ supplierId: SUPPLIER_ID, deliveryFee: 49, items: [{ productId: 'prod_1', quantity: 1 }] })
+      .send({ supplierId: SUPPLIER_ID, deliveryAddress: 'Karl Johans gate 1, Oslo', items: [{ productId: 'prod_1', quantity: 1 }] })
 
     expect(res.status).toBe(201)
+    expect(getDeliveryEstimateMock).toHaveBeenCalled()
     expect(createOrderMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ deliveryFee: 49 }),
