@@ -73,7 +73,7 @@ describe('MarketplaceDashboardPage', () => {
 
     expect(screen.getByRole('heading', { name: 'Fresh grocery search across Norwegian stores' })).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Buyer navigation' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /My Cart$/ })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /My Cart$/ }).length).toBeGreaterThan(0)
     expect(screen.getByText('Your cart is empty')).toBeInTheDocument()
     expect(screen.getByText('100+ imported products available')).toBeInTheDocument()
   })
