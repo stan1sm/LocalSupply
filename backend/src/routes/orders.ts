@@ -149,7 +149,7 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
         ? await prisma.supplier.findUnique({ where: { id: supplierIdInput } })
         : null
 
-    if (resolvedByIdSupplier && !resolvedByIdSupplier.acceptDirectOrders) {
+    if (resolvedByIdSupplier && resolvedByIdSupplier.acceptDirectOrders === false) {
       res.status(403).json({ message: 'This supplier is not accepting direct orders.' })
       return
     }

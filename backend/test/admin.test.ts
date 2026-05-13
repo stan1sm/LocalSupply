@@ -1,5 +1,5 @@
 import request from 'supertest'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hashPassword } from '../src/lib/password.js'
 import { signAdminToken } from '../src/lib/jwt.js'
 
@@ -13,6 +13,9 @@ const {
   findManyUserMock,
   deleteUserMock,
   findManyOrderMock,
+  findManyProductAdminMock,
+  deleteManyOrderItemMock,
+  deleteManyOrderMock,
 } = vi.hoisted(() => ({
   findUniqueAdminMock: vi.fn(),
   findFirstAdminMock: vi.fn(),
@@ -23,6 +26,9 @@ const {
   findManyUserMock: vi.fn(),
   deleteUserMock: vi.fn(),
   findManyOrderMock: vi.fn(),
+  findManyProductAdminMock: vi.fn(),
+  deleteManyOrderItemMock: vi.fn(),
+  deleteManyOrderMock: vi.fn(),
 }))
 
 vi.mock('../src/lib/prisma.js', () => ({
@@ -38,12 +44,19 @@ vi.mock('../src/lib/prisma.js', () => ({
         update: updateSupplierMock,
         delete: deleteSupplierMock,
       },
+      product: {
+        findMany: findManyProductAdminMock,
+      },
+      orderItem: {
+        deleteMany: deleteManyOrderItemMock,
+      },
       user: {
         findMany: findManyUserMock,
         delete: deleteUserMock,
       },
       order: {
         findMany: findManyOrderMock,
+        deleteMany: deleteManyOrderMock,
       },
       $transaction: (callback: (tx: unknown) => Promise<unknown>) => callback(client),
     }
@@ -129,8 +142,13 @@ describe('POST /api/admin/login', () => {
 
 describe('POST /api/admin/seed', () => {
   beforeEach(() => {
+    process.env.ADMIN_SEED_SECRET = 'test-seed-secret'
     findFirstAdminMock.mockReset()
     createAdminMock.mockReset()
+  })
+
+  afterEach(() => {
+    delete process.env.ADMIN_SEED_SECRET
   })
 
   it('creates the first admin and returns 201', async () => {
@@ -139,6 +157,7 @@ describe('POST /api/admin/seed', () => {
 
     const res = await request(app)
       .post('/api/admin/seed')
+      .set('x-seed-secret', 'test-seed-secret')
       .send({ email: 'admin@example.com', password: 'Admin!123', name: 'Admin' })
 
     expect(res.status).toBe(201)
@@ -150,6 +169,7 @@ describe('POST /api/admin/seed', () => {
 
     const res = await request(app)
       .post('/api/admin/seed')
+      .set('x-seed-secret', 'test-seed-secret')
       .send({ email: 'new@example.com', password: 'Admin!123' })
 
     expect(res.status).toBe(409)
@@ -159,6 +179,7 @@ describe('POST /api/admin/seed', () => {
   it('returns 400 when email or password is missing', async () => {
     const res = await request(app)
       .post('/api/admin/seed')
+      .set('x-seed-secret', 'test-seed-secret')
       .send({ email: '' })
 
     expect(res.status).toBe(400)
@@ -280,9 +301,17 @@ describe('PATCH /api/admin/suppliers/:id', () => {
 // ── DELETE /api/admin/suppliers/:id ──────────────────────────────────────────
 
 describe('DELETE /api/admin/suppliers/:id', () => {
-  beforeEach(() => { deleteSupplierMock.mockReset() })
+  beforeEach(() => {
+    deleteSupplierMock.mockReset()
+    findManyProductAdminMock.mockReset()
+    deleteManyOrderItemMock.mockReset()
+    deleteManyOrderMock.mockReset()
+  })
 
   it('deletes a supplier and returns ok', async () => {
+    findManyProductAdminMock.mockResolvedValue([])
+    deleteManyOrderItemMock.mockResolvedValue({ count: 0 })
+    deleteManyOrderMock.mockResolvedValue({ count: 0 })
     deleteSupplierMock.mockResolvedValue(undefined)
 
     const res = await request(app)

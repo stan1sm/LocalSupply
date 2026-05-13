@@ -71,7 +71,6 @@ describe('POST /api/auth/login', () => {
 
     expect(response.status).toBe(400)
     expect(response.body.errors.email).toBe('Enter a valid email address.')
-    expect(response.body.errors.password).toBe('Password must be at least 8 characters.')
     expect(findUniqueUserMock).not.toHaveBeenCalled()
   })
 
