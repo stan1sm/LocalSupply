@@ -26,25 +26,29 @@ const {
 }))
 
 vi.mock('../src/lib/prisma.js', () => ({
-  getPrismaClient: () => ({
-    admin: {
-      findUnique: findUniqueAdminMock,
-      findFirst: findFirstAdminMock,
-      create: createAdminMock,
-    },
-    supplier: {
-      findMany: findManySupplierMock,
-      update: updateSupplierMock,
-      delete: deleteSupplierMock,
-    },
-    user: {
-      findMany: findManyUserMock,
-      delete: deleteUserMock,
-    },
-    order: {
-      findMany: findManyOrderMock,
-    },
-  }),
+  getPrismaClient: () => {
+    const client = {
+      admin: {
+        findUnique: findUniqueAdminMock,
+        findFirst: findFirstAdminMock,
+        create: createAdminMock,
+      },
+      supplier: {
+        findMany: findManySupplierMock,
+        update: updateSupplierMock,
+        delete: deleteSupplierMock,
+      },
+      user: {
+        findMany: findManyUserMock,
+        delete: deleteUserMock,
+      },
+      order: {
+        findMany: findManyOrderMock,
+      },
+      $transaction: (callback: (tx: unknown) => Promise<unknown>) => callback(client),
+    }
+    return client
+  },
 }))
 
 vi.mock('../src/lib/email.js', () => ({
