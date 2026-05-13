@@ -7,6 +7,8 @@
 
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
+import { MARKETPLACE_CART_STORAGE_KEY } from '../../../lib/cookieConsent'
+import { useMarketplaceCartPersistenceAllowed } from '../../../lib/useMarketplaceCartPersistence'
 import { ToastContainer } from '../../components/Toast'
 import { useToast } from '../../components/useToast'
 import BuyerSidebar from '../../components/BuyerSidebar'
@@ -138,7 +140,6 @@ type StoreOption = {
 }
 
 const PAGE_SIZE = 50
-const CART_STORAGE_KEY = 'localsupply-marketplace-cart'
 
 const categoryOptions: CategoryOption[] = [
   { id: 'all', label: 'All' },
@@ -196,6 +197,7 @@ function sortProducts(products: Product[], sortBy: string) {
  * that shows AI substitution suggestions for saved items.
  */
 export default function MarketplaceDashboardPage() {
+  const cartPersistAllowed = useMarketplaceCartPersistenceAllowed()
   const { toasts, addToast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState('all')
@@ -224,8 +226,9 @@ export default function MarketplaceDashboardPage() {
   const hasMore = products.length < totalProducts
 
   useEffect(() => {
+    if (!cartPersistAllowed) return
     try {
-      const storedCart = window.localStorage.getItem(CART_STORAGE_KEY)
+      const storedCart = window.localStorage.getItem(MARKETPLACE_CART_STORAGE_KEY)
       if (storedCart) {
         const parsed = JSON.parse(storedCart) as CartItem[]
         if (Array.isArray(parsed)) {
@@ -233,13 +236,18 @@ export default function MarketplaceDashboardPage() {
         }
       }
     } catch {
-      window.localStorage.removeItem(CART_STORAGE_KEY)
+      window.localStorage.removeItem(MARKETPLACE_CART_STORAGE_KEY)
     }
-  }, [])
+  }, [cartPersistAllowed])
 
   useEffect(() => {
-    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems))
-  }, [cartItems])
+    if (!cartPersistAllowed) return
+    try {
+      window.localStorage.setItem(MARKETPLACE_CART_STORAGE_KEY, JSON.stringify(cartItems))
+    } catch {
+      /* ignore */
+    }
+  }, [cartItems, cartPersistAllowed])
 
   useEffect(() => {
     let cancelled = false

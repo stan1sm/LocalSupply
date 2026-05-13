@@ -33,7 +33,8 @@ export default function CookiePolicyPage() {
           <p className="mt-2 text-sm text-[#6b7280]">Last updated: April 2026</p>
 
           <p className={p}>
-            This Cookie Policy explains how LocalSupply uses cookies and similar technologies when you visit localsupply.site. By using our platform, you agree to the use of cookies as described below.
+            This Cookie Policy explains how LocalSupply uses cookies and similar technologies when you visit localsupply.site.
+            You can set your preferences in the cookie banner on your first visit; strictly necessary cookies are still required for sign-in and secure flows.
           </p>
 
           <hr className="my-6 border-[#e5e7eb]" />
@@ -83,6 +84,11 @@ export default function CookiePolicyPage() {
             <p className={p}>
               In addition to cookies, we use your browser's localStorage to store your authentication token and cart contents. localStorage data is never transmitted to third parties and is cleared when you log out or delete your account.
             </p>
+            <ul className={ul}>
+              <li>
+                <strong>localsupply-cookie-consent</strong> — stores your choice from the cookie banner (accept all storage we describe, or necessary-only). If you choose necessary-only, we do not keep your marketplace cart in localStorage between visits.
+              </li>
+            </ul>
           </div>
 
           <div className={section}>
@@ -103,16 +109,6 @@ export default function CookiePolicyPage() {
             <h2 className={h2}>5. Changes to this policy</h2>
             <p className={p}>
               We may update this policy from time to time. When we do, we'll update the "Last updated" date at the top of this page. Continued use of the platform after changes constitutes acceptance of the updated policy.
-            </p>
-          </div>
-
-          <div className={section}>
-            <h2 className={h2}>6. Contact</h2>
-            <p className={p}>
-              Questions about our use of cookies? Contact us at{' '}
-              <a className="font-medium text-[#2f9f4f] underline hover:text-[#25813f]" href="mailto:privacy@localsupply.site">
-                privacy@localsupply.site
-              </a>.
             </p>
           </div>
         </div>

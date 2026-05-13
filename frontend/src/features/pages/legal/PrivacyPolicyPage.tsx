@@ -110,16 +110,6 @@ export default function PrivacyPolicyPage() {
               {' '}for full details.
             </p>
           </div>
-
-          <div className={section}>
-            <h2 className={h2}>8. Contact</h2>
-            <p className={p}>
-              For any questions about this policy or to exercise your rights, contact us at{' '}
-              <a className="font-medium text-[#2f9f4f] underline hover:text-[#25813f]" href="mailto:privacy@localsupply.site">
-                privacy@localsupply.site
-              </a>.
-            </p>
-          </div>
         </div>
 
         <p className="mt-6 text-center text-xs text-[#9ca3af]">

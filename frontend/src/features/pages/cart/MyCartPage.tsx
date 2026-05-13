@@ -7,6 +7,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../lib/api'
+import { MARKETPLACE_CART_STORAGE_KEY } from '../../../lib/cookieConsent'
+import { useMarketplaceCartPersistenceAllowed } from '../../../lib/useMarketplaceCartPersistence'
 import BuyerSidebar from '../../components/BuyerSidebar'
 
 /**
@@ -183,8 +185,6 @@ type IntentCartResponse = {
   totalPrice: number
 }
 
-const CART_STORAGE_KEY = 'localsupply-marketplace-cart'
-const BUYER_STORAGE_KEY = 'localsupply-user'
 
 /**
  * Formats a numeric value as a Norwegian krone string.
@@ -195,12 +195,14 @@ function formatCurrency(value: number) {
   return `${value.toFixed(2)} kr`
 }
 
+const BUYER_STORAGE_KEY = 'localsupply-user'
 
 /**
  * Cart page showing current items, smart Wolt store matching, AI substitution suggestions per item,
  * and an AI meal-plan intent-cart builder.
  */
 export default function MyCartPage() {
+  const cartPersistAllowed = useMarketplaceCartPersistenceAllowed()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [matchResult, setMatchResult] = useState<MatchResponse | null>(null)
   const [isMatching, setIsMatching] = useState(false)
@@ -222,20 +224,26 @@ export default function MyCartPage() {
   }, [])
 
   useEffect(() => {
+    if (!cartPersistAllowed) return
     try {
-      const stored = window.localStorage.getItem(CART_STORAGE_KEY)
+      const stored = window.localStorage.getItem(MARKETPLACE_CART_STORAGE_KEY)
       if (stored) {
         const parsed = JSON.parse(stored) as CartItem[]
         if (Array.isArray(parsed)) setCartItems(parsed)
       }
     } catch {
-      window.localStorage.removeItem(CART_STORAGE_KEY)
+      window.localStorage.removeItem(MARKETPLACE_CART_STORAGE_KEY)
     }
-  }, [])
+  }, [cartPersistAllowed])
 
   useEffect(() => {
-    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems))
-  }, [cartItems])
+    if (!cartPersistAllowed) return
+    try {
+      window.localStorage.setItem(MARKETPLACE_CART_STORAGE_KEY, JSON.stringify(cartItems))
+    } catch {
+      /* ignore */
+    }
+  }, [cartItems, cartPersistAllowed])
 
   const runMatch = useCallback(async (items: CartItem[]) => {
     abortRef.current?.abort()
