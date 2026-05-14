@@ -4,4 +4,5 @@ requirements.md
 .env.local
 .vercel/
 backend/coverage/
+frontend/coverage/
 HANDOFF.md
