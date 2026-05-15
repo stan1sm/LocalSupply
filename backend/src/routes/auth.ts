@@ -13,21 +13,12 @@ import { requireBuyerAuth } from '../middleware/requireBuyerAuth.js'
 import { validateUserEmailPayload, validateUserLoginPayload, validateUserRegistrationPayload } from '../lib/validation.js'
 import { generateEmailVerificationToken, generatePasswordResetToken, hashEmailVerificationToken, hashPasswordResetToken, isValidEmailVerificationToken, isValidPasswordResetToken } from '../lib/verification.js'
 import { buildAuthorizationUrl, exchangeCode, getUserInfo } from '../lib/vippsLogin.js'
+import { buyerSessionStore as vippsSessionStore, deliverySessionStore } from '../lib/vippsSessionStore.js'
+import { signDeliveryToken } from '../lib/jwt.js'
 
 /** Express router providing buyer authentication and account management endpoints. */
 const authRouter = Router()
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
-
-// Short-lived one-time session store for the Vipps OAuth callback.
-// Keys are UUID codes; entries expire after 60 seconds.
-const vippsSessionStore = new Map<string, { token: string; user: string; expiresAt: number }>()
-// Purge expired entries every 2 minutes to prevent unbounded memory growth
-setInterval(() => {
-  const now = Date.now()
-  for (const [key, entry] of vippsSessionStore) {
-    if (entry.expiresAt < now) vippsSessionStore.delete(key)
-  }
-}, 120_000).unref()
 const EMAIL_NOT_VERIFIED_MESSAGE = 'Please verify your email before signing in.'
 const RESEND_VERIFICATION_MESSAGE = 'If an unverified account exists for this email, a verification email has been sent.'
 
@@ -833,12 +824,15 @@ authRouter.get('/vipps/callback', async (req, res) => {
 
   const cookies = parseCookies(req.headers.cookie)
   if (state !== cookies.vipps_state) {
-    res.redirect(`${frontendUrl}/login?error=vipps_state`)
+    const isDelivery = state.startsWith('d:')
+    res.redirect(`${frontendUrl}/${isDelivery ? 'delivery/login' : 'login'}?error=vipps_state`)
     return
   }
 
   // Clear state cookie
   res.setHeader('Set-Cookie', 'vipps_state=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/')
+
+  const isDeliveryFlow = state.startsWith('d:')
 
   try {
     const baseUrl = getRequestBaseUrl(req) ?? `https://${req.get('host')}`
@@ -847,6 +841,23 @@ authRouter.get('/vipps/callback', async (req, res) => {
     const userInfo = await getUserInfo(accessToken)
 
     if (!userInfo.sub) throw new Error('No sub in Vipps userinfo')
+
+    const sessionCode = randomBytes(16).toString('hex')
+
+    if (isDeliveryFlow) {
+      const prisma = getPrismaClient()
+      const name = (userInfo.name ?? ([userInfo.given_name, userInfo.family_name].filter(Boolean).join(' '))) || 'Delivery Person'
+      const person = await prisma.deliveryPerson.upsert({
+        where: { vippsSub: userInfo.sub },
+        update: { name, phone: userInfo.phone_number ?? null, email: userInfo.email ?? null },
+        create: { vippsSub: userInfo.sub, name, phone: userInfo.phone_number ?? null, email: userInfo.email ?? null, isActive: false },
+      })
+      const token = signDeliveryToken(person.id)
+      const personParam = JSON.stringify({ id: person.id, name: person.name, email: person.email, isActive: person.isActive })
+      deliverySessionStore.set(sessionCode, { token, person: personParam, expiresAt: Date.now() + 60_000 })
+      res.redirect(`${frontendUrl}/auth/delivery-vipps-return?code=${sessionCode}`)
+      return
+    }
 
     const prisma = getPrismaClient()
     let user = await prisma.user.findUnique({ where: { vippsSub: userInfo.sub } })
@@ -891,13 +902,12 @@ authRouter.get('/vipps/callback', async (req, res) => {
 
     // Store token+user in a short-lived one-time store and redirect with only an opaque code.
     // This keeps the JWT out of browser history, server logs, and Referer headers.
-    const sessionCode = randomBytes(16).toString('hex')
     vippsSessionStore.set(sessionCode, { token, user: userParam, expiresAt: Date.now() + 60_000 })
 
     res.redirect(`${frontendUrl}/auth/vipps-return?code=${sessionCode}`)
   } catch (err) {
     console.error('Vipps callback failed', err)
-    res.redirect(`${frontendUrl}/login?error=vipps_failed`)
+    res.redirect(`${frontendUrl}/${isDeliveryFlow ? 'delivery/login' : 'login'}?error=vipps_failed`)
   }
 })
 
