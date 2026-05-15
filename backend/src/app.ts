@@ -48,6 +48,20 @@ const corsOptions: CorsOptions = {
       return
     }
 
+    // Also allow www. variants of any configured origin
+    try {
+      const url = new URL(origin)
+      if (url.hostname.startsWith('www.')) {
+        const stripped = `${url.protocol}//${url.hostname.slice(4)}${url.port ? `:${url.port}` : ''}`
+        if (allowedOrigins.has(stripped)) {
+          callback(null, true)
+          return
+        }
+      }
+    } catch {
+      // Invalid Origin header; fall through to reject.
+    }
+
     if (allowVercelPreviews) {
       try {
         const { hostname, protocol } = new URL(origin)
