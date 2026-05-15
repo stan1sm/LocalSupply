@@ -108,7 +108,7 @@ const sampleProduct = {
 
 const sampleOrder = {
   id: 'order_1',
-  status: 'PENDING',
+  status: 'CONFIRMED',
   subtotal: 45.0,
   deliveryFee: 0,
   total: 45.0,
@@ -222,7 +222,7 @@ describe('POST /api/orders', () => {
 
     expect(res.status).toBe(201)
     expect(res.body.id).toBe('order_1')
-    expect(res.body.status).toBe('PENDING')
+    expect(res.body.status).toBe('CONFIRMED')
     expect(res.body.items).toHaveLength(1)
     expect(res.body.supplier.businessName).toBe('Green Farm AS')
   })

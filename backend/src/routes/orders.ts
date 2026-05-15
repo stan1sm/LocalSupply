@@ -364,6 +364,7 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
         data: {
           buyerId,
           supplierId: supplier.id,
+          status: 'CONFIRMED',
           subtotal: roundedSubtotal,
           deliveryFee: roundedDeliveryFee,
           total,
@@ -475,6 +476,16 @@ ordersRouter.post('/', requireBuyerAuth, async (req, res) => {
       total: Number(order.total),
       notes: order.notes,
     }).catch(() => { /* already logged inside sendSupplierOrderEmail */ })
+
+    sendBuyerOrderStatusEmail({
+      buyerEmail: order.buyer.email,
+      buyerName: `${order.buyer.firstName} ${order.buyer.lastName}`,
+      orderId: order.id,
+      status: 'CONFIRMED',
+      supplierName: order.supplier.businessName,
+      total: Number(order.total),
+      ...(order.paymentMethod ? { paymentMethod: order.paymentMethod } : {}),
+    }).catch(() => { /* already logged inside sendBuyerOrderStatusEmail */ })
   } catch (error) {
     console.error('Failed to create order', error)
     res.status(503).json({ message: 'Unable to create order right now.' })
