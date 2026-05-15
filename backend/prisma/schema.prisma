@@ -226,17 +226,20 @@ model Order {
   woltDeliveryId    String?
   woltTrackingUrl   String?
   woltStatus        String?
+  deliveryPersonId  String?
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
-  buyer           User         @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade)
-  supplier        Supplier     @relation("SupplierOrders", fields: [supplierId], references: [id], onDelete: Restrict)
-  deliveryAddress UserAddress? @relation(fields: [deliveryAddressId], references: [id], onDelete: SetNull)
+  buyer          User            @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade)
+  supplier       Supplier        @relation("SupplierOrders", fields: [supplierId], references: [id], onDelete: Restrict)
+  deliveryAddress UserAddress?   @relation(fields: [deliveryAddressId], references: [id], onDelete: SetNull)
+  deliveryPerson  DeliveryPerson? @relation(fields: [deliveryPersonId], references: [id], onDelete: SetNull)
   items           OrderItem[]
 
   @@index([buyerId])
   @@index([supplierId])
   @@index([status])
+  @@index([deliveryPersonId])
   @@index([createdAt(sort: Desc)])
 }
 
@@ -276,6 +279,21 @@ model Admin {
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model DeliveryPerson {
+  id        String   @id @default(cuid())
+  vippsSub  String   @unique
+  name      String
+  phone     String?
+  email     String?
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([isActive])
 }
 
 model OrderItem {

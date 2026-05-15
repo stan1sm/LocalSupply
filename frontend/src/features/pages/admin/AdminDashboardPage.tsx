@@ -105,8 +105,18 @@ type PendingProduct = {
   supplier: { id: string; businessName: string }
 }
 
+type DeliveryPerson = {
+  id: string
+  name: string
+  email: string | null
+  phone: string | null
+  isActive: boolean
+  createdAt: string
+  orderCount: number
+}
+
 /** Active tab in the admin dashboard navigation. */
-type Tab = 'suppliers' | 'users' | 'orders' | 'products'
+type Tab = 'suppliers' | 'users' | 'orders' | 'products' | 'drivers'
 
 const STATUS_COLORS: Record<string, string> = {
   VERIFIED: 'bg-green-100 text-green-700',
@@ -146,6 +156,7 @@ export default function AdminDashboardPage() {
   const [users, setUsers] = useState<User[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [pendingProducts, setPendingProducts] = useState<PendingProduct[]>([])
+  const [deliveryPersons, setDeliveryPersons] = useState<DeliveryPerson[]>([])
   const [loading, setLoading] = useState(true)
   const [actionMessage, setActionMessage] = useState('')
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({})
@@ -183,12 +194,14 @@ export default function AdminDashboardPage() {
         fetch(buildApiUrl('/api/admin/users'), { headers }).then((r) => r.json()),
         fetch(buildApiUrl('/api/admin/orders'), { headers }).then((r) => r.json()),
         fetch(buildApiUrl('/api/admin/products?status=PENDING'), { headers }).then((r) => r.json()),
+        fetch(buildApiUrl('/api/admin/delivery-persons'), { headers }).then((r) => r.json()),
       ])
-        .then(([s, u, o, p]) => {
+        .then(([s, u, o, p, d]) => {
           if (Array.isArray(s)) setSuppliers(s as Supplier[])
           if (Array.isArray(u)) setUsers(u as User[])
           if (Array.isArray(o)) setOrders(o as Order[])
           if (Array.isArray(p)) setPendingProducts(p as PendingProduct[])
+          if (Array.isArray(d)) setDeliveryPersons(d as DeliveryPerson[])
         })
         .catch(() => { /* ignore */ })
         .finally(() => setLoading(false))
@@ -247,6 +260,21 @@ export default function AdminDashboardPage() {
     } catch { setActionMessage('Delete failed.') }
   }
 
+  async function updateDeliveryPerson(id: string, isActive: boolean) {
+    setActionMessage('')
+    try {
+      const res = await fetch(buildApiUrl(`/api/admin/delivery-persons/${id}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ isActive }),
+      })
+      if (!res.ok) { setActionMessage('Update failed.'); return }
+      setDeliveryPersons((prev) => prev.map((p) => (p.id === id ? { ...p, isActive } : p)))
+      setActionMessage(isActive ? 'Driver approved.' : 'Driver deactivated.')
+      setTimeout(() => setActionMessage(''), 2000)
+    } catch { setActionMessage('Update failed.') }
+  }
+
   async function handleProductAction(productId: string, action: 'approve' | 'reject') {
     try {
       const res = await fetch(buildApiUrl(`/api/admin/products/${productId}/${action}`), {
@@ -262,11 +290,13 @@ export default function AdminDashboardPage() {
 
   if (!admin) return null
 
+  const pendingDrivers = deliveryPersons.filter((d) => !d.isActive)
   const tabs: { id: Tab; label: string; count: number; badge?: boolean }[] = [
     { id: 'suppliers', label: 'Suppliers', count: suppliers.length },
     { id: 'users', label: 'Users', count: users.length },
     { id: 'orders', label: 'Orders', count: orders.length },
     { id: 'products', label: 'Products', count: pendingProducts.length, badge: pendingProducts.length > 0 },
+    { id: 'drivers', label: 'Drivers', count: deliveryPersons.length, badge: pendingDrivers.length > 0 },
   ]
 
   return (
@@ -486,6 +516,61 @@ export default function AdminDashboardPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Drivers tab */}
+            {tab === 'drivers' && (
+              <div className="overflow-hidden rounded-xl border border-[#e5e7eb] bg-white shadow-sm">
+                {deliveryPersons.length === 0 && <p className="py-12 text-center text-sm text-[#6b7280]">No delivery persons registered yet.</p>}
+                {deliveryPersons.length > 0 && (
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-[#e5e7eb] bg-[#f9fafb] text-left text-xs font-semibold text-[#6b7280]">
+                      <tr>
+                        <th className="px-4 py-3">Name</th>
+                        <th className="px-4 py-3">Email</th>
+                        <th className="px-4 py-3">Phone</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">Deliveries</th>
+                        <th className="px-4 py-3">Joined</th>
+                        <th className="px-4 py-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#f3f4f6]">
+                      {deliveryPersons.map((d) => (
+                        <tr className="hover:bg-[#f9fafb]" key={d.id}>
+                          <td className="px-4 py-3 font-medium text-[#111827]">{d.name}</td>
+                          <td className="px-4 py-3 text-[#374151]">{d.email ?? '—'}</td>
+                          <td className="px-4 py-3 text-[#374151]">{d.phone ?? '—'}</td>
+                          <td className="px-4 py-3">
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${d.isActive ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                              {d.isActive ? 'Active' : 'Pending approval'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-[#374151]">{d.orderCount}</td>
+                          <td className="px-4 py-3 text-[#6b7280]">{formatDate(d.createdAt)}</td>
+                          <td className="px-4 py-3">
+                            {d.isActive ? (
+                              <button
+                                className="rounded border border-[#d1d5db] px-2 py-1 text-[10px] font-semibold text-[#374151] hover:bg-[#f3f4f6]"
+                                onClick={() => updateDeliveryPerson(d.id, false)}
+                              >
+                                Deactivate
+                              </button>
+                            ) : (
+                              <button
+                                className="rounded bg-green-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-green-700"
+                                onClick={() => updateDeliveryPerson(d.id, true)}
+                              >
+                                Approve
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
 

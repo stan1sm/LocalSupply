@@ -11,6 +11,8 @@ import authRouter from './routes/auth.js'
 import cartRouter from './routes/cart.js'
 import chatRouter from './routes/chat.js'
 import deliveryRouter from './routes/delivery.js'
+import deliveryAuthRouter from './routes/deliveryAuth.js'
+import deliveryPersonRouter from './routes/deliveryPerson.js'
 import ordersRouter from './routes/orders.js'
 import productsRouter from './routes/products.js'
 import suppliersRouter from './routes/suppliers.js'
@@ -124,11 +126,14 @@ app.use('/api/admin/login', authLimiter)
 app.use('/api/auth/forgot-password', authLimiter)
 app.use('/api/auth/reset-password', authLimiter)
 app.use('/api/auth/vipps', authLimiter)
+app.use('/api/delivery-auth/vipps', authLimiter)
 app.use('/api/products', searchLimiter)
 app.use('/api/orders', orderLimiter)
 app.use('/api/suppliers', uploadLimiter)
 app.use('/api/chat', chatRouter)
 app.use('/api/delivery', deliveryRouter)
+app.use('/api/delivery-auth', deliveryAuthRouter)
+app.use('/api/delivery-person', deliveryPersonRouter)
 app.use('/api/addresses', addressesRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/auth', authRouter)

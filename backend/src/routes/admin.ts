@@ -408,4 +408,69 @@ adminRouter.patch('/products/:productId/reject', requireAdminAuth, async (req, r
   }
 })
 
+/**
+ * Retrieve all delivery person accounts ordered by registration date (newest first).
+ *
+ * @route {GET} /delivery-persons
+ * @access {authenticated}
+ */
+adminRouter.get('/delivery-persons', requireAdminAuth, async (_req, res) => {
+  try {
+    const prisma = getPrismaClient()
+    const persons = await prisma.deliveryPerson.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { orders: true } } },
+    })
+    res.json(persons.map((p) => ({
+      id: p.id,
+      name: p.name,
+      email: p.email,
+      phone: p.phone,
+      isActive: p.isActive,
+      createdAt: p.createdAt,
+      orderCount: p._count.orders,
+    })))
+  } catch (error) {
+    console.error('Admin get delivery persons failed', error)
+    res.status(503).json({ message: 'Unable to load delivery persons right now.' })
+  }
+})
+
+/**
+ * Approve or deactivate a delivery person account.
+ *
+ * @route {PATCH} /delivery-persons/:id
+ * @access {authenticated}
+ * @param req.body.isActive - true to approve, false to deactivate.
+ */
+adminRouter.patch('/delivery-persons/:id', requireAdminAuth, async (req, res) => {
+  const personId = String(req.params.id ?? '').trim()
+  const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {}
+
+  if (!personId) {
+    res.status(400).json({ message: 'Delivery person id is required.' })
+    return
+  }
+  if (typeof body.isActive !== 'boolean') {
+    res.status(400).json({ message: 'isActive (boolean) is required.' })
+    return
+  }
+
+  try {
+    const prisma = getPrismaClient()
+    const person = await prisma.deliveryPerson.update({
+      where: { id: personId },
+      data: { isActive: body.isActive },
+    })
+    res.json({ id: person.id, isActive: person.isActive })
+  } catch (error) {
+    if ((error as { code?: string }).code === 'P2025') {
+      res.status(404).json({ message: 'Delivery person not found.' })
+      return
+    }
+    console.error('Admin update delivery person failed', error)
+    res.status(503).json({ message: 'Unable to update delivery person right now.' })
+  }
+})
+
 export default adminRouter

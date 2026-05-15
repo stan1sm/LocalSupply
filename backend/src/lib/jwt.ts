@@ -8,8 +8,12 @@ import jwt from 'jsonwebtoken'
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable must be set in production.')
 }
+if (process.env.NODE_ENV === 'production' && !process.env.DELIVERY_JWT_SECRET) {
+  throw new Error('DELIVERY_JWT_SECRET environment variable must be set in production.')
+}
 
 const SECRET = process.env.JWT_SECRET ?? 'localsupply-dev-secret'
+const DELIVERY_SECRET = process.env.DELIVERY_JWT_SECRET ?? 'localsupply-delivery-dev-secret'
 
 /**
  * Signs a JWT for an authenticated buyer, valid for 30 days.
@@ -78,6 +82,30 @@ export function verifyAdminToken(token: string): { adminId: string } | null {
     const payload = jwt.verify(token, SECRET) as { adminId: string; type: string }
     if (payload.type !== 'admin') return null
     return { adminId: payload.adminId }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Signs a JWT for an authenticated delivery person, valid for 30 days.
+ * @param {string} deliveryPersonId - The unique identifier of the delivery person.
+ * @returns {string} A signed JWT string containing the deliveryPersonId and type claim.
+ */
+export function signDeliveryToken(deliveryPersonId: string): string {
+  return jwt.sign({ deliveryPersonId, type: 'delivery' }, DELIVERY_SECRET, { expiresIn: '30d' })
+}
+
+/**
+ * Verifies a delivery person JWT and returns its payload if valid.
+ * @param {string} token - The JWT string to verify.
+ * @returns {{ deliveryPersonId: string } | null} The decoded payload, or null if invalid or not a delivery token.
+ */
+export function verifyDeliveryToken(token: string): { deliveryPersonId: string } | null {
+  try {
+    const payload = jwt.verify(token, DELIVERY_SECRET) as { deliveryPersonId: string; type: string }
+    if (payload.type !== 'delivery') return null
+    return { deliveryPersonId: payload.deliveryPersonId }
   } catch {
     return null
   }
