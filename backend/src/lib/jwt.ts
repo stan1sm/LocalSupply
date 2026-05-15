@@ -8,10 +8,6 @@ import jwt from 'jsonwebtoken'
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable must be set in production.')
 }
-if (process.env.NODE_ENV === 'production' && !process.env.DELIVERY_JWT_SECRET) {
-  throw new Error('DELIVERY_JWT_SECRET environment variable must be set in production.')
-}
-
 const SECRET = process.env.JWT_SECRET ?? 'localsupply-dev-secret'
 const DELIVERY_SECRET = process.env.DELIVERY_JWT_SECRET ?? 'localsupply-delivery-dev-secret'
 
