@@ -357,6 +357,7 @@ export default function HomePage() {
             <ul className="mt-2 space-y-1.5">
               <li><Link className="transition hover:text-[#2f9f4f]" href="/about">About</Link></li>
               <li><Link className="transition hover:text-[#2f9f4f]" href="/supplier/register">For suppliers</Link></li>
+              <li><Link className="transition hover:text-[#2f9f4f]" href="/delivery/login">Delivery login</Link></li>
             </ul>
           </div>
           <div>

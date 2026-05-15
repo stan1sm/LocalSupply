@@ -176,6 +176,9 @@ export default function LoginPage() {
             <Link className="text-xs font-semibold text-[#1f7b3a] underline underline-offset-2 hover:no-underline" href="/supplier/login">
               Supplier login
             </Link>
+            <Link className="text-xs text-[#6b7280] underline underline-offset-2 hover:text-[#374151] hover:no-underline" href="/delivery/login">
+              Delivery login
+            </Link>
           </div>
         </div>
 
