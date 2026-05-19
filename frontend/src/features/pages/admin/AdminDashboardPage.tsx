@@ -186,25 +186,29 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!admin) return
-    function loadData() {
+    async function loadData() {
       setLoading(true)
       const headers = getAuthHeader()
-      Promise.all([
-        fetch(buildApiUrl('/api/admin/suppliers'), { headers }).then((r) => r.json()),
-        fetch(buildApiUrl('/api/admin/users'), { headers }).then((r) => r.json()),
-        fetch(buildApiUrl('/api/admin/orders'), { headers }).then((r) => r.json()),
-        fetch(buildApiUrl('/api/admin/products?status=PENDING'), { headers }).then((r) => r.json()),
-        fetch(buildApiUrl('/api/admin/delivery-persons'), { headers }).then((r) => r.json()),
-      ])
-        .then(([s, u, o, p, d]) => {
-          if (Array.isArray(s)) setSuppliers(s as Supplier[])
-          if (Array.isArray(u)) setUsers(u as User[])
-          if (Array.isArray(o)) setOrders(o as Order[])
-          if (Array.isArray(p)) setPendingProducts(p as PendingProduct[])
-          if (Array.isArray(d)) setDeliveryPersons(d as DeliveryPerson[])
-        })
-        .catch(() => { /* ignore */ })
-        .finally(() => setLoading(false))
+      try {
+        const responses = await Promise.all([
+          fetch(buildApiUrl('/api/admin/suppliers'), { headers }),
+          fetch(buildApiUrl('/api/admin/users'), { headers }),
+          fetch(buildApiUrl('/api/admin/orders'), { headers }),
+          fetch(buildApiUrl('/api/admin/products?status=PENDING'), { headers }),
+          fetch(buildApiUrl('/api/admin/delivery-persons'), { headers }),
+        ])
+        if (responses.some((r) => r.status === 401)) {
+          handleLogout()
+          return
+        }
+        const [s, u, o, p, d] = await Promise.all(responses.map((r) => r.json()))
+        if (Array.isArray(s)) setSuppliers(s as Supplier[])
+        if (Array.isArray(u)) setUsers(u as User[])
+        if (Array.isArray(o)) setOrders(o as Order[])
+        if (Array.isArray(p)) setPendingProducts(p as PendingProduct[])
+        if (Array.isArray(d)) setDeliveryPersons(d as DeliveryPerson[])
+      } catch { /* network error — leave existing state */ }
+      finally { setLoading(false) }
     }
     loadData()
   }, [admin])
@@ -212,6 +216,7 @@ export default function AdminDashboardPage() {
   /** Clears the admin session from localStorage and redirects to the admin login page. */
   function handleLogout() {
     window.localStorage.removeItem(ADMIN_STORAGE_KEY)
+    window.localStorage.removeItem('localsupply-admin-token')
     router.push('/admin/login')
   }
 
