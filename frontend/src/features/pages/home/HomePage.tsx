@@ -1,9 +1,22 @@
+/**
+ * @module HomePage
+ * Public landing page with hero section, how-it-works steps, and smart cart feature highlights.
+ */
+
+'use client'
+
+import Image from 'next/image'
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
+
+const BUYER_STORAGE_KEY = 'localsupply-user'
+const SUPPLIER_STORAGE_KEY = 'localsupply-supplier'
+const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
 
 const howItWorks = [
   {
-    title: 'Find Your Groceries',
-    description: 'Quickly search for produce and daily essentials from your favorite local stores.',
+    title: 'Browse Products',
+    description: 'Search across 50,000+ products from Norwegian grocery chains — no account needed.',
     icon: (
       <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
         <circle cx="11" cy="11" r="7" />
@@ -12,18 +25,20 @@ const howItWorks = [
     ),
   },
   {
-    title: 'Compare Prices',
-    description: 'See real-time prices across suppliers so you can confidently choose the best deal.',
+    title: 'Build Your Cart',
+    description: 'Add items from any store. Our AI figures out the cheapest way to get everything on your list.',
     icon: (
       <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
-        <path d="M12 3v18" />
-        <path d="M17 7.5c0-1.9-2.2-3.5-5-3.5S7 5.6 7 7.5 9.2 11 12 11s5 1.6 5 3.5S14.8 18 12 18s-5-1.6-5-3.5" />
+        <path d="M2 3h2l3.6 7.6L6.3 13a2 2 0 002 2.4h9.1" />
+        <circle cx="10" cy="20" r="1.5" />
+        <circle cx="18" cy="20" r="1.5" />
+        <path d="M8 13h10.5l2-7H6.7" />
       </svg>
     ),
   },
   {
-    title: 'Schedule Delivery',
-    description: 'Choose a delivery window that fits your day and track your order to your door.',
+    title: 'Save & Get Delivered',
+    description: 'Pick the best option — cheapest total, fastest delivery, or a mix of both.',
     icon: (
       <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
         <path d="M3 7h11v9H3z" />
@@ -35,188 +50,325 @@ const howItWorks = [
   },
 ]
 
-const reasons = [
+const smartCartFeatures = [
   {
-    title: 'Maximize Your Savings',
+    title: 'AI-Powered Price Matching',
     description:
-      'Our intelligent comparison engine checks prices at nearby partners so every cart has better value.',
+      'Our algorithm compares your entire cart across every store and finds the combination that saves you the most — even if it means splitting across two chains.',
+    icon: (
+      <svg aria-hidden="true" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+        <path d="M12 3v18" />
+        <path d="M17 7.5c0-1.9-2.2-3.5-5-3.5S7 5.6 7 7.5 9.2 11 12 11s5 1.6 5 3.5S14.8 18 12 18s-5-1.6-5-3.5" />
+      </svg>
+    ),
   },
   {
-    title: 'Fast and Reliable Delivery',
+    title: 'Delivery Cost Included',
     description:
-      'From produce to pantry staples, LocalSupply helps you schedule delivery with confidence and clear timing.',
+      'A cheaper store doesn\'t help if delivery eats the savings. We factor in delivery costs so the total you see is the total you pay.',
+    icon: (
+      <svg aria-hidden="true" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+        <path d="M3 7h11v9H3z" />
+        <path d="M14 10h3l4 3v3h-2" />
+        <circle cx="8" cy="18" r="2" />
+        <circle cx="18" cy="18" r="2" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Real-Time Store Data',
+    description:
+      'Prices sync daily from MENY, Coop, Joker, Spar, Oda, Bunnpris, KIWI, REMA 1000 and more via the Kassal catalog.',
+    icon: (
+      <svg aria-hidden="true" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+        <path d="M12 6v6l4 2" />
+        <circle cx="12" cy="12" r="10" />
+      </svg>
+    ),
   },
 ]
 
-const shoppingLists = [
-  {
-    title: 'Weekly Staples',
-    items: '18 items',
-    image:
-      'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    title: 'Healthy Meals',
-    items: '14 items',
-    image:
-      'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    title: 'Quick Dinners',
-    items: '12 items',
-    image:
-      'https://images.unsplash.com/photo-1482049016688-2d3e1b311543?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    title: 'Snack Restock',
-    items: '10 items',
-    image:
-      'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=900&q=80',
-  },
-]
-
+/**
+ * Public landing page that adapts the navigation bar for logged-in buyers, logged-in suppliers, or guests.
+ */
 export default function HomePage() {
+  const [loggedInName, setLoggedInName] = useState<string | null>(null)
+  const [supplierName, setSupplierName] = useState<string | null>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  useEffect(() => {
+    function readStorage() {
+      try {
+        const buyerRaw = window.localStorage.getItem(BUYER_STORAGE_KEY)
+        if (buyerRaw) {
+          const parsed = JSON.parse(buyerRaw) as { firstName?: string; id?: string }
+          if (parsed?.id && parsed?.firstName) { setLoggedInName(parsed.firstName); setSupplierName(null); return }
+        }
+        setLoggedInName(null)
+        const supplierRaw = window.localStorage.getItem(SUPPLIER_STORAGE_KEY)
+        const supplierToken = window.localStorage.getItem(SUPPLIER_TOKEN_KEY)
+        if (supplierRaw && supplierToken) {
+          const parsed = JSON.parse(supplierRaw) as { businessName?: string; id?: string }
+          if (parsed?.id && parsed?.businessName) { setSupplierName(parsed.businessName); return }
+        }
+        setSupplierName(null)
+      } catch { /* ignore */ }
+    }
+    readStorage()
+    window.addEventListener('storage', readStorage)
+    return () => window.removeEventListener('storage', readStorage)
+  }, [])
+
+  /** Removes the buyer session from localStorage and clears the logged-in name from state. */
+  function handleLogout() {
+    window.localStorage.removeItem(BUYER_STORAGE_KEY)
+    setLoggedInName(null)
+  }
+
+  /** Removes the supplier session and token from localStorage and clears the supplier name from state. */
+  function handleSupplierLogout() {
+    window.localStorage.removeItem(SUPPLIER_STORAGE_KEY)
+    window.localStorage.removeItem(SUPPLIER_TOKEN_KEY)
+    setSupplierName(null)
+  }
+
   return (
-    <main className="bg-[#f2f4ef] text-[#1f2937]">
-      <section className="mx-auto w-full max-w-6xl px-4 pb-12 pt-4 sm:px-6 lg:px-8">
-        <header className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
-          <Link className="inline-flex items-center gap-2 text-sm font-bold text-[#2f9f4f]" href="/">
-            <span className="grid h-5 w-5 place-items-center rounded bg-[#2f9f4f] text-[10px] text-white">LS</span>
-            LocalSupply
-          </Link>
+    <main className="min-h-screen bg-[#f3f4f6] text-[#1f2937]">
+      <section className="mx-auto w-full max-w-6xl px-4 pb-12 pt-5 sm:px-6 lg:px-8">
+        <header className="rounded-xl border border-[#e5e7eb] bg-white/95 shadow-sm backdrop-blur-sm">
+          <div className="flex items-center justify-between px-4 py-3">
+            <Link className="inline-flex items-center gap-2.5 text-[15px] font-bold text-[#1f2937] transition hover:text-[#2f9f4f]" href="/">
+              <img src="/icons/localsupply-64.png" alt="LocalSupply" className="h-8 w-8 shrink-0 rounded-lg" />
+              <span>LocalSupply</span>
+            </Link>
 
-          <label className="mx-4 hidden w-full max-w-md items-center gap-2 rounded-full border border-[#d8dfd4] bg-[#f9fbf8] px-3 py-2 text-sm text-[#6b7280] md:flex">
-            <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-3.6-3.6" />
-            </svg>
-            <input
-              className="w-full bg-transparent outline-none placeholder:text-[#9ca3af]"
-              placeholder="Search for groceries..."
-              type="search"
-            />
-          </label>
+            {/* Desktop nav */}
+            <nav className="hidden items-center gap-2 sm:flex">
+              {loggedInName ? (
+                <>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/marketplace/dashboard">
+                    My Marketplace
+                  </Link>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/settings">
+                    Settings
+                  </Link>
+                  <button onClick={handleLogout} className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600">
+                    Log out
+                  </button>
+                </>
+              ) : supplierName ? (
+                <>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/supplier">
+                    My Dashboard
+                  </Link>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/supplier/settings">
+                    Settings
+                  </Link>
+                  <button onClick={handleSupplierLogout} className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-red-300 hover:bg-red-50 hover:text-red-600">
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/marketplace/dashboard">
+                    Marketplace
+                  </Link>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/login">
+                    Login
+                  </Link>
+                  <Link className="rounded-full bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#25813f]" href="/register">
+                    Register
+                  </Link>
+                  <Link className="rounded-full border border-[#d1d5db] bg-[#f9fafb] px-4 py-2 text-sm font-medium text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#eaf7ee] hover:text-[#1f7b3a]" href="/supplier/login">
+                    Supplier login
+                  </Link>
+                </>
+              )}
+            </nav>
 
-          <Link className="text-sm font-semibold text-[#1f2937] hover:text-[#2f9f4f]" href="/register">
-            Sign in
-          </Link>
-        </header>
-
-        <div className="mt-8 grid items-center gap-8 rounded-3xl bg-white p-6 shadow-[0_15px_40px_rgba(15,23,42,0.06)] sm:p-8 lg:grid-cols-2">
-          <div>
-            <h1 className="max-w-md text-3xl font-extrabold leading-tight text-[#1f2937] sm:text-4xl">
-              Find the best local prices for your groceries
-            </h1>
-            <p className="mt-4 max-w-md text-sm text-[#5b665f] sm:text-base">
-              Compare prices, discover deals, and get groceries delivered from local stores, all in one smart app.
-            </p>
-            <div className="mt-6 flex gap-3">
-              <Link
-                className="rounded-lg bg-[#2f9f4f] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25813f]"
-                href="/register"
-              >
-                Start Shopping
-              </Link>
-              <Link
-                className="rounded-lg border border-[#d0d8cc] px-5 py-2.5 text-sm font-semibold text-[#314237] transition hover:border-[#2f9f4f] hover:text-[#2f9f4f]"
-                href="/supplier/register"
-              >
-                For Suppliers
-              </Link>
-            </div>
+            {/* Mobile hamburger */}
+            <button className="rounded-lg p-2 text-[#374151] hover:bg-[#f3f4f6] sm:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} type="button" aria-label="Toggle menu">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                {mobileMenuOpen
+                  ? <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  : <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />}
+              </svg>
+            </button>
           </div>
 
-          <div className="overflow-hidden rounded-2xl">
-            <img
-              alt="A shopping cart with fresh groceries."
-              className="h-[280px] w-full object-cover sm:h-[320px]"
+          {/* Mobile dropdown nav */}
+          {mobileMenuOpen && (
+            <nav className="flex flex-col gap-1 border-t border-[#e5e7eb] px-4 py-3 sm:hidden">
+              {loggedInName ? (
+                <>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/marketplace/dashboard" onClick={() => setMobileMenuOpen(false)}>My Marketplace</Link>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/settings" onClick={() => setMobileMenuOpen(false)}>Settings</Link>
+                  <button onClick={() => { handleLogout(); setMobileMenuOpen(false) }} className="rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50">Log out</button>
+                </>
+              ) : supplierName ? (
+                <>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/supplier" onClick={() => setMobileMenuOpen(false)}>My Dashboard</Link>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/supplier/settings" onClick={() => setMobileMenuOpen(false)}>Settings</Link>
+                  <button onClick={() => { handleSupplierLogout(); setMobileMenuOpen(false) }} className="rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50">Log out</button>
+                </>
+              ) : (
+                <>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/marketplace/dashboard" onClick={() => setMobileMenuOpen(false)}>Marketplace</Link>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/login" onClick={() => setMobileMenuOpen(false)}>Login</Link>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-white bg-[#2f9f4f] hover:bg-[#25813f]" href="/register" onClick={() => setMobileMenuOpen(false)}>Register</Link>
+                  <Link className="rounded-lg px-3 py-2 text-sm font-medium text-[#374151] hover:bg-[#eaf7ee]" href="/supplier/login" onClick={() => setMobileMenuOpen(false)}>Supplier login</Link>
+                </>
+              )}
+            </nav>
+          )}
+        </header>
+
+        <div className="mt-6 grid items-center gap-6 rounded-2xl border border-[#e5e7eb] bg-white p-6 shadow-sm sm:mt-8 sm:gap-8 sm:p-8 lg:grid-cols-2">
+          <div>
+            <span className="inline-block rounded-full border border-[#2f9f4f]/30 bg-[#eaf7ee] px-3 py-1 text-xs font-semibold text-[#1f7b3a]">
+              AI-powered grocery savings
+            </span>
+            <h1 className="mt-3 max-w-md text-2xl font-extrabold leading-tight tracking-tight text-[#111827] sm:text-3xl lg:text-4xl">
+              We find the cheapest way to buy your groceries
+            </h1>
+            <p className="mt-3 max-w-md text-sm leading-relaxed text-[#4b5563] sm:text-base">
+              Add items to your cart and our AI compares prices across every Norwegian grocery chain — including delivery costs — to find the cheapest total for you.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2.5">
+              <Link
+                className="rounded-lg bg-[#2f9f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25813f] focus:outline-none focus:ring-2 focus:ring-[#2f9f4f]/40 focus:ring-offset-2"
+                href="/marketplace/dashboard"
+              >
+                Browse Marketplace
+              </Link>
+              {!loggedInName ? (
+                <>
+                  <Link
+                    className="rounded-lg border border-[#d1d5db] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#f0f4ee] hover:text-[#1f7b3a]"
+                    href="/register"
+                  >
+                    Create Account
+                  </Link>
+                  <Link
+                    className="rounded-lg border border-[#d1d5db] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#f0f4ee] hover:text-[#1f7b3a]"
+                    href="/supplier/register"
+                  >
+                    For Suppliers
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  className="rounded-lg border border-[#d1d5db] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] transition hover:border-[#2f9f4f] hover:bg-[#f0f4ee] hover:text-[#1f7b3a]"
+                  href="/orders"
+                >
+                  My Orders
+                </Link>
+              )}
+            </div>
+            {!loggedInName ? (
+              <p className="mt-2.5 text-xs text-[#6b7280]">
+                Already a supplier?{' '}
+                <Link className="font-semibold text-[#2f9f4f] hover:text-[#25813f]" href="/supplier/login">
+                  Log in to your dashboard
+                </Link>
+                .
+              </p>
+            ) : null}
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-[#e5e7eb]">
+            <Image
+              alt="Fresh groceries ready for delivery"
+              className="h-[240px] w-full object-cover sm:h-[280px]"
               src="https://images.unsplash.com/photo-1543168256-418811576931?auto=format&fit=crop&w=1200&q=80"
+              width={1200}
+              height={280}
+              priority
             />
           </div>
         </div>
       </section>
 
-      <section className="border-y border-[#e2e8df] bg-[#f7f9f5] py-14">
+      <section className="border-y border-[#e5e7eb] bg-white/50 py-12">
         <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-          <h2 className="text-center text-3xl font-bold text-[#1f2937]">How LocalSupply Works</h2>
-          <div className="mt-10 grid gap-5 md:grid-cols-3">
-            {howItWorks.map((step) => (
+          <h2 className="text-center text-2xl font-bold text-[#111827] sm:text-3xl">How It Works</h2>
+          <p className="mx-auto mt-2 max-w-lg text-center text-sm text-[#4b5563]">
+            Three steps to cheaper groceries. No account required to start browsing.
+          </p>
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            {howItWorks.map((step, index) => (
               <article
-                className="rounded-2xl border border-[#dce5d7] bg-white p-6 text-center shadow-[0_10px_25px_rgba(15,23,42,0.05)]"
+                className="rounded-xl border border-[#e5e7eb] bg-white p-5 text-center shadow-sm"
                 key={step.title}
               >
-                <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-[#eaf7ee] text-[#2f9f4f]">{step.icon}</div>
-                <h3 className="mt-4 text-lg font-semibold text-[#253128]">{step.title}</h3>
-                <p className="mt-2 text-sm text-[#5b665f]">{step.description}</p>
+                <div className="mx-auto grid h-9 w-9 place-items-center rounded-full border border-[#2f9f4f]/20 bg-[#eaf7ee] text-sm font-bold text-[#1f7b3a]">
+                  {index + 1}
+                </div>
+                <h3 className="mt-3 text-base font-semibold text-[#111827]">{step.title}</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-[#4b5563]">{step.description}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
-        <h2 className="text-center text-3xl font-bold text-[#1f2937]">Why Choose LocalSupply?</h2>
-        <div className="mt-8 grid gap-5 md:grid-cols-2">
-          {reasons.map((reason) => (
-            <article className="rounded-2xl bg-white p-6 shadow-[0_10px_25px_rgba(15,23,42,0.05)]" key={reason.title}>
-              <h3 className="text-xl font-semibold text-[#253128]">{reason.title}</h3>
-              <p className="mt-3 text-sm text-[#5b665f] sm:text-base">{reason.description}</p>
+      <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="text-center">
+          <span className="inline-block rounded-full border border-[#2f9f4f]/30 bg-[#eaf7ee] px-3 py-1 text-xs font-semibold text-[#1f7b3a]">
+            Smart Cart
+          </span>
+          <h2 className="mt-3 text-2xl font-bold text-[#111827] sm:text-3xl">AI that actually saves you money</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-[#4b5563] sm:text-base">
+            Most people shop at one store and hope for the best. LocalSupply checks every store for you and builds the cheapest possible order — automatically.
+          </p>
+        </div>
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
+          {smartCartFeatures.map((feature) => (
+            <article className="rounded-xl border border-[#e5e7eb] bg-white p-5 shadow-sm" key={feature.title}>
+              <div className="grid h-10 w-10 place-items-center rounded-lg border border-[#2f9f4f]/20 bg-[#eaf7ee] text-[#1f7b3a]">{feature.icon}</div>
+              <h3 className="mt-3 text-base font-semibold text-[#111827]">{feature.title}</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-[#4b5563]">{feature.description}</p>
             </article>
           ))}
         </div>
-      </section>
-
-      <section className="border-t border-[#e2e8df] bg-[#f7f9f5] py-14">
-        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-          <h2 className="text-center text-3xl font-bold text-[#1f2937]">Popular Shopping Lists</h2>
-          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {shoppingLists.map((list) => (
-              <article className="group relative overflow-hidden rounded-xl" key={list.title}>
-                <img
-                  alt={`${list.title} shopping list`}
-                  className="h-44 w-full object-cover transition duration-300 group-hover:scale-105"
-                  src={list.image}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/65 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 p-3">
-                  <h3 className="text-sm font-semibold text-white">{list.title}</h3>
-                  <p className="text-xs text-white/80">{list.items}</p>
-                </div>
-              </article>
-            ))}
-          </div>
+        <div className="mt-8 text-center">
+          <Link
+            className="inline-block rounded-lg bg-[#2f9f4f] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25813f] focus:outline-none focus:ring-2 focus:ring-[#2f9f4f]/40 focus:ring-offset-2"
+            href="/marketplace/dashboard"
+          >
+            Try it now — no signup needed
+          </Link>
         </div>
       </section>
 
-      <footer className="border-t border-[#e2e8df] bg-white py-10">
-        <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 text-sm text-[#5b665f] sm:px-6 md:grid-cols-4 lg:px-8">
+      <footer className="border-t border-[#e5e7eb] bg-white py-8">
+        <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 text-sm text-[#4b5563] sm:px-6 md:grid-cols-4 lg:px-8">
           <div className="md:col-span-2">
-            <p className="inline-flex items-center gap-2 font-bold text-[#2f9f4f]">
-              <span className="grid h-5 w-5 place-items-center rounded bg-[#2f9f4f] text-[10px] text-white">LS</span>
+            <p className="inline-flex items-center gap-2 font-bold text-[#1f2937]">
+              <img src="/icons/localsupply-32.png" alt="LocalSupply" className="h-6 w-6 rounded-lg" />
               LocalSupply
             </p>
-            <p className="mt-3 max-w-md">
-              Grocery delivery made local. Compare prices and get essentials delivered from stores and suppliers near you.
+            <p className="mt-2 max-w-md leading-relaxed">
+              AI-powered grocery comparison. We check prices across every Norwegian chain and find the cheapest way to fill your cart — delivery included.
             </p>
           </div>
           <div>
-            <h3 className="font-semibold text-[#253128]">Company</h3>
-            <ul className="mt-3 space-y-2">
-              <li>About</li>
-              <li>Careers</li>
-              <li>Blog</li>
+            <h3 className="font-semibold text-[#111827]">Company</h3>
+            <ul className="mt-2 space-y-1.5">
+              <li><Link className="transition hover:text-[#2f9f4f]" href="/about">About</Link></li>
+              <li><Link className="transition hover:text-[#2f9f4f]" href="/supplier/register">For suppliers</Link></li>
+              <li><Link className="transition hover:text-[#2f9f4f]" href="/delivery/login">Delivery login</Link></li>
             </ul>
           </div>
           <div>
-            <h3 className="font-semibold text-[#253128]">Support</h3>
-            <ul className="mt-3 space-y-2">
-              <li>Help Center</li>
-              <li>Contact</li>
-              <li>Status</li>
+            <h3 className="font-semibold text-[#111827]">Legal</h3>
+            <ul className="mt-2 space-y-1.5">
+              <li><Link className="transition hover:text-[#2f9f4f]" href="/privacy-policy">Privacy Policy</Link></li>
+              <li><Link className="transition hover:text-[#2f9f4f]" href="/cookie-policy">Cookie Policy</Link></li>
             </ul>
           </div>
         </div>
-        <p className="mt-8 text-center text-xs text-[#8b978e]">© 2026 LocalSupply. All rights reserved.</p>
+        <p className="mt-6 text-center text-xs text-[#6b7280]">&copy; 2026 LocalSupply. All rights reserved.</p>
       </footer>
     </main>
   )

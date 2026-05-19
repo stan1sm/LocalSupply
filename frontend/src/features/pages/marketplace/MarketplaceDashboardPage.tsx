@@ -1,3 +1,1058 @@
+/**
+ * @module MarketplaceDashboardPage
+ * Main marketplace page with product search, category/store filtering, infinite scroll, and a cart sidebar with AI substitutions.
+ */
+
+'use client'
+
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
+import { buildApiUrl } from '../../../lib/api'
+import { MARKETPLACE_CART_STORAGE_KEY } from '../../../lib/cookieConsent'
+import { useMarketplaceCartPersistenceAllowed } from '../../../lib/useMarketplaceCartPersistence'
+import { ToastContainer } from '../../components/Toast'
+import { useToast } from '../../components/useToast'
+import BuyerSidebar from '../../components/BuyerSidebar'
+
+/**
+ * Resolves a product image URL, prefixing relative paths with the API base URL.
+ * @param url - Raw image URL from the product record, or null.
+ * @returns Absolute URL string, or null if the input is null.
+ */
+function productImageSrc(url: string | null): string | null {
+  if (!url) return null
+  return url.startsWith('/') ? buildApiUrl(url) : url
+}
+
+/**
+ * A marketplace product from the catalog or a local supplier.
+ * @property brand - Brand name, or null.
+ * @property category - Product category slug, or null.
+ * @property description - Product description, or null.
+ * @property ean - EAN barcode, or null.
+ * @property id - Unique price ID.
+ * @property imageUrl - Product image URL, or null.
+ * @property name - Display name.
+ * @property price - Unit price in Norwegian krone, or null.
+ * @property priceText - Formatted price text (e.g. "12.90 kr/stk"), or null.
+ * @property store - Store code, or null.
+ * @property unitInfo - Unit description (e.g. "500 g"), or null.
+ * @property url - Deep-link to the product in the source store, or null.
+ * @property source - Product origin: "catalog" (Wolt) or "supplier" (local).
+ * @property supplierId - Supplier ID for supplier-sourced products.
+ */
+type Product = {
+  brand: string | null
+  category: string | null
+  description: string | null
+  ean: string | null
+  id: string
+  imageUrl: string | null
+  name: string
+  price: number | null
+  priceText: string | null
+  store: string | null
+  unitInfo: string | null
+  url: string | null
+  source?: 'catalog' | 'supplier'
+  supplierId?: string
+}
+
+/**
+ * API response envelope for the product search endpoint.
+ * @property items - Array of products on this page.
+ * @property message - Error message, if any.
+ * @property page - Current page number.
+ * @property pageSize - Number of items per page.
+ * @property total - Total matching products count.
+ */
+type ProductResponse = {
+  items?: Product[]
+  message?: string
+  page?: number
+  pageSize?: number
+  total?: number
+}
+
+/**
+ * A cart item stored in localStorage.
+ * @property id - Price ID (cart key).
+ * @property imageUrl - Product image URL, or null.
+ * @property name - Product display name.
+ * @property price - Unit price in krone.
+ * @property quantity - Quantity added to cart.
+ * @property store - Store code, or null.
+ * @property unitInfo - Unit description, or null.
+ */
+type CartItem = {
+  id: string
+  imageUrl: string | null
+  name: string
+  price: number
+  quantity: number
+  store: string | null
+  unitInfo: string | null
+}
+
+/**
+ * An AI-generated substitution suggestion for a cart item.
+ * @property priceId - Price ID of the suggested substitute.
+ * @property name - Substitute product name.
+ * @property brand - Brand name, or null.
+ * @property imageUrl - Product image URL, or null.
+ * @property unit - Unit description, or null.
+ * @property storeName - Store where the substitute is available.
+ * @property price - Unit price of the substitute.
+ * @property savingsAmount - Absolute savings vs the original.
+ * @property savingsPercentage - Relative savings as a percentage, or null.
+ * @property reason - Explanation for the substitution.
+ */
+type Substitution = {
+  priceId: string
+  name: string
+  brand: string | null
+  imageUrl: string | null
+  unit: string | null
+  storeName: string
+  price: number
+  savingsAmount: number
+  savingsPercentage: number | null
+  reason: string
+}
+
+/**
+ * A category filter option.
+ * @property id - Category slug used as the filter value.
+ * @property label - Human-readable label displayed in the UI.
+ */
+type CategoryOption = {
+  id: string
+  label: string
+}
+
+/**
+ * A store filter option.
+ * @property label - Human-readable store name.
+ * @property value - Store code used as the filter value.
+ */
+type StoreOption = {
+  label: string
+  value: string
+}
+
+const PAGE_SIZE = 50
+
+const categoryOptions: CategoryOption[] = [
+  { id: 'all', label: 'All' },
+  { id: 'local-suppliers', label: 'Local suppliers' },
+  { id: 'produce', label: 'Fresh Produce' },
+  { id: 'dairy', label: 'Dairy' },
+  { id: 'pantry', label: 'Pantry Staples' },
+  { id: 'protein', label: 'Meat & Seafood' },
+  { id: 'drinks', label: 'Beverages' },
+]
+
+
+const DEFAULT_STORE_OPTIONS: StoreOption[] = [
+  { value: 'all', label: 'All stores' },
+]
+
+/**
+ * Formats a numeric value as a Norwegian krone string.
+ * @param value - Numeric amount.
+ * @returns String with two decimal places and "kr" suffix.
+ */
+function formatCurrency(value: number) {
+  return `${value.toFixed(2)} kr`
+}
+
+/**
+ * Returns a sorted copy of the product array according to the selected sort option.
+ * @param products - Products to sort.
+ * @param sortBy - Sort key: "price-asc", "price-desc", "name-asc", "store-asc", or default (no-op).
+ * @returns New sorted array.
+ */
+function sortProducts(products: Product[], sortBy: string) {
+  const next = [...products]
+
+  switch (sortBy) {
+    case 'price-asc':
+      next.sort((a, b) => (a.price ?? Number.POSITIVE_INFINITY) - (b.price ?? Number.POSITIVE_INFINITY))
+      return next
+    case 'price-desc':
+      next.sort((a, b) => (b.price ?? Number.NEGATIVE_INFINITY) - (a.price ?? Number.NEGATIVE_INFINITY))
+      return next
+    case 'name-asc':
+      next.sort((a, b) => a.name.localeCompare(b.name))
+      return next
+    case 'store-asc':
+      next.sort((a, b) => (a.store ?? 'zzz').localeCompare(b.store ?? 'zzz'))
+      return next
+    default:
+      return next
+  }
+}
+
+/**
+ * Marketplace dashboard with product search, filtering, infinite scroll, and a cart sidebar
+ * that shows AI substitution suggestions for saved items.
+ */
 export default function MarketplaceDashboardPage() {
-  return <main />
+  const cartPersistAllowed = useMarketplaceCartPersistenceAllowed()
+  const { toasts, addToast } = useToast()
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedCategoryId, setSelectedCategoryId] = useState('all')
+  const [selectedStore, setSelectedStore] = useState('all')
+  const [sortBy, setSortBy] = useState('relevance')
+  const [products, setProducts] = useState<Product[]>([])
+  const [totalProducts, setTotalProducts] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [cartItems, setCartItems] = useState<CartItem[]>([])
+  const [storeOptions, setStoreOptions] = useState<StoreOption[]>(DEFAULT_STORE_OPTIONS)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [substitutions, setSubstitutions] = useState<Record<string, Substitution[] | null>>({})
+  const [loadingSubstitutions, setLoadingSubstitutions] = useState<Set<string>>(new Set())
+  const [hiddenProductIds, setHiddenProductIds] = useState<Set<string>>(new Set())
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [mobileCartOpen, setMobileCartOpen] = useState(false)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  const deferredSearchQuery = useDeferredValue(searchQuery)
+  const explicitSearchQuery = deferredSearchQuery.trim()
+  const shouldRequestProducts = explicitSearchQuery.length >= 3 || Boolean(selectedCategoryId)
+  const effectiveQuery = explicitSearchQuery
+  const requestKeyRef = useRef('')
+  const hasMore = products.length < totalProducts
+
+  useEffect(() => {
+    if (!cartPersistAllowed) return
+    try {
+      const storedCart = window.localStorage.getItem(MARKETPLACE_CART_STORAGE_KEY)
+      if (storedCart) {
+        const parsed = JSON.parse(storedCart) as CartItem[]
+        if (Array.isArray(parsed)) {
+          setCartItems(parsed)
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(MARKETPLACE_CART_STORAGE_KEY)
+    }
+  }, [cartPersistAllowed])
+
+  useEffect(() => {
+    if (!cartPersistAllowed) return
+    try {
+      window.localStorage.setItem(MARKETPLACE_CART_STORAGE_KEY, JSON.stringify(cartItems))
+    } catch {
+      /* ignore */
+    }
+  }, [cartItems, cartPersistAllowed])
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchStores() {
+      try {
+        const url = buildApiUrl('/api/products/stores')
+        const res = await fetch(url)
+        if (!res.ok) return
+        const data = (await res.json()) as { code: string; name: string }[]
+        if (cancelled || !Array.isArray(data)) return
+        setStoreOptions([
+          { value: 'all', label: 'All stores' },
+          ...data.map((s) => ({ value: s.code, label: s.name })),
+        ])
+      } catch { /* ignore */ }
+    }
+    fetchStores()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let isCancelled = false
+    const controller = new AbortController()
+    const requestKey = `${effectiveQuery || '<empty>'}::${selectedCategoryId}::${selectedStore}`
+    requestKeyRef.current = requestKey
+
+    async function loadInitialProducts() {
+      setIsLoading(true)
+      setErrorMessage('')
+      setProducts([])
+      setTotalProducts(0)
+      setCurrentPage(1)
+
+      if (!shouldRequestProducts) {
+        setIsLoading(false)
+        return
+      }
+
+      try {
+        const url = new URL(buildApiUrl('/api/products'), window.location.origin)
+        url.searchParams.set('page', '1')
+        url.searchParams.set('pageSize', String(PAGE_SIZE))
+
+        if (effectiveQuery) {
+          url.searchParams.set('q', effectiveQuery)
+        }
+        if (selectedCategoryId && selectedCategoryId !== 'all') {
+          url.searchParams.set('category', selectedCategoryId)
+        }
+        if (selectedStore !== 'all') {
+          url.searchParams.set('store', selectedStore)
+        }
+
+        const response = await fetch(url.toString(), { signal: controller.signal })
+        const payload = (await response.json().catch(() => ({}))) as ProductResponse
+
+        if (!response.ok) {
+          throw new Error(payload.message ?? 'Unable to load products right now.')
+        }
+
+        if (!isCancelled && requestKeyRef.current === requestKey) {
+          setProducts(payload.items ?? [])
+          setTotalProducts(payload.total ?? payload.items?.length ?? 0)
+        }
+      } catch (error) {
+        if (controller.signal.aborted || isCancelled) {
+          return
+        }
+
+        setProducts([])
+        setTotalProducts(0)
+        setErrorMessage(error instanceof Error ? error.message : 'Unable to load products right now.')
+      } finally {
+        if (!isCancelled && requestKeyRef.current === requestKey) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadInitialProducts()
+
+    return () => {
+      isCancelled = true
+      controller.abort()
+    }
+  }, [effectiveQuery, selectedCategoryId, selectedStore, shouldRequestProducts])
+
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || isLoading || !hasMore) return
+    const nextPage = currentPage + 1
+    setIsLoadingMore(true)
+    try {
+      const url = new URL(buildApiUrl('/api/products'), window.location.origin)
+      url.searchParams.set('page', String(nextPage))
+      url.searchParams.set('pageSize', String(PAGE_SIZE))
+      if (effectiveQuery) url.searchParams.set('q', effectiveQuery)
+      if (selectedCategoryId && selectedCategoryId !== 'all') url.searchParams.set('category', selectedCategoryId)
+      if (selectedStore !== 'all') url.searchParams.set('store', selectedStore)
+
+      const response = await fetch(url.toString())
+      const payload = (await response.json().catch(() => ({}))) as ProductResponse
+      if (response.ok && payload.items && payload.items.length > 0) {
+        setProducts((prev) => [...prev, ...payload.items!])
+        setCurrentPage(nextPage)
+      }
+    } catch { /* ignore */ } finally {
+      setIsLoadingMore(false)
+    }
+  }, [isLoadingMore, isLoading, hasMore, currentPage, effectiveQuery, selectedCategoryId, selectedStore])
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries[0]?.isIntersecting) loadMore() },
+      { rootMargin: '400px' },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [loadMore])
+
+  const filteredProducts = sortProducts(products.filter((p) => !hiddenProductIds.has(p.id)), sortBy)
+
+  const cartSubtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const estimatedDelivery = cartSubtotal > 0 ? 49 : 0
+  const cartTotal = cartSubtotal + estimatedDelivery
+  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0)
+
+  /**
+   * Adds, updates, or removes a product in the cart based on the desired quantity.
+   * @param product - The marketplace product to update.
+   * @param nextQuantity - Target quantity; 0 removes the item.
+   */
+  function updateQuantity(product: Product, nextQuantity: number) {
+    if (product.price === null) {
+      return
+    }
+
+    const price = product.price
+
+    setCartItems((current) => {
+      const existingItem = current.find((item) => item.id === product.id)
+
+      if (!existingItem && nextQuantity <= 0) {
+        return current
+      }
+
+      if (!existingItem) {
+        addToast(`${product.name} added to cart`, 'success')
+        return [
+          ...current,
+          {
+            id: product.id,
+            imageUrl: product.imageUrl,
+            name: product.name,
+            price,
+            quantity: nextQuantity,
+            store: product.store,
+            unitInfo: product.unitInfo,
+          },
+        ]
+      }
+
+      if (nextQuantity <= 0) {
+        return current.filter((item) => item.id !== product.id)
+      }
+
+      return current.map((item) => (item.id === product.id ? { ...item, quantity: nextQuantity } : item))
+    })
+  }
+
+  /**
+   * Returns the quantity of a product currently in the cart.
+   * @param productId - Price ID of the product.
+   * @returns Current quantity, or 0 if not in cart.
+   */
+  function getProductQuantity(productId: string) {
+    return cartItems.find((item) => item.id === productId)?.quantity ?? 0
+  }
+
+  /** Navigates to the checkout page if the cart contains at least one item. */
+  function handleProceedToCheckout() {
+    if (cartItems.length === 0) return
+    window.location.href = '/checkout'
+  }
+
+  /**
+   * Lazily fetches AI substitution suggestions for a cart item and caches the result.
+   * @param itemId - Price ID of the cart item to find substitutes for.
+   */
+  async function fetchSubstitutions(itemId: string) {
+    if (substitutions[itemId] !== undefined || loadingSubstitutions.has(itemId)) return
+    setLoadingSubstitutions((prev) => new Set(prev).add(itemId))
+    try {
+      const res = await fetch(buildApiUrl(`/api/products/${encodeURIComponent(itemId)}/substitutions`))
+      const data = (await res.json().catch(() => ({}))) as { suggestions?: Substitution[] }
+      setSubstitutions((prev) => ({ ...prev, [itemId]: data.suggestions ?? [] }))
+    } catch {
+      setSubstitutions((prev) => ({ ...prev, [itemId]: [] }))
+    } finally {
+      setLoadingSubstitutions((prev) => { const next = new Set(prev); next.delete(itemId); return next })
+    }
+  }
+
+  /**
+   * Replaces a cart item with an AI-suggested substitute, clearing its substitutions cache.
+   * @param oldItemId - Price ID of the item to replace.
+   * @param suggestion - The AI substitute to swap in.
+   * @param quantity - Quantity to carry over to the new item.
+   */
+  function swapCartItem(oldItemId: string, suggestion: Substitution, quantity: number) {
+    setCartItems((current) =>
+      current.map((item) =>
+        item.id === oldItemId
+          ? { id: suggestion.priceId, name: suggestion.name, price: suggestion.price, store: suggestion.storeName, imageUrl: suggestion.imageUrl, unitInfo: suggestion.unit, quantity }
+          : item,
+      ),
+    )
+    setSubstitutions((prev) => { const next = { ...prev }; delete next[oldItemId]; return next })
+    addToast(`Swapped to ${suggestion.name}`, 'success')
+  }
+
+  return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 pb-20 pt-6 sm:px-6 lg:px-8 lg:pb-6">
+      <ToastContainer toasts={toasts} />
+      <div className="mx-auto grid w-full max-w-[1600px] items-start gap-6 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
+        <BuyerSidebar />
+
+        <section className="overflow-hidden rounded-[28px] border border-[#dce5d7] bg-white/92 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+          <header className="border-b border-[#e5ece2] px-5 py-5 sm:px-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#2f9f4f]">Marketplace</p>
+                <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-[#1c2b21]">Fresh grocery search across Norwegian stores</h1>
+
+              </div>
+              <div className="rounded-2xl border border-[#d9e3d4] bg-[#f6faf5] px-4 py-3 text-sm text-[#36513e]">
+                <p className="font-semibold">
+                  {selectedCategoryId === 'local-suppliers'
+                    ? totalProducts > 0
+                      ? `${totalProducts} product${totalProducts !== 1 ? 's' : ''} from local suppliers`
+                      : 'Products from registered local suppliers'
+                    : totalProducts > 0
+                      ? `${totalProducts}+ imported products available`
+                      : 'Imported catalog connection ready'}
+                </p>
+                <p className="mt-1 text-xs text-[#6a796f]">{shouldRequestProducts ? `Showing ${filteredProducts.length} of ${totalProducts} results` : 'Choose a category or search to begin'}</p>
+              </div>
+            </div>
+
+            <div className={`mt-5 grid gap-4 ${selectedCategoryId === 'local-suppliers' ? 'lg:grid-cols-[minmax(0,1fr)_180px]' : 'lg:grid-cols-[minmax(0,1fr)_180px_180px]'}`}>
+              <label className="rounded-2xl border border-[#dde5d9] bg-[#f7faf6] px-4 py-3">
+                <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-[#6b7b70]">Search</span>
+                <input
+                  className="mt-2 w-full bg-transparent text-sm text-[#1f2937] outline-none placeholder:text-[#95a39a]"
+                  onChange={(event) => {
+                    setSearchQuery(event.target.value)
+                    if (event.target.value.trim().length > 0) {
+                      setSelectedCategoryId('all')
+                    }
+                  }}
+                  placeholder="Search for melk, ost, kaffe, epler..."
+                  type="search"
+                  value={searchQuery}
+                />
+              </label>
+              <label className="rounded-2xl border border-[#dde5d9] bg-[#f7faf6] px-4 py-3">
+                <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-[#6b7b70]">Sort</span>
+                <select
+                  className="mt-2 w-full bg-transparent text-sm text-[#1f2937] outline-none"
+                  onChange={(event) => setSortBy(event.target.value)}
+                  value={sortBy}
+                >
+                  <option value="relevance">Recommended</option>
+                  <option value="price-asc">Price: Low to High</option>
+                  <option value="price-desc">Price: High to Low</option>
+                  <option value="name-asc">Name: A-Z</option>
+                  <option value="store-asc">Store: A-Z</option>
+                </select>
+              </label>
+              {selectedCategoryId !== 'local-suppliers' ? (
+                <label className="rounded-2xl border border-[#dde5d9] bg-[#f7faf6] px-4 py-3">
+                  <span className="block text-xs font-semibold uppercase tracking-[0.18em] text-[#6b7b70]">Store</span>
+                  <select
+                    className="mt-2 w-full bg-transparent text-sm text-[#1f2937] outline-none"
+                    onChange={(event) => setSelectedStore(event.target.value)}
+                    value={selectedStore}
+                  >
+                    {storeOptions.map((store) => (
+                      <option key={store.value} value={store.value}>
+                        {store.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {categoryOptions.map((category) => (
+                <button
+                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                    category.id === selectedCategoryId
+                      ? 'border-[#2f9f4f] bg-[#2f9f4f] text-white shadow-[0_10px_24px_rgba(47,159,79,0.24)]'
+                      : 'border-[#d5ded1] bg-white text-[#415044] hover:border-[#9db5a4] hover:text-[#2f9f4f]'
+                  }`}
+                  key={category.id}
+                  onClick={() => setSelectedCategoryId(category.id)}
+                  type="button"
+                >
+                  {category.label}
+                </button>
+              ))}
+            </div>
+          </header>
+
+          <div className="px-5 py-5 sm:px-6">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-[#1f2b22]">Explore Products</h2>
+                <p className="mt-1 text-sm text-[#6a796f]">
+                  {filteredProducts.length} products in view{totalProducts > filteredProducts.length ? ` out of ${totalProducts} live matches` : ''}
+                </p>
+              </div>
+              <div className="rounded-full bg-[#eff6ef] px-4 py-2 text-sm font-semibold text-[#2f9f4f]">{cartCount} items in cart</div>
+            </div>
+
+            {errorMessage ? (
+              <div className="rounded-3xl border border-[#f0d4d4] bg-[#fff5f5] px-5 py-4 text-sm text-[#9b2c2c]">{errorMessage}</div>
+            ) : null}
+
+            {isLoading ? (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <div className="animate-pulse rounded-3xl border border-[#e6ede3] bg-[#f8faf7] p-3" key={index}>
+                    <div className="h-28 rounded-2xl bg-[#e2e9df]" />
+                    <div className="mt-3 h-4 rounded bg-[#e2e9df]" />
+                    <div className="mt-2 h-3 w-1/2 rounded bg-[#e2e9df]" />
+                    <div className="mt-4 h-9 rounded-xl bg-[#e2e9df]" />
+                  </div>
+                ))}
+              </div>
+            ) : !shouldRequestProducts ? (
+              <div className="rounded-3xl border border-dashed border-[#cfd9cb] bg-[#f8fbf7] px-6 py-16 text-center">
+                <h3 className="text-lg font-semibold text-[#213026]">Search or choose a category to start browsing</h3>
+                <p className="mt-2 text-sm text-[#6c7c71]">The marketplace stays search-first so you are not loading a broad 20k-product catalog into one screen.</p>
+              </div>
+            ) : (
+              <div className="min-h-[34rem] pr-2">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {filteredProducts.map((product) => {
+                    const quantity = getProductQuantity(product.id)
+
+                    return (
+                      <article className="group flex flex-col overflow-hidden rounded-3xl border border-[#e5ece2] bg-white shadow-[0_12px_24px_rgba(18,38,24,0.06)]" key={product.id}>
+                        <button
+                          className="relative h-40 shrink-0 cursor-pointer overflow-hidden bg-white text-left"
+                          onClick={() => setSelectedProduct(product)}
+                          type="button"
+                        >
+                          {product.imageUrl ? (
+                            <img
+                              alt={product.name}
+                              className="h-full w-full object-contain p-4 transition duration-300 group-hover:scale-105"
+                              src={productImageSrc(product.imageUrl) ?? ''}
+                              onError={() => {
+                                setHiddenProductIds((prev) => new Set([...prev, product.id]))
+                              }}
+                            />
+                          ) : null}
+                          <div
+                            className="img-placeholder h-full items-center justify-center text-4xl text-[#86a28f]"
+                            style={{ display: product.imageUrl ? 'none' : 'flex' }}
+                          >
+                            <svg className="h-12 w-12 text-[#c5d4c0]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                            </svg>
+                          </div>
+                        </button>
+                        <div className="flex flex-1 flex-col p-3">
+                          <button
+                            className="cursor-pointer text-left"
+                            onClick={() => setSelectedProduct(product)}
+                            type="button"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[#1f2b22]">{product.name}</h3>
+                                <p className="mt-1 truncate text-xs text-[#647267]">{product.brand ?? product.store ?? 'Store product'}</p>
+                              </div>
+                              {product.store ? (
+                                <span className="shrink-0 rounded-full bg-[#eef7ef] px-2 py-1 text-[10px] font-semibold text-[#2f9f4f]">
+                                  {product.store}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-2">
+                              <p className="text-lg font-extrabold text-[#2f9f4f]">{product.priceText ?? 'Price unavailable'}</p>
+                              <p className="truncate text-[11px] text-[#7b8b80]">
+                                {product.unitInfo ?? product.category ?? (product.source === 'supplier' ? 'From local supplier' : 'Updated from store catalog')}
+                              </p>
+                            </div>
+                          </button>
+                          <div className="mt-auto pt-3">
+                            {product.source === 'supplier' && product.supplierId ? (
+                              <div className="flex gap-2">
+                                <a
+                                  className="flex-1 items-center justify-center rounded-2xl border-2 border-[#2f9f4f] bg-white px-3 py-2 text-center text-xs font-semibold text-[#2f9f4f] transition hover:bg-[#eaf7ee]"
+                                  href={`/suppliers/${product.supplierId}`}
+                                >
+                                  View supplier
+                                </a>
+                                <a
+                                  className="flex-1 items-center justify-center rounded-2xl bg-[#2f9f4f] px-3 py-2 text-center text-xs font-semibold text-white transition hover:bg-[#25813f]"
+                                  href={`/suppliers/${product.supplierId}?buy=${encodeURIComponent(product.id)}`}
+                                >
+                                  Buy item
+                                </a>
+                              </div>
+                            ) : quantity > 0 ? (
+                              <div className="flex h-9 w-full items-center justify-between rounded-2xl bg-[#2f9f4f] px-3 text-xs font-semibold text-white">
+                                <button
+                                  className="grid h-7 w-7 place-items-center rounded-xl bg-white/10 text-xs font-semibold text-white hover:bg-white/20"
+                                  disabled={product.price === null}
+                                  onClick={() => updateQuantity(product, Math.max(quantity - 1, 0))}
+                                  type="button"
+                                >
+                                  -
+                                </button>
+                                <span className="min-w-[2rem] text-center">{quantity}</span>
+                                <button
+                                  className="grid h-7 w-7 place-items-center rounded-xl bg-white/10 text-xs font-semibold text-white hover:bg-white/20"
+                                  disabled={product.price === null}
+                                  onClick={() => updateQuantity(product, quantity + 1)}
+                                  type="button"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                className="h-9 w-full rounded-2xl bg-[#2f9f4f] px-3 text-xs font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#a0c6ab]"
+                                disabled={product.price === null}
+                                onClick={() => updateQuantity(product, 1)}
+                                type="button"
+                              >
+                                Add to Cart
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+                {isLoadingMore && (
+                  <div className="mt-4 flex justify-center py-6">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#d5ded1] border-t-[#2f9f4f]" />
+                  </div>
+                )}
+                <div ref={sentinelRef} className="h-1" />
+              </div>
+            )}
+
+            {!isLoading && !errorMessage && filteredProducts.length === 0 ? (
+              <div className="mt-6 rounded-3xl border border-dashed border-[#cfd9cb] bg-[#f8fbf7] px-6 py-12 text-center">
+                <h3 className="text-lg font-semibold text-[#213026]">No products matched this combination</h3>
+                <p className="mt-2 text-sm text-[#6c7c71]">Try a broader search or switch category.</p>
+              </div>
+            ) : null}
+
+          </div>
+        </section>
+
+        {/* Mobile floating cart button */}
+        {cartCount > 0 && !mobileCartOpen && (
+          <button
+            className="fixed bottom-16 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#2f9f4f] text-white shadow-lg transition hover:bg-[#25813f] xl:hidden"
+            onClick={() => setMobileCartOpen(true)}
+            type="button"
+            aria-label={`Open cart (${cartCount} items)`}
+          >
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+            </svg>
+            <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-white text-[11px] font-bold text-[#2f9f4f] shadow">{cartCount}</span>
+          </button>
+        )}
+
+        {/* Mobile cart overlay */}
+        {mobileCartOpen && (
+          <div className="fixed inset-0 z-50 flex flex-col xl:hidden">
+            <div className="flex-1 bg-black/30" onClick={() => setMobileCartOpen(false)} />
+            <div className="max-h-[75vh] overflow-y-auto rounded-t-[28px] border-t border-[#dce5d7] bg-white pb-20 shadow-[0_-8px_30px_rgba(0,0,0,0.12)]">
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#e5ece2] bg-white px-5 py-4 rounded-t-[28px]">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Your Cart</p>
+                  <p className="text-xs text-[#6d7b70]">{cartCount} item{cartCount !== 1 ? 's' : ''}</p>
+                </div>
+                <button onClick={() => setMobileCartOpen(false)} className="rounded-full p-2 text-[#6d7b70] hover:bg-[#f0f4ee]" type="button" aria-label="Close cart">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="px-5 py-4 space-y-3">
+                {cartItems.map((item) => (
+                  <div className="flex items-start gap-3 rounded-xl border border-[#eef2ec] bg-[#f8fbf7] px-3 py-2.5" key={item.id}>
+                    {item.imageUrl ? (
+                      <img alt={item.name} className="h-10 w-10 shrink-0 rounded-lg object-cover" src={productImageSrc(item.imageUrl) ?? undefined} />
+                    ) : (
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#e5ece2] text-[#8a9e8f]">
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M20 7H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" /></svg>
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-semibold text-[#1f2b22]">{item.name}</p>
+                      <p className="text-[11px] text-[#6d7b70]">{item.quantity} × {item.price.toFixed(2)} kr</p>
+                    </div>
+                    <p className="shrink-0 text-xs font-bold text-[#1f2b22]">{(item.price * item.quantity).toFixed(2)} kr</p>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-[#e5ece2] px-5 py-4">
+                <div className="flex items-center justify-between text-sm font-bold text-[#1f2b22]">
+                  <span>Total</span>
+                  <span>{cartTotal.toFixed(2)} kr</span>
+                </div>
+                <a href="/checkout" className="mt-3 block w-full rounded-2xl bg-[#2f9f4f] py-3 text-center text-sm font-semibold text-white hover:bg-[#25813f]">Go to Checkout</a>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <aside className="hidden rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur xl:block">
+          <div className="border-b border-[#e5ece2] px-5 py-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Your Cart</p>
+                <h2 className="mt-2 text-2xl font-bold text-[#1f2b22]">Smart cart</h2>
+              </div>
+              <span className="rounded-full bg-[#eff6ef] px-3 py-1 text-sm font-semibold text-[#2f9f4f]">{cartCount}</span>
+            </div>
+          </div>
+
+          <div className="max-h-[560px] space-y-4 overflow-y-auto px-5 py-5">
+            {cartItems.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-[#d2dcd0] bg-[#f8fbf7] px-5 py-10 text-center">
+                      <p className="text-sm font-semibold text-[#304136]">Your cart is empty</p>
+                      <p className="mt-2 text-sm text-[#728176]">Add products from the marketplace to start comparing totals.</p>
+              </div>
+            ) : (
+              cartItems.map((item) => (
+                <div className="flex gap-3 rounded-3xl border border-[#e6ede3] p-3" key={item.id}>
+                  <div className="h-16 w-16 overflow-hidden rounded-2xl bg-[#eef5ee]">
+                    {item.imageUrl ? <img alt={item.name} className="h-full w-full object-cover" src={productImageSrc(item.imageUrl) ?? ''} /> : null}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-semibold text-[#1f2b22]">{item.name}</h3>
+                    <p className="mt-1 text-xs text-[#6d7b70]">{item.store ?? item.unitInfo ?? 'Live product'}</p>
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="grid h-8 w-8 place-items-center rounded-xl border border-[#d4ddd0] text-[#516056]"
+                          onClick={() =>
+                            setCartItems((current) =>
+                              current
+                                .map((cartItem) =>
+                                  cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity - 1 } : cartItem,
+                                )
+                                .filter((cartItem) => cartItem.quantity > 0),
+                            )
+                          }
+                          type="button"
+                        >
+                          -
+                        </button>
+                        <span className="text-sm font-semibold text-[#1f2b22]">{item.quantity}</span>
+                        <button
+                          className="grid h-8 w-8 place-items-center rounded-xl border border-[#d4ddd0] text-[#516056]"
+                          onClick={() =>
+                            setCartItems((current) =>
+                              current.map((cartItem) =>
+                                cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem,
+                              ),
+                            )
+                          }
+                          type="button"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <p className="text-sm font-bold text-[#2f9f4f]">{formatCurrency(item.price * item.quantity)}</p>
+                    </div>
+                    <div className="mt-2">
+                      {substitutions[item.id] === undefined ? (
+                        <button
+                          className="text-[11px] font-semibold text-[#2f9f4f] hover:underline disabled:text-[#9ca3af]"
+                          disabled={loadingSubstitutions.has(item.id)}
+                          onClick={() => fetchSubstitutions(item.id)}
+                          type="button"
+                        >
+                          {loadingSubstitutions.has(item.id) ? 'Finding alternatives…' : 'Find cheaper alternatives'}
+                        </button>
+                      ) : substitutions[item.id]!.length === 0 ? (
+                        <p className="text-[11px] text-[#9ca3af]">No cheaper alternatives found</p>
+                      ) : (
+                        <div className="mt-1 space-y-1.5">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7b70]">Cheaper options</p>
+                          {substitutions[item.id]!.map((s) => (
+                            <div className="flex items-center justify-between gap-2 rounded-xl border border-[#e5ece2] bg-[#f7faf6] px-3 py-2" key={s.priceId}>
+                              <div className="min-w-0">
+                                <p className="truncate text-[11px] font-semibold text-[#1f2b22]">{s.name}</p>
+                                <p className="text-[10px] text-[#7b8b80]">{s.storeName} · {formatCurrency(s.price)}</p>
+                                {s.savingsPercentage !== null && (
+                                  <p className="text-[10px] font-semibold text-[#2f9f4f]">Save {s.savingsPercentage.toFixed(0)}%</p>
+                                )}
+                              </div>
+                              <button
+                                className="shrink-0 rounded-lg bg-[#2f9f4f] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#25813f]"
+                                onClick={() => swapCartItem(item.id, s, item.quantity)}
+                                type="button"
+                              >
+                                Swap
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="border-t border-[#e5ece2] px-5 py-5">
+            <dl className="space-y-2 text-sm text-[#647267]">
+              <div className="flex items-center justify-between">
+                <dt>Subtotal</dt>
+                <dd className="font-semibold text-[#1f2b22]">{formatCurrency(cartSubtotal)}</dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt>Estimated delivery</dt>
+                <dd className="font-semibold text-[#1f2b22]">{formatCurrency(estimatedDelivery)}</dd>
+              </div>
+              <div className="mt-4 flex items-center justify-between border-t border-[#e5ece2] pt-4 text-base font-bold text-[#1f2b22]">
+                <dt>Total</dt>
+                <dd>{formatCurrency(cartTotal)}</dd>
+              </div>
+            </dl>
+
+            <button
+              className="mt-5 w-full rounded-2xl bg-[#2f9f4f] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#9ac7a6]"
+              disabled={cartItems.length === 0}
+              onClick={handleProceedToCheckout}
+              type="button"
+            >
+              Proceed to Checkout
+            </button>
+          </div>
+        </aside>
+      </div>
+
+      {selectedProduct && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setSelectedProduct(null)}
+        >
+          <div
+            className="relative mx-4 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-[#dce5d7] bg-white shadow-[0_32px_80px_rgba(18,38,24,0.18)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/80 text-[#516056] shadow backdrop-blur transition hover:bg-white"
+              onClick={() => setSelectedProduct(null)}
+              type="button"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="flex h-56 shrink-0 items-center justify-center overflow-hidden bg-[#f7faf6]">
+              {selectedProduct.imageUrl ? (
+                <img
+                  alt={selectedProduct.name}
+                  className="h-full w-full object-contain p-6"
+                  src={productImageSrc(selectedProduct.imageUrl) ?? ''}
+                />
+              ) : (
+                <svg className="h-20 w-20 text-[#c5d4c0]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                </svg>
+              )}
+            </div>
+
+            <div className="overflow-y-auto px-6 pb-6 pt-5">
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="text-xl font-bold text-[#1f2b22]">{selectedProduct.name}</h2>
+                {selectedProduct.store && (
+                  <span className="shrink-0 rounded-full bg-[#eef7ef] px-3 py-1 text-xs font-semibold text-[#2f9f4f]">
+                    {selectedProduct.store}
+                  </span>
+                )}
+              </div>
+
+              {selectedProduct.brand && (
+                <p className="mt-1 text-sm text-[#647267]">{selectedProduct.brand}</p>
+              )}
+
+              <div className="mt-4 flex items-baseline gap-3">
+                <p className="text-2xl font-extrabold text-[#2f9f4f]">{selectedProduct.priceText ?? 'Price unavailable'}</p>
+                {selectedProduct.unitInfo && (
+                  <p className="text-sm text-[#7b8b80]">{selectedProduct.unitInfo}</p>
+                )}
+              </div>
+
+              <dl className="mt-5 space-y-2.5 rounded-2xl bg-[#f7faf6] p-4 text-sm">
+                {selectedProduct.category && (
+                  <div className="flex justify-between">
+                    <dt className="text-[#6b7b70]">Category</dt>
+                    <dd className="font-medium text-[#1f2b22]">{selectedProduct.category}</dd>
+                  </div>
+                )}
+                {selectedProduct.ean && (
+                  <div className="flex justify-between">
+                    <dt className="text-[#6b7b70]">EAN</dt>
+                    <dd className="font-mono text-xs font-medium text-[#1f2b22]">{selectedProduct.ean}</dd>
+                  </div>
+                )}
+                {selectedProduct.description && (
+                  <div className="flex flex-col gap-1">
+                    <dt className="text-[#6b7b70]">Description</dt>
+                    <dd className="text-[#1f2b22]">{selectedProduct.description}</dd>
+                  </div>
+                )}
+              </dl>
+
+              <div className="mt-5">
+                {selectedProduct.source === 'supplier' && selectedProduct.supplierId ? (
+                  <div className="flex gap-3">
+                    <a
+                      className="flex-1 rounded-2xl border-2 border-[#2f9f4f] bg-white py-3 text-center text-sm font-semibold text-[#2f9f4f] transition hover:bg-[#eaf7ee]"
+                      href={`/suppliers/${selectedProduct.supplierId}`}
+                    >
+                      View supplier
+                    </a>
+                    <a
+                      className="flex-1 rounded-2xl bg-[#2f9f4f] py-3 text-center text-sm font-semibold text-white transition hover:bg-[#25813f]"
+                      href={`/suppliers/${selectedProduct.supplierId}?buy=${encodeURIComponent(selectedProduct.id)}`}
+                    >
+                      Buy item
+                    </a>
+                  </div>
+                ) : (
+                  (() => {
+                    const qty = getProductQuantity(selectedProduct.id)
+                    return qty > 0 ? (
+                      <div className="flex h-12 w-full items-center justify-between rounded-2xl bg-[#2f9f4f] px-4 text-sm font-semibold text-white">
+                        <button
+                          className="grid h-8 w-8 place-items-center rounded-xl bg-white/10 hover:bg-white/20"
+                          onClick={() => updateQuantity(selectedProduct, Math.max(qty - 1, 0))}
+                          type="button"
+                        >
+                          -
+                        </button>
+                        <span>{qty} in cart</span>
+                        <button
+                          className="grid h-8 w-8 place-items-center rounded-xl bg-white/10 hover:bg-white/20"
+                          onClick={() => updateQuantity(selectedProduct, qty + 1)}
+                          type="button"
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="h-12 w-full rounded-2xl bg-[#2f9f4f] text-sm font-semibold text-white transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:bg-[#a0c6ab]"
+                        disabled={selectedProduct.price === null}
+                        onClick={() => {
+                          updateQuantity(selectedProduct, 1)
+                          setSelectedProduct(null)
+                        }}
+                        type="button"
+                      >
+                        Add to Cart
+                      </button>
+                    )
+                  })()
+                )}
+              </div>
+
+              {selectedProduct.url && (
+                <a
+                  className="mt-3 block text-center text-xs text-[#7b8b80] underline transition hover:text-[#2f9f4f]"
+                  href={selectedProduct.url}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  View on store website
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  )
 }

@@ -1,0 +1,350 @@
+/**
+ * @module BuyerOrdersPage
+ * Buyer order history page showing placed orders with Wolt delivery status and live tracking links.
+ */
+
+'use client'
+
+import { useEffect, useState } from 'react'
+import { buildApiUrl } from '../../../lib/api'
+import BuyerSidebar from '../../components/BuyerSidebar'
+
+const BUYER_STORAGE_KEY = 'localsupply-user'
+const BUYER_TOKEN_KEY = 'localsupply-token'
+
+/**
+ * Authenticated buyer session read from localStorage.
+ * @property id - Buyer identifier.
+ * @property firstName - Buyer's first name.
+ * @property lastName - Buyer's last name.
+ * @property email - Buyer's email address.
+ */
+type BuyerSession = {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+}
+
+/**
+ * A line item within a buyer's order.
+ * @property id - Line item identifier.
+ * @property productId - Product catalog ID.
+ * @property name - Product name.
+ * @property unit - Unit description.
+ * @property quantity - Ordered quantity.
+ * @property unitPrice - Price per unit.
+ */
+type OrderItem = {
+  id: string
+  productId: string
+  name: string
+  unit: string
+  quantity: number
+  unitPrice: number
+}
+
+/**
+ * Brief supplier info included on an order summary.
+ * @property id - Supplier identifier.
+ * @property businessName - Registered business name.
+ * @property address - Physical address.
+ */
+type SupplierSummary = {
+  id: string
+  businessName: string
+  address: string
+}
+
+/**
+ * A buyer's order summary as returned by the orders API.
+ * @property id - Order identifier.
+ * @property status - Current order status.
+ * @property subtotal - Products subtotal before delivery fee.
+ * @property deliveryFee - Delivery fee in krone.
+ * @property total - Grand total.
+ * @property notes - Optional delivery notes, or null.
+ * @property woltTrackingUrl - Live Wolt tracking link, or null.
+ * @property woltStatus - Wolt Drive delivery status code, or null.
+ * @property createdAt - ISO timestamp of order creation.
+ * @property supplier - Fulfilling supplier summary.
+ * @property items - Ordered product lines.
+ */
+type OrderSummary = {
+  id: string
+  status: string
+  subtotal: number
+  deliveryFee: number
+  total: number
+  notes: string | null
+  woltTrackingUrl: string | null
+  woltStatus: string | null
+  createdAt: string
+  supplier: SupplierSummary
+  items: OrderItem[]
+}
+
+/**
+ * Maps a Wolt Drive status code to a human-readable delivery status label.
+ * @param status - Wolt status code string.
+ * @returns Localised status label.
+ */
+function woltStatusLabel(status: string): string {
+  switch (status.toUpperCase()) {
+    case 'CREATED': return 'Delivery arranged'
+    case 'PICKUP_STARTED': return 'Courier heading to store'
+    case 'ARRIVED_AT_PICKUP': return 'Courier at store'
+    case 'PICKED_UP': return 'Order picked up'
+    case 'DROPOFF_STARTED': return 'On the way to you'
+    case 'ARRIVED_AT_DROPOFF': return 'Courier nearby'
+    case 'DELIVERED': return 'Delivered'
+    case 'CANCELLED': return 'Delivery cancelled'
+    case 'RETURNED': return 'Order returned'
+    default: return status
+  }
+}
+
+/**
+ * Formats a numeric or string value as a Norwegian krone currency string.
+ * @param value - Amount as a number or numeric string.
+ * @returns Formatted string with two decimal places and "kr" suffix.
+ */
+function formatCurrency(value: number | string) {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) {
+    return `${value} kr`
+  }
+  return `${n.toFixed(2)} kr`
+}
+
+/**
+ * Formats an ISO date string as a localised date-time string.
+ * @param value - ISO 8601 date string.
+ * @returns Formatted date-time string, or the original value if parsing fails.
+ */
+function formatDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/**
+ * Buyer order history page listing all placed orders with item breakdown,
+ * supplier info, Wolt delivery status, and a live tracking link when available.
+ * Guests are redirected to `/login` immediately (no intermediate sign-in card).
+ */
+export default function BuyerOrdersPage() {
+  const [buyer, setBuyer] = useState<BuyerSession | null>(null)
+  const [orders, setOrders] = useState<OrderSummary[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingOrders, setIsLoadingOrders] = useState(true)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  useEffect(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? window.localStorage.getItem(BUYER_STORAGE_KEY) : null
+      if (!stored) {
+        window.location.replace('/login')
+        return
+      }
+      const parsed = JSON.parse(stored) as BuyerSession
+      if (!parsed?.id) {
+        window.location.replace('/login')
+        return
+      }
+      setBuyer(parsed)
+    } catch {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(BUYER_STORAGE_KEY)
+      }
+      window.location.replace('/login')
+      return
+    }
+    setIsLoading(false)
+  }, [])
+
+  useEffect(() => {
+    const buyerId: string = buyer?.id ?? ''
+    if (!buyerId) return
+
+    let cancelled = false
+
+    async function loadOrders() {
+      setErrorMessage('')
+      try {
+        const token = typeof window !== 'undefined' ? window.localStorage.getItem(BUYER_TOKEN_KEY) : null
+        const response = await fetch(buildApiUrl(`/api/orders/buyer/${encodeURIComponent(buyerId)}`), {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        const payload = (await response.json().catch(() => ({}))) as OrderSummary[] | { message?: string }
+
+        if (!response.ok) {
+          throw new Error((payload as { message?: string }).message ?? 'Unable to load orders right now.')
+        }
+
+        if (!cancelled && Array.isArray(payload)) {
+          setOrders(payload)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOrders([])
+          setErrorMessage(error instanceof Error ? error.message : 'Unable to load orders right now.')
+        }
+      } finally {
+        if (!cancelled) setIsLoadingOrders(false)
+      }
+    }
+
+    loadOrders()
+
+    return () => {
+      cancelled = true
+    }
+  }, [buyer])
+
+  if (isLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f3f6f1] px-4">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#d5ded1] border-t-[#2f9f4f]" />
+      </main>
+    )
+  }
+
+  return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 pb-20 pt-6 sm:px-6 lg:px-8 lg:pb-6">
+      <div className="mx-auto grid w-full max-w-[1200px] items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <BuyerSidebar />
+
+        <section className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+          <div className="border-b border-[#e5ece2] px-5 py-5">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Orders</p>
+            <h1 className="mt-2 text-2xl font-bold text-[#1f2b22]">Your order history</h1>
+            <p className="mt-1 text-sm text-[#617166]">
+              Review recent orders placed with local suppliers, along with basic delivery status.
+            </p>
+          </div>
+
+          <div className="px-5 py-5">
+            {errorMessage ? (
+              <div className="mb-4 rounded-2xl border border-[#f0d4d4] bg-[#fff5f5] px-4 py-3 text-sm text-[#9b2c2c]">
+                {errorMessage}
+              </div>
+            ) : null}
+
+            {isLoadingOrders ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div className="animate-pulse rounded-3xl border border-[#e5ece2] bg-white p-4" key={i}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <div className="h-3 w-28 rounded-full bg-[#e5ece2]" />
+                        <div className="h-2.5 w-40 rounded-full bg-[#eef2ec]" />
+                        <div className="h-2.5 w-32 rounded-full bg-[#eef2ec]" />
+                      </div>
+                      <div className="space-y-2 text-right">
+                        <div className="h-3 w-16 rounded-full bg-[#e5ece2]" />
+                        <div className="h-5 w-20 rounded-full bg-[#eef2ec]" />
+                      </div>
+                    </div>
+                    <div className="mt-4 border-t border-[#eef2ec] pt-3 space-y-2">
+                      <div className="h-2.5 w-48 rounded-full bg-[#eef2ec]" />
+                      <div className="h-2.5 w-36 rounded-full bg-[#eef2ec]" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : orders.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-[#d2dcd0] bg-[#f8fbf7] px-5 py-16 text-center">
+                <p className="text-lg font-semibold text-[#304136]">No orders yet</p>
+                <p className="mt-2 text-sm text-[#728176]">
+                  When you place your first order with a local supplier, it will appear here with a basic status.
+                </p>
+                <a
+                  className="mt-4 inline-block rounded-2xl bg-[#2f9f4f] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25813f]"
+                  href="/marketplace/dashboard"
+                >
+                  Browse Marketplace
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {orders.map((order) => (
+                  <article
+                    className="rounded-3xl border border-[#e5ece2] bg-white p-4 shadow-[0_12px_24px_rgba(18,38,24,0.06)]"
+                    key={order.id}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8a7f]">
+                          {order.supplier.businessName}
+                        </p>
+                        <p className="mt-1 text-xs text-[#6d7b70]">{order.supplier.address}</p>
+                        <p className="mt-1 text-xs text-[#6d7b70]">Placed {formatDate(order.createdAt)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-[#1f2b22]">{formatCurrency(order.total)}</p>
+                        <p className="mt-1 inline-flex items-center rounded-full bg-[#edf7f0] px-2.5 py-0.5 text-[11px] font-semibold text-[#256c3a]">
+                          {order.status}
+                        </p>
+                      </div>
+                    </div>
+                    {/* Wolt delivery status + tracking */}
+                    {(order.woltStatus || order.woltTrackingUrl) ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#b2d4bc] bg-[#f0faf2] px-3 py-2">
+                        <span className="text-sm">🛵</span>
+                        {order.woltStatus ? (
+                          <span className="text-xs font-semibold text-[#1a5e30]">{woltStatusLabel(order.woltStatus)}</span>
+                        ) : null}
+                        {order.woltTrackingUrl ? (
+                          <a
+                            href={order.woltTrackingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-auto text-xs font-semibold text-[#2f9f4f] underline hover:text-[#1f7b3a]"
+                          >
+                            Track delivery →
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3 border-t border-[#eef2ec] pt-3 text-xs text-[#6d7b70]">
+                      <p>
+                        Subtotal {formatCurrency(order.subtotal)} · Delivery {formatCurrency(order.deliveryFee)}
+                        {order.notes ? <> · Note: {order.notes}</> : null}
+                      </p>
+                    </div>
+                    {order.items.length > 0 ? (
+                      <div className="mt-3 divide-y divide-[#eef2ec] border-t border-[#eef2ec] pt-2">
+                        {order.items.map((item) => (
+                          <div className="flex items-center justify-between gap-3 py-2" key={item.id}>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-[#1f2b22]">{item.name}</p>
+                              <p className="text-xs text-[#6d7b70]">
+                                {item.unit} · {item.quantity} × {formatCurrency(item.unitPrice)}
+                              </p>
+                            </div>
+                            <p className="text-sm font-semibold text-[#1f2b22]">
+                              {formatCurrency(item.unitPrice * item.quantity)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </main>
+  )
+}
+

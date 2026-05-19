@@ -9,6 +9,11 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Use || instead of ?? so empty strings from unset CI secrets fall through.
+    url:
+      process.env["DATABASE_URL"] ||
+      process.env["POSTGRES_URL"] ||
+      process.env["POSTGRES_PRISMA_URL"] ||
+      "postgresql://postgres:postgres@localhost:5432/localsupply",
   },
 });

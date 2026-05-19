@@ -1,0 +1,818 @@
+/**
+ * @module MyCartPage
+ * Shopping cart page with smart store matching, AI meal-plan intent cart, and AI substitution suggestions.
+ */
+
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { buildApiUrl } from '../../../lib/api'
+import { MARKETPLACE_CART_STORAGE_KEY } from '../../../lib/cookieConsent'
+import { useMarketplaceCartPersistenceAllowed } from '../../../lib/useMarketplaceCartPersistence'
+import BuyerSidebar from '../../components/BuyerSidebar'
+
+/**
+ * A single item in the buyer's cart.
+ * @property id - Product price ID used as the cart key.
+ * @property imageUrl - Optional product image URL.
+ * @property name - Product display name.
+ * @property price - Unit price in Norwegian krone.
+ * @property quantity - Number of units in the cart.
+ * @property store - Store code the product belongs to, or null.
+ * @property unitInfo - Human-readable unit description (e.g. "500 g"), or null.
+ */
+type CartItem = {
+  id: string
+  imageUrl: string | null
+  name: string
+  price: number
+  quantity: number
+  store: string | null
+  unitInfo: string | null
+}
+
+/**
+ * AI-generated substitution suggestion for a cart item.
+ * @property priceId - Price ID of the suggested substitute product.
+ * @property name - Substitute product name.
+ * @property brand - Brand name, or null.
+ * @property imageUrl - Product image URL, or null.
+ * @property unit - Unit description, or null.
+ * @property storeCode - Store code where the substitute is available.
+ * @property storeName - Human-readable store name.
+ * @property price - Unit price of the substitute.
+ * @property savingsAmount - Absolute savings compared to the original item.
+ * @property savingsPercentage - Relative savings as a percentage, or null.
+ * @property similarity - Semantic similarity score (0–1).
+ * @property reason - Human-readable explanation for the substitution.
+ */
+type SubstitutionSuggestion = {
+  priceId: string
+  name: string
+  brand: string | null
+  imageUrl: string | null
+  unit: string | null
+  storeCode: string
+  storeName: string
+  price: number
+  savingsAmount: number
+  savingsPercentage: number | null
+  similarity: number
+  reason: string
+}
+
+/**
+ * API response envelope for the substitution suggestions endpoint.
+ * @property suggestions - Array of substitution candidates.
+ */
+type SubstitutionsResponse = {
+  suggestions: SubstitutionSuggestion[]
+}
+
+/**
+ * A single product line within a matched Wolt store result.
+ * @property brand - Brand name, or null.
+ * @property catalogProductId - Wolt catalog product ID.
+ * @property imageUrl - Product image URL, or null.
+ * @property lineTotal - Total price for this line (unitPrice × quantity).
+ * @property name - Product name.
+ * @property quantity - Matched quantity.
+ * @property unitPrice - Price per unit.
+ */
+type MatchedStoreItem = {
+  brand: string | null
+  catalogProductId: string
+  imageUrl: string | null
+  lineTotal: number
+  name: string
+  quantity: number
+  unitPrice: number
+}
+
+/**
+ * A Wolt store that can fulfil (part of) the cart.
+ * @property deliveryCost - Delivery fee in krone.
+ * @property eta - Human-readable ETA string.
+ * @property etaMinutes - Estimated delivery time in minutes.
+ * @property items - Matched product lines available at this store.
+ * @property itemsAvailable - Number of cart items available at this store.
+ * @property itemsRequested - Total number of cart items requested.
+ * @property storeCode - Wolt store identifier.
+ * @property storeName - Display name of the store.
+ * @property subtotal - Products subtotal before delivery.
+ * @property total - Grand total including delivery.
+ */
+type MatchedStore = {
+  deliveryCost: number
+  eta: string
+  etaMinutes: number
+  items: MatchedStoreItem[]
+  itemsAvailable: number
+  itemsRequested: number
+  storeCode: string
+  storeName: string
+  subtotal: number
+  total: number
+}
+
+/**
+ * Response from the cart-to-store matching endpoint.
+ * @property bestMatch - The single best matching store, or null if none found.
+ * @property savings - Total potential savings across all matched stores.
+ * @property stores - All stores that can fulfil at least part of the cart.
+ * @property totalCartItems - Total number of items in the cart.
+ */
+type MatchResponse = {
+  bestMatch: MatchedStore | null
+  savings: number
+  stores: MatchedStore[]
+  totalCartItems: number
+}
+
+/**
+ * A product line within an AI-planned intent cart.
+ * @property imageUrl - Product image URL, or null.
+ * @property priceId - Price ID for the product.
+ * @property catalogProductId - Wolt catalog product ID.
+ * @property name - Product display name.
+ * @property unitPrice - Price per unit.
+ * @property unitInfo - Unit description, or null.
+ * @property quantity - Suggested quantity.
+ * @property lineTotal - Total for this line.
+ */
+type IntentCartItem = {
+  imageUrl: string | null
+  priceId: string
+  catalogProductId: string
+  name: string
+  unitPrice: number
+  unitInfo: string | null
+  quantity: number
+  lineTotal: number
+}
+
+/**
+ * Best-matched store for an AI-planned intent cart.
+ * @property storeCode - Wolt store identifier.
+ * @property storeName - Display name of the store.
+ * @property subtotal - Products subtotal.
+ * @property deliveryCost - Delivery fee.
+ * @property total - Grand total.
+ * @property eta - Human-readable ETA string.
+ * @property etaMinutes - Estimated delivery time in minutes.
+ */
+type IntentCartStoreChoice = {
+  storeCode: string
+  storeName: string
+  subtotal: number
+  deliveryCost: number
+  total: number
+  eta: string
+  etaMinutes: number
+}
+
+/**
+ * Full AI intent-cart planning response.
+ * @property items - Suggested product lines for the planned cart.
+ * @property explanation - Array of bullet-point explanations from the AI.
+ * @property storeChoice - Best store to fulfil the plan, or null.
+ * @property totalPrice - Estimated grand total.
+ */
+type IntentCartResponse = {
+  items: IntentCartItem[]
+  explanation: string[]
+  storeChoice: IntentCartStoreChoice | null
+  totalPrice: number
+}
+
+
+/**
+ * Formats a numeric value as a Norwegian krone string.
+ * @param value - Numeric amount.
+ * @returns String with two decimal places and "kr" suffix.
+ */
+function formatCurrency(value: number) {
+  return `${value.toFixed(2)} kr`
+}
+
+const BUYER_STORAGE_KEY = 'localsupply-user'
+
+/**
+ * Cart page showing current items, smart Wolt store matching, AI substitution suggestions per item,
+ * and an AI meal-plan intent-cart builder.
+ */
+export default function MyCartPage() {
+  const cartPersistAllowed = useMarketplaceCartPersistenceAllowed()
+  const [cartItems, setCartItems] = useState<CartItem[]>([])
+  const [matchResult, setMatchResult] = useState<MatchResponse | null>(null)
+  const [isMatching, setIsMatching] = useState(false)
+  const [selectedStoreCode, setSelectedStoreCode] = useState<string | null>(null)
+  const [substitutions, setSubstitutions] = useState<Record<string, SubstitutionSuggestion[]>>({})
+  const [loadingSubFor, setLoadingSubFor] = useState<Record<string, boolean>>({})
+  const [intentText, setIntentText] = useState('')
+  const [isPlanningIntent, setIsPlanningIntent] = useState(false)
+  const [intentExplanation, setIntentExplanation] = useState<string[] | null>(null)
+  const [intentProgressStep, setIntentProgressStep] = useState(0)
+
+  const abortRef = useRef<AbortController | null>(null)
+  const isInitialMatchRef = useRef(true)
+
+  const [isAiLoggedIn, setIsAiLoggedIn] = useState(false)
+
+  useEffect(() => {
+    setIsAiLoggedIn(Boolean(getBuyerIdFromStorage()))
+  }, [])
+
+  useEffect(() => {
+    if (!cartPersistAllowed) return
+    try {
+      const stored = window.localStorage.getItem(MARKETPLACE_CART_STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored) as CartItem[]
+        if (Array.isArray(parsed)) setCartItems(parsed)
+      }
+    } catch {
+      window.localStorage.removeItem(MARKETPLACE_CART_STORAGE_KEY)
+    }
+  }, [cartPersistAllowed])
+
+  useEffect(() => {
+    if (!cartPersistAllowed) return
+    try {
+      window.localStorage.setItem(MARKETPLACE_CART_STORAGE_KEY, JSON.stringify(cartItems))
+    } catch {
+      /* ignore */
+    }
+  }, [cartItems, cartPersistAllowed])
+
+  const runMatch = useCallback(async (items: CartItem[]) => {
+    abortRef.current?.abort()
+
+    if (items.length === 0) {
+      setMatchResult(null)
+      setIsMatching(false)
+      return
+    }
+
+    const controller = new AbortController()
+    abortRef.current = controller
+    setIsMatching(true)
+
+    try {
+      const response = await fetch(buildApiUrl('/api/cart/match'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: items.map((item) => ({ priceId: item.id, quantity: item.quantity })) }),
+        signal: controller.signal,
+      })
+      const payload = (await response.json()) as MatchResponse
+      if (!controller.signal.aborted && response.ok) {
+        setMatchResult(payload)
+        setSelectedStoreCode(payload.bestMatch?.storeCode ?? null)
+      }
+    } catch {
+      if (!controller.signal.aborted) setMatchResult(null)
+    } finally {
+      if (!controller.signal.aborted) setIsMatching(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (cartItems.length === 0) {
+      abortRef.current?.abort()
+      setMatchResult(null)
+      setIsMatching(false)
+      return
+    }
+
+    // Show skeleton immediately — don't wait for debounce or API response
+    setIsMatching(true)
+
+    // Skip debounce on the first load (cart hydrated from localStorage)
+    if (isInitialMatchRef.current) {
+      isInitialMatchRef.current = false
+      runMatch(cartItems)
+      return
+    }
+
+    const timer = setTimeout(() => runMatch(cartItems), 400)
+    return () => clearTimeout(timer)
+  }, [cartItems, runMatch])
+
+  /**
+   * Reads the authenticated buyer's ID from localStorage.
+   * @returns The buyer ID string, or null if not logged in or data is invalid.
+   */
+  function getBuyerIdFromStorage(): string | null {
+    try {
+      const storedBuyer = typeof window !== 'undefined' ? window.localStorage.getItem(BUYER_STORAGE_KEY) : null
+      if (!storedBuyer) return null
+      const parsed = JSON.parse(storedBuyer) as { id?: string }
+      if (parsed && typeof parsed.id === 'string' && parsed.id.trim().length > 0) {
+        return parsed.id
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Increments or decrements a cart item's quantity; removes the item if quantity reaches zero.
+   * @param itemId - Price ID of the cart item to update.
+   * @param delta - Quantity change (+1 or -1).
+   */
+  function updateQuantity(itemId: string, delta: number) {
+    setCartItems((current) =>
+      current
+        .map((item) =>
+          item.id === itemId
+            ? { ...item, quantity: Math.max(item.quantity + delta, 0) }
+            : item,
+        )
+        .filter((item) => item.quantity > 0),
+    )
+  }
+
+  /**
+   * Replaces a cart item with an AI-suggested substitute and clears its substitution list.
+   * @param oldPriceId - Price ID of the item to replace.
+   * @param suggestion - The substitute product to swap in.
+   */
+  function replaceCartItem(oldPriceId: string, suggestion: SubstitutionSuggestion) {
+    setCartItems((current) =>
+      current.map((item) =>
+        item.id === oldPriceId
+          ? {
+              ...item,
+              id: suggestion.priceId,
+              name: suggestion.name,
+              imageUrl: suggestion.imageUrl,
+              price: suggestion.price,
+              store: suggestion.storeName,
+            }
+          : item,
+      ),
+    )
+    setSubstitutions((current) => {
+      const next = { ...current }
+      delete next[oldPriceId]
+      return next
+    })
+  }
+
+  /**
+   * Fetches AI substitution suggestions for a cart item from the API.
+   * @param priceId - Price ID of the item to find substitutions for.
+   */
+  async function loadSubstitutions(priceId: string) {
+    if (!priceId || loadingSubFor[priceId]) return
+
+    const buyerId = getBuyerIdFromStorage()
+    if (!buyerId) {
+      window.location.href = '/login'
+      return
+    }
+
+    setLoadingSubFor((current) => ({ ...current, [priceId]: true }))
+    try {
+      const response = await fetch(buildApiUrl(`/api/products/${encodeURIComponent(priceId)}/substitutions`))
+      if (!response.ok) {
+        return
+      }
+      const payload = (await response.json()) as SubstitutionsResponse
+      setSubstitutions((current) => ({
+        ...current,
+        [priceId]: payload.suggestions,
+      }))
+    } catch {
+      // ignore
+    } finally {
+      setLoadingSubFor((current) => {
+        const next = { ...current }
+        delete next[priceId]
+        return next
+      })
+    }
+  }
+
+  /**
+   * Sends the intent text to the AI cart-planner endpoint and populates the cart with the suggested items.
+   * Redirects to login if the buyer is not authenticated.
+   */
+  async function planIntentCart() {
+    const text = intentText.trim()
+    if (!text) return
+
+    const buyerId = getBuyerIdFromStorage()
+    if (!buyerId) {
+      window.location.href = '/login'
+      return
+    }
+
+    setIsPlanningIntent(true)
+    setIntentProgressStep(0)
+    setIntentExplanation(null)
+
+    const totalSteps = 4
+    let cancelled = false
+
+    const advanceStep = (step: number) => {
+      if (cancelled) return
+      setIntentProgressStep(step)
+      if (step < totalSteps - 1) {
+        window.setTimeout(() => advanceStep(step + 1), 650)
+      }
+    }
+
+    advanceStep(0)
+
+    try {
+      const response = await fetch(buildApiUrl('/api/cart/intent'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+        }),
+      })
+      const payload = (await response.json()) as IntentCartResponse
+      if (!response.ok) {
+        return
+      }
+
+      if (!payload.items || payload.items.length === 0 || !payload.storeChoice) {
+        setIntentExplanation(payload.explanation ?? ['Could not build a cart from this request.'])
+        return
+      }
+
+      const newCartItems: CartItem[] = payload.items.map((item) => ({
+        id: item.priceId,
+        imageUrl: item.imageUrl,
+        name: item.name,
+        price: item.unitPrice,
+        quantity: item.quantity,
+        store: payload.storeChoice?.storeName ?? null,
+        unitInfo: item.unitInfo,
+      }))
+
+      setCartItems(newCartItems)
+      setIntentExplanation(payload.explanation)
+      setSelectedStoreCode(payload.storeChoice.storeCode)
+    } catch {
+      setIntentExplanation(['Unable to plan cart right now.'])
+    } finally {
+      cancelled = true
+      setIntentProgressStep(totalSteps)
+      setIsPlanningIntent(false)
+    }
+  }
+
+  /** Removes all items from the cart and resets match and store selection state. */
+  function clearCart() {
+    setCartItems([])
+    setMatchResult(null)
+    setSelectedStoreCode(null)
+  }
+
+  const bestMatch = matchResult?.bestMatch ?? null
+  const stores = matchResult?.stores ?? []
+  const savings = matchResult?.savings ?? 0
+  const selectedStore = stores.find((s) => s.storeCode === selectedStoreCode) ?? bestMatch
+
+  return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 pb-20 pt-6 sm:px-6 lg:px-8 lg:pb-6">
+      <div className="mx-auto grid w-full max-w-[1200px] items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)]">
+        <BuyerSidebar />
+
+        <section className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+          <div className="border-b border-[#e5ece2] px-5 py-5">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">My Cart</p>
+            <h1 className="mt-2 text-2xl font-bold text-[#1f2b22]">My Grocery List & Smart Match</h1>
+          </div>
+
+          <div className="px-5 py-5">
+            <div className="mb-5 rounded-2xl border border-[#d9e3d5] bg-[#f6faf5] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2f9f4f]">AI meal planner</p>
+              <p className="mt-1 text-sm text-[#314136]">
+                Describe what you want (e.g. “taco night for 4”) and we{"'"}ll build a cheap cart for you.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
+                <textarea
+                  className="flex-1 resize-none overflow-hidden rounded-xl border border-[#cfd9cb] bg-white px-3 py-2 text-sm text-[#111827] placeholder:text-[#9ca3af] focus:border-[#2f9f4f] focus:outline-none focus:ring-2 focus:ring-[#2f9f4f]/40"
+                  onChange={(event) => {
+                    setIntentText(event.target.value)
+                  }}
+                  onInput={(event) => {
+                    const target = event.currentTarget
+                    target.style.height = '0px'
+                    target.style.height = `${target.scrollHeight}px`
+                  }}
+                  placeholder="I want taco night for 4 people"
+                  rows={1}
+                  value={intentText}
+                />
+                <button
+                  className="mt-2 inline-flex items-center justify-center rounded-2xl bg-[#2f9f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#25813f] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#2f9f4f] sm:mt-0"
+                  disabled={isAiLoggedIn ? isPlanningIntent || !intentText.trim() : false}
+                  onClick={() => {
+                    if (!isAiLoggedIn) {
+                      window.location.href = '/login'
+                      return
+                    }
+                    void planIntentCart()
+                  }}
+                  type="button"
+                >
+                  {!isAiLoggedIn ? 'Login to use AI features' : isPlanningIntent ? 'Planning…' : 'Plan meal'}
+                </button>
+              </div>
+              {isPlanningIntent && !intentExplanation && (
+                <ul className="mt-2 space-y-0.5 pl-1 text-xs">
+                  {[
+                    'Understanding your request…',
+                    'Finding ingredients in the catalog…',
+                    'Comparing stores and delivery…',
+                    'Selecting the cheapest full cart…',
+                  ].map((label, index) => {
+                    const isDone = intentProgressStep > index
+                    const isCurrent = intentProgressStep === index
+                    return (
+                      <li
+                        key={label}
+                        className={
+                          isDone
+                            ? 'text-[#2f9f4f]'
+                            : isCurrent
+                              ? 'text-[#314136]'
+                              : 'text-[#9ca3af]'
+                        }
+                      >
+                        {label}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              {intentExplanation && intentExplanation.length > 0 ? (
+                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[#556558]">
+                  {intentExplanation.map((line, index) => (
+                    <li key={index}>{line}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+            {cartItems.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-[#d2dcd0] bg-[#f8fbf7] px-5 py-16 text-center">
+                <p className="text-lg font-semibold text-[#304136]">Your cart is empty</p>
+                <p className="mt-2 text-sm text-[#728176]">Add products from the marketplace to start comparing store prices.</p>
+                <a
+                  className="mt-4 inline-block rounded-2xl bg-[#2f9f4f] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25813f]"
+                  href="/marketplace/dashboard"
+                >
+                  Browse Marketplace
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {cartItems.map((item) => (
+                <div className="flex flex-col gap-2 rounded-2xl border border-[#e6ede3] p-3" key={item.id}>
+                    <div className="flex items-center gap-3">
+                      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-white">
+                      {item.imageUrl ? (
+                        <img alt={item.name} className="h-full w-full object-contain p-1" src={item.imageUrl} />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-xl text-[#86a28f]">+</div>
+                      )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-sm font-semibold text-[#1f2b22]">{item.name}</h3>
+                        <p className="text-xs text-[#6d7b70]">
+                          {formatCurrency(item.price)} · {item.store ?? 'Store'}
+                        </p>
+                        {item.unitInfo ? (
+                          <p className="text-[11px] text-[#86a28f]">
+                            {item.unitInfo.includes('kr/') ? `Unit price: ${item.unitInfo}` : `Unit: ${item.unitInfo}`}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="grid h-7 w-7 place-items-center rounded-lg border border-[#d4ddd0] text-sm text-[#516056] transition hover:border-[#9bb49f]"
+                          onClick={() => updateQuantity(item.id, -1)}
+                          type="button"
+                        >
+                          -
+                        </button>
+                        <span className="min-w-[1.5rem] text-center text-sm font-semibold text-[#1f2b22]">{item.quantity}</span>
+                        <button
+                          className="grid h-7 w-7 place-items-center rounded-lg border border-[#d4ddd0] text-sm text-[#516056] transition hover:border-[#9bb49f]"
+                          onClick={() => updateQuantity(item.id, 1)}
+                          type="button"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-1 flex flex-col gap-1 rounded-2xl bg-[#f6faf5] p-2">
+                      <button
+                        className="inline-flex items-center justify-between gap-2 rounded-xl bg-[#e7f5eb] px-2 py-1.5 text-xs font-semibold text-[#1e7a39] shadow-sm ring-1 ring-[#c5e4ce] hover:bg-[#ddf0e3]"
+                        onClick={() => loadSubstitutions(item.id)}
+                        type="button"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          {loadingSubFor[item.id] ? (
+                            <span className="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-[#1e7a39]/40 border-t-transparent" />
+                          ) : (
+                            <span className="inline-flex h-3 w-3 rounded-full bg-[#1e7a39]" />
+                          )}
+                          <span>
+                            {loadingSubFor[item.id]
+                              ? 'Finding AI substitutions…'
+                              : 'Find substitutions with AI'}
+                          </span>
+                        </span>
+                        <span aria-hidden="true" className="text-[10px]">
+                          ↓
+                        </span>
+                      </button>
+                      {substitutions[item.id] && substitutions[item.id].length > 0 ? (
+                        <div className="space-y-1">
+                          {substitutions[item.id].map((suggestion) => (
+                            <button
+                              className="flex w-full items-center justify-between rounded-xl bg-white px-2 py-1.5 text-left text-xs text-[#314136] shadow-sm ring-1 ring-[#dde8d9] hover:bg-[#f1f7f0]"
+                              key={suggestion.priceId}
+                              onClick={() => replaceCartItem(item.id, suggestion)}
+                              type="button"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate font-semibold">
+                                  {suggestion.name}
+                                </p>
+                                <p className="text-[10px] text-[#6c7c71]">
+                                  Save {formatCurrency(suggestion.savingsAmount)}{' '}
+                                  {suggestion.savingsPercentage !== null
+                                    ? `(${suggestion.savingsPercentage.toFixed(1)}%)`
+                                    : ''}
+                                </p>
+                              </div>
+                              <span className="text-[11px] font-semibold text-[#2f9f4f]">Switch</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : loadingSubFor[item.id] ? (
+                        <p className="text-[11px] text-[#6c7c71]">Looking for alternatives…</p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+
+                <div className="flex gap-3 pt-3">
+                  <button
+                    className="rounded-2xl border border-[#d5ded1] bg-white px-5 py-2.5 text-sm font-semibold text-[#415044] transition hover:border-[#9db5a4] hover:text-[#2f9f4f]"
+                    onClick={clearCart}
+                    type="button"
+                  >
+                    Clear Cart
+                  </button>
+                  <a
+                    className="rounded-2xl bg-[#2f9f4f] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#25813f]"
+                    href="/marketplace/dashboard"
+                  >
+                    Add Items
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-6">
+          {isMatching ? (
+            <div className="rounded-[28px] border border-[#dce5d7] bg-white/95 p-6 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+              <div className="animate-pulse space-y-4">
+                <div className="h-5 w-1/2 rounded bg-[#e2e9df]" />
+                <div className="h-10 w-2/3 rounded bg-[#e2e9df]" />
+                <div className="h-4 w-1/3 rounded bg-[#e2e9df]" />
+              </div>
+            </div>
+          ) : bestMatch ? (
+            <>
+              <div className="rounded-[28px] border-2 border-[#2f9f4f] bg-[#f0faf2] p-5 shadow-[0_18px_60px_rgba(18,38,24,0.08)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.15em] text-[#2f9f4f]">Best Store Match</p>
+                    <h2 className="mt-1 text-xl font-bold text-[#1f2b22]">{bestMatch.storeName}</h2>
+                    <p className="mt-1 text-sm text-[#617166]">Your smartest grocery choice for maximum savings.</p>
+                  </div>
+                  <a
+                    className={`shrink-0 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white transition ${
+                      !selectedStore ? 'pointer-events-none bg-[#9ac7a6]' : 'bg-[#2f9f4f] hover:bg-[#25813f]'
+                    }`}
+                    href={selectedStore ? '/checkout' : '#'}
+                  >
+                    Go to checkout →
+                  </a>
+                </div>
+                <div className="mt-4 flex items-end gap-4">
+                  <p className="text-3xl font-extrabold text-[#1f2b22]">{formatCurrency(bestMatch.total)}</p>
+                  {savings > 0 ? (
+                    <span className="mb-1 rounded-full bg-[#dcf5e2] px-3 py-1 text-xs font-semibold text-[#1a7a34]">
+                      Save {formatCurrency(savings)}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-xs text-[#6a796f]">
+                  Subtotal {formatCurrency(bestMatch.subtotal)} + delivery {formatCurrency(bestMatch.deliveryCost)} · ETA: {bestMatch.eta} · {bestMatch.itemsAvailable}/{bestMatch.itemsRequested} items available
+                </p>
+              </div>
+
+              <div className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+                <div className="border-b border-[#e5ece2] px-5 py-4">
+                  <h3 className="text-base font-bold text-[#1f2b22]">Matched Stores</h3>
+                </div>
+                <div className="divide-y divide-[#eef2ec]">
+                  {stores.map((store) => (
+                    <button
+                      className={`flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-[#f8fbf7] ${
+                        store.storeCode === selectedStoreCode ? 'bg-[#f0faf2]' : ''
+                      }`}
+                      key={store.storeCode}
+                      onClick={() => setSelectedStoreCode(store.storeCode)}
+                      type="button"
+                    >
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#e8f5ea] text-sm font-bold text-[#2f9f4f]">
+                        {store.storeName.charAt(0)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-[#1f2b22]">{store.storeName}</p>
+                        <p className="text-xs text-[#6d7b70]">
+                          ETA: {store.eta} · {store.itemsAvailable} items available
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-base font-bold text-[#1f2b22]">{formatCurrency(store.total)}</p>
+                        {store.storeCode === bestMatch.storeCode ? (
+                          <span className="text-[10px] font-semibold text-[#2f9f4f]">Best price</span>
+                        ) : null}
+                      </div>
+                      <span className="text-xs font-semibold text-[#2f9f4f]">Compare</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+
+              {selectedStore ? (
+                <div className="rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+                  <div className="border-b border-[#e5ece2] px-5 py-4">
+                    <h3 className="text-base font-bold text-[#1f2b22]">
+                      Price Breakdown · {selectedStore.storeName}
+                    </h3>
+                  </div>
+                  <div className="divide-y divide-[#eef2ec] px-5">
+                    {selectedStore.items.map((item) => (
+                      <div className="flex items-center justify-between gap-3 py-3" key={item.catalogProductId}>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[#1f2b22]">{item.name}</p>
+                          <p className="text-xs text-[#6d7b70]">{formatCurrency(item.unitPrice)} x {item.quantity}</p>
+                        </div>
+                        <p className="text-sm font-semibold text-[#1f2b22]">{formatCurrency(item.lineTotal)}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-[#e5ece2] px-5 py-4">
+                    <div className="flex justify-between text-sm text-[#647267]">
+                      <span>Subtotal</span>
+                      <span className="font-semibold text-[#1f2b22]">{formatCurrency(selectedStore.subtotal)}</span>
+                    </div>
+                    <div className="mt-1 flex justify-between text-sm text-[#647267]">
+                      <span>Delivery ({selectedStore.eta})</span>
+                      <span className="font-semibold text-[#1f2b22]">{formatCurrency(selectedStore.deliveryCost)}</span>
+                    </div>
+                    <div className="mt-3 flex justify-between border-t border-[#e5ece2] pt-3 text-base font-bold text-[#1f2b22]">
+                      <span>Total</span>
+                      <span>{formatCurrency(selectedStore.total)}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : (matchResult !== null && cartItems.length > 0) ? (
+            <div className="rounded-[28px] border border-dashed border-[#cfd9cb] bg-[#f8fbf7] p-6 text-center">
+              <p className="text-sm font-semibold text-[#304136]">No store matches found</p>
+              <p className="mt-2 text-xs text-[#6c7c71]">The products in your cart may not be available in the imported catalog yet.</p>
+            </div>
+          ) : (
+            <div className="rounded-[28px] border border-dashed border-[#cfd9cb] bg-[#f8fbf7] p-6 text-center">
+              <p className="text-sm font-semibold text-[#304136]">Nothing to match yet</p>
+              <p className="mt-2 text-xs text-[#6c7c71]">
+                Plan a meal above or add items from the marketplace to see smart store matching.
+              </p>
+            </div>
+          )}
+        </section>
+
+      </div>
+    </main>
+  )
+}

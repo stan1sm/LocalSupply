@@ -1,0 +1,26 @@
+{
+  "name": "localsupply",
+  "version": "1.0.0",
+  "description": "B2B marketplace for the Norwegian market connecting restaurants and cafes with local suppliers. Buyers can browse products, place orders, and chat with suppliers. Suppliers get a full dashboard to manage products, orders, and their store profile.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stan1sm/LocalSupply.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/stan1sm/LocalSupply/issues"
+  },
+  "homepage": "https://github.com/stan1sm/LocalSupply#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}

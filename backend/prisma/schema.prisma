@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -11,6 +5,11 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum AccountType {
+  INDIVIDUAL
+  BUSINESS
 }
 
 enum OrderStatus {
@@ -21,32 +20,113 @@ enum OrderStatus {
   CANCELLED
 }
 
-model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  firstName    String
-  lastName     String
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+enum SupplierVerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
 
-  orders Order[] @relation("BuyerOrders")
+enum ProductApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id                         String   @id @default(cuid())
+  email                      String   @unique
+  firstName                  String
+  lastName                   String
+  passwordHash               String?
+  emailVerified              Boolean  @default(false)
+  emailVerificationTokenHash String?  @unique
+  vippsSub                   String?  @unique
+  vippsPhoneNumber           String?
+  passwordResetTokenHash     String?  @unique
+  passwordResetTokenExpiresAt DateTime?
+  accountType                AccountType @default(INDIVIDUAL)
+  orgNumber                  String?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  orders         Order[]             @relation("BuyerOrders")
+  addresses      UserAddress[]
+  paymentMethods UserPaymentMethod[]
+  conversations  Conversation[]      @relation("BuyerConversations")
+}
+
+model UserAddress {
+  id        String   @id @default(cuid())
+  userId    String
+  label     String?
+  address   String
+  phone     String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@index([userId])
+}
+
+model UserPaymentMethod {
+  id             String   @id @default(cuid())
+  userId         String
+  cardholderName String
+  maskedNumber   String
+  lastFour       String
+  expiry         String
+  cardType       String?
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Supplier {
-  id           String   @id @default(cuid())
-  businessName String
-  contactName  String
-  phoneNumber  String
-  email        String   @unique
-  passwordHash String
-  address      String
-  isVerified   Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                         String                     @id @default(cuid())
+  businessName               String
+  contactName                String
+  phoneNumber                String
+  email                      String                     @unique
+  passwordHash               String
+  address                    String
+  orgnr                      String?                    @unique
+  isVerified                 Boolean                    @default(false)
+  verificationStatus         SupplierVerificationStatus @default(UNVERIFIED)
+  verificationRejectedReason String?
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
+  // Store profile
+  logoUrl               String?
+  heroImageUrl          String?
+  tagline               String?
+  description           String?
+  storeType             String?
+  badgeText             String?
+  brandColor            String?
+  serviceRadiusKm       Int?
+  serviceAreas          String?
+  openingHours          String?
+  openingHoursNote      String?
+  websiteUrl            String?
+  instagramUrl          String?
+  facebookUrl           String?
+  preferredContactMethod String?
+  orderNotesHint        String?
+  showInMarketplace     Boolean  @default(true)
+  acceptDirectOrders    Boolean  @default(true)
+  minimumOrderAmount    Decimal? @db.Decimal(10, 2)
 
-  products Product[]
-  orders   Order[]   @relation("SupplierOrders")
+  products      Product[]
+  orders        Order[]        @relation("SupplierOrders")
+  conversations Conversation[] @relation("SupplierConversations")
 }
 
 model Product {
@@ -57,34 +137,163 @@ model Product {
   unit        String
   price       Decimal  @db.Decimal(10, 2)
   stockQty    Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  imageUrl       String?
+  isActive       Boolean              @default(true)
+  approvalStatus ProductApprovalStatus @default(PENDING)
+  createdAt      DateTime             @default(now())
   updatedAt   DateTime @updatedAt
 
   supplier   Supplier    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   orderItems OrderItem[]
 
   @@index([supplierId])
+  @@index([isActive])
 }
 
-model Order {
-  id          String      @id @default(cuid())
-  buyerId     String
-  supplierId  String
-  status      OrderStatus @default(PENDING)
-  subtotal    Decimal     @db.Decimal(10, 2)
-  deliveryFee Decimal     @default(0) @db.Decimal(10, 2)
-  total       Decimal     @db.Decimal(10, 2)
-  notes       String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+model CatalogProduct {
+  id         String   @id @default(cuid())
+  catalogKey String   @unique
+  externalId String?
+  gtin       String?
+  name       String
+  brand      String?
+  category   String?
+  unit       String?
+  imageUrl   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  buyer    User        @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade)
-  supplier Supplier    @relation("SupplierOrders", fields: [supplierId], references: [id], onDelete: Restrict)
-  items    OrderItem[]
+  prices CatalogProductPrice[]
+  embeddings ProductEmbedding[]
+
+  @@index([externalId])
+  @@index([gtin])
+  @@index([name])
+  @@index([brand])
+  @@index([category])
+}
+
+model CatalogProductPrice {
+  id                   String    @id @default(cuid())
+  catalogProductId     String
+  externalId           String
+  storeCode            String
+  storeName            String
+  currentPrice         Decimal?  @db.Decimal(10, 2)
+  currentUnitPrice     Decimal?  @db.Decimal(10, 2)
+  currentUnitPriceUnit String?
+  productUrl           String?
+  lastCheckedAt        DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  catalogProduct CatalogProduct @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)
+
+  @@unique([catalogProductId, storeCode])
+  @@index([externalId])
+  @@index([storeCode])
+  @@index([storeCode, currentPrice])
+  @@index([storeName])
+  @@index([currentPrice])
+}
+
+model ProductEmbedding {
+  id          String   @id @default(cuid())
+  productId   String
+  modelName   String
+  vectorJson  Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product CatalogProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, modelName])
+  @@index([modelName])
+}
+
+
+model Order {
+  id                String      @id @default(cuid())
+  buyerId           String
+  supplierId        String
+  status            OrderStatus @default(PENDING)
+  subtotal          Decimal     @db.Decimal(10, 2)
+  deliveryFee       Decimal     @default(0) @db.Decimal(10, 2)
+  total             Decimal     @db.Decimal(10, 2)
+  notes             String?
+  paymentMethod     String?
+  deliveryAddressId String?
+  woltDeliveryId    String?
+  woltTrackingUrl   String?
+  woltStatus        String?
+  deliveryPersonId  String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  buyer          User            @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade)
+  supplier       Supplier        @relation("SupplierOrders", fields: [supplierId], references: [id], onDelete: Restrict)
+  deliveryAddress UserAddress?   @relation(fields: [deliveryAddressId], references: [id], onDelete: SetNull)
+  deliveryPerson  DeliveryPerson? @relation(fields: [deliveryPersonId], references: [id], onDelete: SetNull)
+  items           OrderItem[]
 
   @@index([buyerId])
   @@index([supplierId])
+  @@index([status])
+  @@index([deliveryPersonId])
+  @@index([createdAt(sort: Desc)])
+}
+
+model Conversation {
+  id         String   @id @default(cuid())
+  buyerId    String
+  supplierId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  buyer    User     @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation("SupplierConversations", fields: [supplierId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([buyerId, supplierId])
+  @@index([buyerId])
+  @@index([supplierId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderType     String
+  senderId       String
+  content        String
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt(sort: Asc)])
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model DeliveryPerson {
+  id        String   @id @default(cuid())
+  vippsSub  String   @unique
+  name      String
+  phone     String?
+  email     String?
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([isActive])
 }
 
 model OrderItem {

@@ -1,0 +1,371 @@
+/**
+ * @module ChatConversationPage
+ * Individual chat conversation page supporting both buyer and supplier perspectives with auto-scroll.
+ */
+
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { buildApiUrl } from '../../../lib/api'
+import BuyerSidebar from '../../components/BuyerSidebar'
+import SupplierSidebar from '../../components/SupplierSidebar'
+import { sanitizeTextInput } from '../../../utils/inputSecurity'
+
+const BUYER_TOKEN_KEY = 'localsupply-token'
+const BUYER_USER_KEY = 'localsupply-user'
+const SUPPLIER_TOKEN_KEY = 'localsupply-supplier-token'
+const SUPPLIER_SESSION_KEY = 'localsupply-supplier'
+
+/**
+ * Minimal supplier session data used for sidebar rendering in supplier view.
+ * @property id - Supplier identifier.
+ * @property businessName - Registered business name.
+ * @property address - Physical address.
+ */
+type SupplierSession = { id: string; businessName: string; address: string }
+
+/**
+ * A single chat message within a conversation.
+ * @property id - Unique message identifier.
+ * @property conversationId - Parent conversation ID.
+ * @property senderType - Whether the sender is a buyer or supplier.
+ * @property senderId - ID of the sender.
+ * @property content - Message text content.
+ * @property createdAt - ISO timestamp of when the message was sent.
+ */
+type Message = {
+  id: string
+  conversationId: string
+  senderType: 'buyer' | 'supplier'
+  senderId: string
+  content: string
+  createdAt: string
+}
+
+/**
+ * Full conversation detail including participant records.
+ * @property id - Conversation identifier.
+ * @property buyerId - ID of the participating buyer.
+ * @property supplierId - ID of the participating supplier.
+ * @property buyer - Buyer profile data.
+ * @property supplier - Supplier profile data.
+ */
+type ConversationDetail = {
+  id: string
+  buyerId: string
+  supplierId: string
+  buyer: { id: string; firstName: string; lastName: string; email: string }
+  supplier: { id: string; businessName: string; email: string }
+}
+
+/**
+ * Formats an ISO timestamp as a locale time string (HH:MM).
+ * @param iso - ISO 8601 timestamp string.
+ * @returns Formatted time string.
+ */
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
+/**
+ * Formats an ISO timestamp as "Today" or a short locale date string.
+ * @param iso - ISO 8601 timestamp string.
+ * @returns "Today" if the date is today, otherwise a short date like "May 1".
+ */
+function formatDate(iso: string) {
+  const d = new Date(iso)
+  const today = new Date()
+  if (
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate()
+  ) return 'Today'
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+/**
+ * Reads buyer or supplier auth credentials from localStorage and returns the active session.
+ * @returns Auth object with token, role, and userId, or null if neither session exists.
+ */
+function getAuth(): { token: string; role: 'buyer' | 'supplier'; userId: string } | null {
+  const buyerToken = window.localStorage.getItem(BUYER_TOKEN_KEY)
+  const buyerRaw = window.localStorage.getItem(BUYER_USER_KEY)
+  if (buyerToken && buyerRaw) {
+    try {
+      const u = JSON.parse(buyerRaw) as { id: string }
+      return { token: buyerToken, role: 'buyer', userId: u.id }
+    } catch { /* */ }
+  }
+  const supplierToken = window.localStorage.getItem(SUPPLIER_TOKEN_KEY)
+  const supplierRaw = window.localStorage.getItem(SUPPLIER_SESSION_KEY)
+  if (supplierToken && supplierRaw) {
+    try {
+      const s = JSON.parse(supplierRaw) as { id: string }
+      return { token: supplierToken, role: 'supplier', userId: s.id }
+    } catch { /* */ }
+  }
+
+  return null
+}
+
+/**
+ * Renders a real-time chat conversation between a buyer and a supplier.
+ * Auto-scrolls to the latest message and groups messages by date separator.
+ * @param conversationId - ID of an existing conversation to load; the page fetches and renders this conversation.
+ *   When supplierId is also provided the page opens or creates a conversation with that supplier.
+ */
+export default function ChatConversationPage({
+  conversationId,
+  supplierId,
+}: {
+  conversationId?: string
+  supplierId?: string
+}) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [conversation, setConversation] = useState<ConversationDetail | null>(null)
+  const [input, setInput] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSending, setIsSending] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [myId, setMyId] = useState('')
+  const [myType, setMyType] = useState<'buyer' | 'supplier' | null>(null)
+  const [supplierSession, setSupplierSession] = useState<SupplierSession | null>(null)
+  const [convId, setConvId] = useState(conversationId ?? '')
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'instant' })
+  }, [messages])
+
+  useEffect(() => {
+    const auth = getAuth()
+    if (!auth) {
+      window.location.replace('/login')
+      return
+    }
+    setMyId(auth.userId)
+    setMyType(auth.role)
+    if (auth.role === 'supplier') {
+      try {
+        const raw = window.localStorage.getItem(SUPPLIER_SESSION_KEY)
+        if (raw) setSupplierSession(JSON.parse(raw) as SupplierSession)
+      } catch { /* */ }
+    }
+
+    const { token, role } = auth
+    let cancelled = false
+
+    async function init() {
+      let cid = conversationId ?? convId
+
+      // Buyer initiating from supplier page: create or get conversation
+      if (!cid && supplierId && role === 'buyer') {
+        const resp = await fetch(buildApiUrl('/api/chat/conversations'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ supplierId }),
+        })
+        if (!resp.ok) {
+          if (!cancelled) setErrorMessage('Could not start conversation.')
+          return
+        }
+        const data = (await resp.json()) as ConversationDetail
+        cid = data.id
+        if (!cancelled) {
+          setConvId(cid)
+          setConversation(data)
+        }
+      }
+
+      if (!cid) {
+        if (!cancelled) setErrorMessage('No conversation to open.')
+        return
+      }
+
+      // Load conversation details + messages in parallel
+      const [convResp, msgsResp] = await Promise.all([
+        fetch(buildApiUrl(`/api/chat/conversations/${encodeURIComponent(cid)}`), {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(buildApiUrl(`/api/chat/conversations/${encodeURIComponent(cid)}/messages`), {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ])
+
+      if (!cancelled) {
+        if (convResp.ok) setConversation((await convResp.json()) as ConversationDetail)
+        if (msgsResp.ok) setMessages((await msgsResp.json()) as Message[])
+        else setErrorMessage('Could not load messages.')
+        setIsLoading(false)
+        setTimeout(() => inputRef.current?.focus(), 50)
+      }
+    }
+
+    init().catch(() => {
+      if (!cancelled) {
+        setErrorMessage('Something went wrong.')
+        setIsLoading(false)
+      }
+    })
+
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** Posts the current input message to the conversation and appends it to the local message list. */
+  async function sendMessage() {
+    const auth = getAuth()
+    if (!input.trim() || isSending || !convId || !auth) return
+    setIsSending(true)
+    const content = sanitizeTextInput(input.trim(), 4000)
+    setInput('')
+
+    try {
+      const resp = await fetch(buildApiUrl(`/api/chat/conversations/${encodeURIComponent(convId)}/messages`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+        body: JSON.stringify({ content }),
+      })
+      if (resp.ok) {
+        const msg = (await resp.json()) as Message
+        setMessages((prev) => [...prev, msg])
+      } else {
+        setInput(content)
+        setErrorMessage('Failed to send message.')
+      }
+    } catch {
+      setInput(content)
+      setErrorMessage('Failed to send message.')
+    } finally {
+      setIsSending(false)
+      inputRef.current?.focus()
+    }
+  }
+
+  /**
+   * Submits the message on Enter key press (without Shift).
+   * @param e - The keyboard event from the message input.
+   */
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+  }
+
+  const partnerName = conversation
+    ? myType === 'buyer'
+      ? conversation.supplier.businessName
+      : `${conversation.buyer.firstName} ${conversation.buyer.lastName}`
+    : '…'
+
+  // Group by date
+  const grouped: { date: string; msgs: Message[] }[] = []
+  for (const msg of messages) {
+    const d = formatDate(msg.createdAt)
+    const last = grouped[grouped.length - 1]
+    if (last && last.date === d) last.msgs.push(msg)
+    else grouped.push({ date: d, msgs: [msg] })
+  }
+
+  const isSupplierView = myType === 'supplier' && supplierSession !== null
+
+  return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(45,155,79,0.18),_transparent_28%),linear-gradient(180deg,#f7fbf6_0%,#edf2eb_100%)] px-4 pb-20 pt-6 sm:px-6 lg:px-8 lg:pb-6">
+      <div className="mx-auto grid w-full max-w-[1400px] items-start gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+        {isSupplierView && supplierSession
+          ? <SupplierSidebar activeId="chats" supplier={supplierSession} />
+          : <BuyerSidebar />
+        }
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <a className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[#2f9f4f] hover:text-[#1f2937]" href="/chat">
+              <span aria-hidden="true">←</span> Messages
+            </a>
+            {partnerName !== '…' && <span className="text-xs text-[#9ca3af]">/ {partnerName}</span>}
+          </div>
+          <div className="flex h-[calc(100vh-10rem)] flex-col overflow-hidden rounded-[28px] border border-[#dce5d7] bg-white/95 shadow-[0_18px_60px_rgba(18,38,24,0.08)] backdrop-blur">
+            <div className="border-b border-[#e5ece2] px-5 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2f9f4f]">Chat</p>
+              <h1 className="mt-0.5 text-lg font-bold text-[#1f2b22]">{partnerName}</h1>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {isLoading ? (
+                <div className="flex h-full items-center justify-center">
+                  <div className="h-7 w-7 animate-spin rounded-full border-4 border-[#d5ded1] border-t-[#2f9f4f]" />
+                </div>
+              ) : errorMessage ? (
+                <div className="flex h-full items-center justify-center">
+                  <div className="rounded-2xl border border-[#f0d4d4] bg-[#fff5f5] px-5 py-4 text-center text-sm text-[#9b2c2c]">
+                    {errorMessage}
+                  </div>
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-center">
+                  <div>
+                    <p className="text-sm font-semibold text-[#6b7b70]">Start the conversation</p>
+                    <p className="mt-1 text-xs text-[#9ca3af]">Send a message to {partnerName}</p>
+                  </div>
+                </div>
+              ) : (
+                grouped.map(({ date, msgs }) => (
+                  <div key={date} className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <div className="h-px flex-1 bg-[#eef2ec]" />
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9ca3af]">{date}</span>
+                      <div className="h-px flex-1 bg-[#eef2ec]" />
+                    </div>
+                    {msgs.map((msg) => {
+                      const isMine = msg.senderId === myId && msg.senderType === myType
+                      return (
+                        <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[72%] rounded-2xl px-4 py-2.5 ${isMine ? 'rounded-br-sm bg-[#2f9f4f] text-white' : 'rounded-bl-sm bg-[#f0f4ef] text-[#1f2b22]'}`}>
+                            <p className="text-sm leading-snug">{msg.content}</p>
+                            <p className={`mt-1 text-right text-[9px] ${isMine ? 'text-white/60' : 'text-[#9ca3af]'}`}>
+                              {formatTime(msg.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))
+              )}
+              <div ref={bottomRef} />
+            </div>
+            <div className="border-t border-[#e5ece2] px-4 py-3">
+              <div className="flex items-center gap-2 rounded-2xl border border-[#d4ddcf] bg-[#f9fbf8] px-3 py-2 focus-within:border-[#2f9f4f] focus-within:ring-2 focus-within:ring-[#b7e0c2]">
+                <input
+                  className="flex-1 bg-transparent text-sm text-[#1f2937] outline-none placeholder:text-[#95a39a] disabled:opacity-50"
+                  disabled={isLoading || !!errorMessage}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type a message…"
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                />
+                <button
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#2f9f4f] transition hover:bg-[#25813f] disabled:opacity-40"
+                  disabled={!input.trim() || isSending || !!errorMessage}
+                  onClick={sendMessage}
+                  type="button"
+                >
+                  {isSending ? (
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  ) : (
+                    <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7Z" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <p className="mt-1 text-center text-[9px] text-[#c7d2c2]">Enter to send</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  )
+}

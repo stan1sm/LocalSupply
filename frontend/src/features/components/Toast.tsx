@@ -1,0 +1,49 @@
+'use client'
+
+/**
+ * @module Toast
+ * Fixed-position container that renders the active toast notification stack.
+ */
+
+import type { Toast } from './useToast'
+
+/**
+ * Renders all active toast notifications in a fixed overlay anchored to the
+ * bottom-right corner of the viewport.
+ *
+ * Toasts are colour-coded by type:
+ * - `'success'` — green border and background.
+ * - `'error'` — red border and background.
+ * - `'info'` — neutral white background.
+ *
+ * Returns `null` when the `toasts` array is empty so no DOM node is mounted.
+ * Each toast carries `role="status"` and `aria-live="polite"` for screen-reader
+ * accessibility.
+ *
+ * @param {Object} props - Component props.
+ * @param {Toast[]} props.toasts - The current array of active toast records supplied by the useToast hook.
+ * @returns {JSX.Element | null} The rendered toast stack, or `null` when there are no toasts.
+ */
+export function ToastContainer({ toasts }: { toasts: Toast[] }) {
+  if (toasts.length === 0) return null
+  return (
+    <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2 pointer-events-none">
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          role="status"
+          aria-live="polite"
+          className={`pointer-events-auto max-w-xs rounded-2xl px-4 py-3 text-sm font-semibold shadow-[0_8px_24px_rgba(18,38,24,0.12)] ${
+            toast.type === 'success'
+              ? 'border border-[#b2d4bc] bg-[#f0faf2] text-[#1a5e30]'
+              : toast.type === 'error'
+                ? 'border border-[#f0d4d4] bg-[#fff5f5] text-[#9b2c2c]'
+                : 'border border-[#dce5d7] bg-white text-[#1f2b22]'
+          }`}
+        >
+          {toast.message}
+        </div>
+      ))}
+    </div>
+  )
+}

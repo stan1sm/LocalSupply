@@ -1,0 +1,20 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "LocalSupply — Backend",
+  "entryPoints": ["src"],
+  "entryPointStrategy": "expand",
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/generated/**",
+    "src/scripts/**"
+  ],
+  "out": "docs",
+  "tsconfig": "./tsconfig.json",
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "cleanOutputDir": true,
+  "groupOrder": ["Functions", "Type Aliases", "Variables", "*"],
+  "sort": ["source-order"],
+  "intentionallyNotExported": ["PrismaClient"]
+}

@@ -1,8 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 
 @theme {
-  --font-sans: 'Manrope', 'Segoe UI', sans-serif;
+  --font-sans: var(--font-manrope), 'Segoe UI', sans-serif;
 }
 
 @layer base {
