@@ -1,6 +1,17 @@
 # LocalSupply
 
+[![CI](https://github.com/stan1sm/LocalSupply/actions/workflows/ci.yml/badge.svg)](https://github.com/stan1sm/LocalSupply/actions/workflows/ci.yml)
+
 B2B marketplace for the Norwegian market connecting restaurants and cafes with local suppliers. Buyers can browse products, place orders, and chat with suppliers. Suppliers get a full dashboard to manage products, orders, and their store profile.
+
+**Status:** active development. Core buyer, supplier and admin flows are implemented and deployed; see the [Roadmap](https://github.com/stan1sm/LocalSupply/wiki/Roadmap) for open items. Full documentation lives in the [wiki](https://github.com/stan1sm/LocalSupply/wiki).
+
+## Screenshots
+
+<!-- TODO: add screenshots to docs/screenshots/ and reference them here -->
+| Marketplace | Supplier dashboard | Checkout |
+|---|---|---|
+| _coming soon_ | _coming soon_ | _coming soon_ |
 
 ## What's built
 
@@ -27,12 +38,13 @@ B2B marketplace for the Norwegian market connecting restaurants and cafes with l
 - Backend: Express 5 + TypeScript
 - DB: PostgreSQL via Prisma
 - AI: OpenAI-compatible API for embeddings and the cart planner
-- Delivery: Wolt Drive API
-- Deployed on Vercel (two projects — frontend + backend)
+- Delivery: Wolt Drive API, plus an in-house `delivery-service` (Express + PostgreSQL) as a drop-in replacement
+- Testing: Vitest (unit), Playwright (end-to-end)
+- CI/CD: GitHub Actions (lint, type-check, tests), deployed on Vercel
 
 ## Architecture
 
-The repo is a monorepo with two independent apps that talk over HTTP.
+The repo is a monorepo with independently deployed services that talk over HTTP: `frontend/`, `backend/` and `delivery-service/`. See the [Architecture](https://github.com/stan1sm/LocalSupply/wiki/Architecture) wiki page for details.
 
 **Frontend** — Next.js App Router. Pages in `app/` are thin shells; all logic lives in `features/pages/<area>/`. API calls go through `src/lib/api.ts` which prepends `NEXT_PUBLIC_API_BASE_URL`. Two separate auth flows (buyer token / supplier token) stored in `localStorage` — no shared context provider.
 
@@ -56,6 +68,8 @@ LocalSupply/
 │   └── app.ts                    # Express app entry
 ├── backend/prisma/
 │   └── schema.prisma             # Models: User, Supplier, Product, Order, CatalogProduct
+├── delivery-service/             # Delivery pricing, courier simulation, tracking (:3002)
+├── e2e/                          # Playwright end-to-end tests
 ├── docker-compose.yml            # PostgreSQL on :5433 + backend on :3001
 └── README.md
 ```
