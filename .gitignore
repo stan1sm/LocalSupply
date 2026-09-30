@@ -6,3 +6,5 @@ requirements.md
 backend/coverage/
 frontend/coverage/
 HANDOFF.md
+
+node_modules/
