@@ -172,3 +172,7 @@ Two separate Vercel projects from the same repo:
 **Backend** — root directory: `backend`, requests are routed via `backend/vercel.json` to the serverless handler at `backend/api/index.ts`. Add all the env vars from above in Vercel's project settings.
 
 After deploy, hit `https://your-backend.vercel.app/` — should return `{ "status": "ok" }`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
